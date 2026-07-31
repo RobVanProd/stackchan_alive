@@ -7,10 +7,12 @@ import base64
 import json
 import math
 import os
+import queue
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -18,6 +20,19 @@ from pathlib import Path
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_MAX_AUDIO_BYTES = 2 * 1024 * 1024
 FRAME_MS = 80
+TTS_MODE_RATE_OFFSETS = {
+    "idle": -1,
+    "attend": 0,
+    "listen": 0,
+    "think": -1,
+    "speak": 0,
+    "react": 1,
+    "happy": 1,
+    "concern": -1,
+    "sleep": -2,
+    "error": -1,
+    "safety": -1,
+}
 
 
 POWERSHELL_TTS_SCRIPT = r"""
@@ -56,6 +71,195 @@ finally {
 }
 """
 
+PERSISTENT_POWERSHELL_TTS_SCRIPT = r"""
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+Add-Type -AssemblyName System.Speech
+
+$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+try {
+  while (($line = [Console]::In.ReadLine()) -ne $null) {
+    $request = $line | ConvertFrom-Json
+    $response = [ordered]@{
+      id = [int]$request.id
+      ok = $false
+      error = ""
+    }
+    try {
+      if ($request.voice) {
+        $synth.SelectVoice([string]$request.voice)
+      }
+      $synth.Rate = [Math]::Max(-10, [Math]::Min(10, [int]$request.rate))
+      $synth.Volume = [Math]::Max(0, [Math]::Min(100, [int]$request.volume))
+      $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(
+        [int]$request.sample_rate,
+        [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen,
+        [System.Speech.AudioFormat.AudioChannel]::Mono
+      )
+      $synth.SetOutputToWaveFile([string]$request.wav_path, $format)
+      $synth.Speak([string]$request.text)
+      $synth.SetOutputToNull()
+      $response.ok = $true
+    }
+    catch {
+      $response.error = $_.Exception.Message
+      try { $synth.SetOutputToNull() } catch {}
+    }
+    [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress))
+    [Console]::Out.Flush()
+  }
+}
+finally {
+  $synth.Dispose()
+}
+"""
+
+
+class PersistentWindowsSpeechSynthesizer:
+    """Keep System.Speech loaded and exchange bounded JSON lines over stdio."""
+
+    def __init__(self, *, timeout_seconds: int = 20) -> None:
+        self.timeout_seconds = max(1, min(120, int(timeout_seconds)))
+        self._lock = threading.Lock()
+        self._process: subprocess.Popen[str] | None = None
+        self._responses: queue.Queue[str] | None = None
+        self._reader: threading.Thread | None = None
+        self._next_id = 1
+
+    @staticmethod
+    def _reader_loop(stream: object, responses: queue.Queue[str]) -> None:
+        try:
+            for line in stream:  # type: ignore[union-attr]
+                clean = str(line).strip()
+                if clean:
+                    responses.put(clean)
+        finally:
+            responses.put("")
+
+    def _start(self) -> None:
+        self._stop()
+        encoded_script = base64.b64encode(
+            PERSISTENT_POWERSHELL_TTS_SCRIPT.encode("utf-16le")
+        ).decode("ascii")
+        process = subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-EncodedCommand",
+                encoded_script,
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if process.stdin is None or process.stdout is None:
+            process.kill()
+            raise RuntimeError("persistent Windows TTS stdio is unavailable")
+        responses: queue.Queue[str] = queue.Queue()
+        reader = threading.Thread(
+            target=self._reader_loop,
+            args=(process.stdout, responses),
+            name="stackchan-windows-tts-reader",
+            daemon=True,
+        )
+        reader.start()
+        self._process = process
+        self._responses = responses
+        self._reader = reader
+
+    def _stop(self) -> None:
+        process = self._process
+        self._process = None
+        self._responses = None
+        self._reader = None
+        if process is None:
+            return
+        try:
+            if process.stdin is not None:
+                process.stdin.close()
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                pass
+
+    def close(self) -> None:
+        with self._lock:
+            self._stop()
+
+    def synthesize(
+        self,
+        text: str,
+        wav_path: Path,
+        *,
+        voice: str = "",
+        rate: int = 1,
+        volume: int = 100,
+        sample_rate: int = 48000,
+    ) -> float:
+        clean_text = " ".join(str(text or "").split())
+        if not clean_text:
+            raise ValueError("persistent Windows TTS text is empty")
+        if len(clean_text) > 1000:
+            raise ValueError("persistent Windows TTS text is too long")
+        with self._lock:
+            request = {
+                "id": self._next_id,
+                "text": clean_text,
+                "wav_path": str(Path(wav_path).resolve()),
+                "voice": str(voice or "").strip(),
+                "rate": max(-10, min(10, int(rate))),
+                "volume": max(0, min(100, int(volume))),
+                "sample_rate": max(8000, min(48000, int(sample_rate))),
+            }
+            self._next_id += 1
+            process = self._process
+            if process is None or process.poll() is not None:
+                self._start()
+                process = self._process
+            responses = self._responses
+            if process is None or process.stdin is None or responses is None:
+                raise RuntimeError("persistent Windows TTS failed to start")
+            started = time.perf_counter()
+            try:
+                process.stdin.write(json.dumps(request, separators=(",", ":"), ensure_ascii=True) + "\n")
+                process.stdin.flush()
+                line = responses.get(timeout=self.timeout_seconds)
+            except (BrokenPipeError, OSError, queue.Empty) as exc:
+                self._stop()
+                raise RuntimeError("persistent Windows TTS request failed") from exc
+            if not line:
+                self._stop()
+                raise RuntimeError("persistent Windows TTS exited")
+            try:
+                response = json.loads(line)
+            except json.JSONDecodeError as exc:
+                self._stop()
+                raise RuntimeError("persistent Windows TTS returned invalid JSON") from exc
+            if int(response.get("id", -1)) != int(request["id"]):
+                self._stop()
+                raise RuntimeError("persistent Windows TTS response id mismatch")
+            if response.get("ok") is not True:
+                detail = str(response.get("error") or "synthesis failed")[:240]
+                raise RuntimeError(f"persistent Windows TTS failed: {detail}")
+            if not wav_path.exists() or wav_path.stat().st_size < 44:
+                raise RuntimeError("persistent Windows TTS did not create a usable WAV")
+            return (time.perf_counter() - started) * 1000.0
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -81,6 +285,38 @@ def float_env(name: str, default: float, low: float, high: float) -> float:
     except ValueError:
         return default
     return max(low, min(high, parsed))
+
+
+def tts_delivery_style(
+    *,
+    mode: str | None = None,
+    arousal: float | None = None,
+    valence: float | None = None,
+) -> dict[str, object]:
+    mode = (
+        os.environ.get("STACKCHAN_TTS_MODE", "speak")
+        if mode is None
+        else str(mode)
+    ).strip().lower()
+    if mode not in TTS_MODE_RATE_OFFSETS:
+        mode = "speak"
+    if arousal is None:
+        arousal = float_env("STACKCHAN_TTS_AROUSAL", 0.5, 0.0, 1.0)
+    else:
+        arousal = max(0.0, min(1.0, float(arousal)))
+    if valence is None:
+        valence = float_env("STACKCHAN_TTS_VALENCE", 0.0, -1.0, 1.0)
+    else:
+        valence = max(-1.0, min(1.0, float(valence)))
+    energy_offset = 1 if arousal >= 0.75 else -1 if arousal <= 0.20 else 0
+    base_rate = int_env("STACKCHAN_RVC_BASE_TTS_RATE", 1, -10, 10)
+    rate = max(-10, min(10, base_rate + TTS_MODE_RATE_OFFSETS[mode] + energy_offset))
+    return {
+        "mode": mode,
+        "arousal": round(arousal, 3),
+        "valence": round(valence, 3),
+        "base_tts_rate": rate,
+    }
 
 
 def ffmpeg_exe() -> str:
@@ -113,7 +349,14 @@ def rvc_index_path() -> Path:
     return repo_root() / "output" / "voice_sources" / "stackchan_rvc_base" / "model" / "model.index"
 
 
-def synthesize_base_wav(text: str, wav_path: Path) -> None:
+def synthesize_base_wav(
+    text: str,
+    wav_path: Path,
+    *,
+    mode: str | None = None,
+    arousal: float | None = None,
+    valence: float | None = None,
+) -> None:
     with tempfile.NamedTemporaryFile("w", suffix=".txt", encoding="utf-8", delete=False) as text_file:
         text_path = Path(text_file.name)
         text_file.write(text)
@@ -121,7 +364,9 @@ def synthesize_base_wav(text: str, wav_path: Path) -> None:
     env["STACKCHAN_RVC_BASE_TTS_TEXT_FILE"] = str(text_path)
     env["STACKCHAN_RVC_BASE_TTS_WAV_FILE"] = str(wav_path)
     env["STACKCHAN_RVC_BASE_TTS_VOICE"] = os.environ.get("STACKCHAN_RVC_BASE_TTS_VOICE", "").strip()
-    env["STACKCHAN_RVC_BASE_TTS_RATE"] = str(int_env("STACKCHAN_RVC_BASE_TTS_RATE", 1, -10, 10))
+    env["STACKCHAN_RVC_BASE_TTS_RATE"] = str(
+        tts_delivery_style(mode=mode, arousal=arousal, valence=valence)["base_tts_rate"]
+    )
     env["STACKCHAN_RVC_BASE_TTS_VOLUME"] = str(int_env("STACKCHAN_RVC_BASE_TTS_VOLUME", 100, 0, 100))
     env["STACKCHAN_RVC_BASE_TTS_SAMPLE_RATE"] = str(
         int_env("STACKCHAN_RVC_BASE_TTS_SAMPLE_RATE", 48000, 8000, 48000)
@@ -321,6 +566,7 @@ def main() -> int:
         except Exception as exc:
             sys.stderr.write(str(exc) + "\n")
             return 2
+    style = tts_delivery_style()
     print(
         json.dumps(
             {
@@ -333,6 +579,10 @@ def main() -> int:
                 "rvc_elapsed_ms": round(rvc_elapsed_ms, 2),
                 "rvc_device": os.environ.get("STACKCHAN_RVC_DEVICE", "cpu:0").strip() or "cpu:0",
                 "rvc_f0_method": os.environ.get("STACKCHAN_RVC_F0_METHOD", "harvest").strip() or "harvest",
+                "tts_mode": style["mode"],
+                "tts_arousal": style["arousal"],
+                "tts_valence": style["valence"],
+                "base_tts_rate": style["base_tts_rate"],
                 "audio_format": "pcm16",
                 "sample_rate": sample_rate,
                 "audio_bytes": len(pcm),

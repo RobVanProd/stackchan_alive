@@ -1,7 +1,8 @@
 param(
   [string]$Version,
   [switch]$SkipBuild,
-  [switch]$AllowDirty
+  [switch]$AllowDirty,
+  [switch]$ObserveCandidateActions
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,6 +35,7 @@ if (
     if ($Version) { $childArgs += @("-Version", $Version) }
     if ($SkipBuild) { $childArgs += "-SkipBuild" }
     if ($AllowDirty) { $childArgs += "-AllowDirty" }
+    if ($ObserveCandidateActions) { $childArgs += "-ObserveCandidateActions" }
     & powershell.exe @childArgs
     $childExit = $LASTEXITCODE
   } finally {
@@ -138,6 +140,13 @@ if (-not $SkipBuild) {
     Remove-Item -LiteralPath $builtFirmwareCache -Recurse -Force
   }
   foreach ($environment in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")) {
+    $environmentLibdeps = Join-Path $repoRoot ".pio/libdeps/$environment"
+    if (Test-Path -LiteralPath $environmentLibdeps) {
+      Remove-Item -LiteralPath $environmentLibdeps -Recurse -Force
+    }
+    Invoke-StackchanReleasePlatformio `
+      -Environment $environment `
+      -Arguments @("run", "-e", $environment, "-t", "clean")
     Invoke-StackchanReleasePlatformio `
       -Environment $environment `
       -Arguments @("run", "-e", $environment)
@@ -284,6 +293,7 @@ if ($builtFirmwareCache -and (Test-Path -LiteralPath $builtFirmwareCache)) {
 $mediaFiles = @(
   "docs/media/stackchan_alive_preview.png",
   "docs/media/stackchan_alive_expression_sheet.png",
+  "docs/media/face_gallery.png",
   "docs/media/stackchan_alive_preview.mp4",
   "docs/media/stackchan_alive_preview.gif",
   "docs/media/stackchan_alive_speech_preview.gif"
@@ -359,12 +369,14 @@ $personaPromptAssets = Get-Content -LiteralPath $personaPromptAssetsPath -Raw | 
 
 foreach ($asset in @($personaPromptAssets.assets)) {
   $sourcePath = Join-Path $repoRoot ([string]$asset.source_path)
+  $packagedSourcePath = Join-ReleasePackagePath ([string]$asset.source_path)
   $promptWavPath = Join-ReleasePackagePath ([string]$asset.wav_path)
   $promptSidecarPath = Join-ReleasePackagePath ([string]$asset.sidecar_path)
   if (-not (Test-Path -LiteralPath $sourcePath)) {
     throw "Missing persona packaged prompt source: $sourcePath"
   }
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $promptWavPath), (Split-Path -Parent $promptSidecarPath) | Out-Null
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $packagedSourcePath), (Split-Path -Parent $promptWavPath), (Split-Path -Parent $promptSidecarPath) | Out-Null
+  Copy-Item -LiteralPath $sourcePath -Destination $packagedSourcePath -Force
   Copy-Item -LiteralPath $sourcePath -Destination $promptWavPath -Force
   & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "generate_speech_envelope_sidecar.ps1") `
     -InputWav $promptWavPath `
@@ -458,6 +470,9 @@ Copy-Item -LiteralPath "docs/SPEAKER_AUDIO_RESEARCH.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_V2_DIRECTML.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_PROTOCOL.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/BRIDGE_AI_HANDOFF.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/BRIDGE_AI_QUALIFICATION.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/BRIDGE_DASHBOARD.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/FIRST_DEPLOY_STATUS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ARRIVAL_DAY_RUNBOOK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/stackchan_procedural_runtime_design.pdf" -Destination $docsDir
@@ -483,8 +498,14 @@ $bridgePackageFiles = @(
   "README.md",
   "bridge_memory.py",
   "test_bridge_memory.py",
+  "test_bridge_memory_v4.py",
   "memory_maintenance.py",
   "test_memory_maintenance.py",
+  "episode_distillation.py",
+  "test_episode_distillation.py",
+  "memory_probe.py",
+  "test_memory_probe.py",
+  "memory_prefill_probe.py",
   "character_harness.py",
   "test_character_harness.py",
   "character_red_team.py",
@@ -495,6 +516,7 @@ $bridgePackageFiles = @(
   "test_reference_bridge.py",
   "research_broker.py",
   "test_research_broker.py",
+  "research_acceptance.py",
   "robot_embodiment.py",
   "test_robot_embodiment.py",
   "local_facts.py",
@@ -518,15 +540,36 @@ $bridgePackageFiles = @(
   "test_engine_probe.py",
   "model_benchmark.py",
   "test_model_benchmark.py",
+  "utterance_text.py",
   "stt_normalization.py",
   "stt_adapter.py",
+  "stt_supervisor.py",
   "windows_speech_stt.py",
   "whisper_cpp_stt.py",
+  "whisper_server_stt.py",
   "test_stt_adapter.py",
+  "test_stt_supervisor.py",
+  "test_whisper_server_stt.py",
   "tts_adapter.py",
   "test_tts_adapter.py",
+  "conversation_session.py",
+  "test_conversation_session.py",
+  "conversation_latency.py",
+  "test_conversation_latency.py",
+  "conversation_latency_report.py",
+  "test_conversation_latency_report.py",
+  "initiative_policy.py",
+  "test_initiative_policy.py",
+  "room_context.py",
+  "test_room_context.py",
+  "ollama_room_vision.py",
+  "test_ollama_room_vision.py",
   "lan_service.py",
   "test_lan_service.py",
+  "bridge_ai_qualification.py",
+  "test_bridge_ai_qualification.py",
+  "dashboard_service.py",
+  "test_dashboard_service.py",
   "ollama_stackchan_runner.py",
   "test_ollama_stackchan_runner.py",
   "pc_brain_probe.py",
@@ -536,12 +579,16 @@ $bridgePackageFiles = @(
   "rvc_tts_client.py",
   "rvc_worker_service.py",
   "rvc_directml_tts_client.py",
+  "test_rvc_directml_tts_client.py",
   "rvc_directml_worker_service.py",
+  "test_rvc_directml_worker_service.py",
   "rvc_production_tts_client.py",
   "test_rvc_production_tts_client.py",
   "voice_v2_directml_runtime.py",
   "voice_v2_directml_benchmark.py",
   "voice_v2_wire_benchmark.py",
+  "voice_device_truth.py",
+  "test_voice_device_truth.py",
   "vision_service.py",
   "test_vision_service.py",
   "requirements-vision.txt",
@@ -562,6 +609,8 @@ $bridgePackageFiles = @(
 foreach ($bridgeFile in $bridgePackageFiles) {
   Copy-Item -LiteralPath (Join-Path "bridge" $bridgeFile) -Destination $bridgeDir
 }
+Copy-Item -LiteralPath "bridge/dashboard" -Destination $bridgeDir -Recurse
+Copy-Item -LiteralPath "bridge/fixtures" -Destination $bridgeDir -Recurse
 Copy-Item -LiteralPath "bridge/models/README.md" -Destination $bridgeModelsDir
 Copy-Item -LiteralPath "bridge/models/LICENSE" -Destination $bridgeModelsDir
 Copy-Item -LiteralPath "bridge/models/face_detection_yunet_2023mar.onnx" -Destination $bridgeModelsDir
@@ -836,6 +885,24 @@ $releaseTools = @(
   "tools/setup_whisper_cpp.ps1",
   "tools/start_pc_brain.cmd",
   "tools/start_pc_brain.ps1",
+  "tools/start_pc_brain_directml.ps1",
+  "tools/test_start_pc_brain_directml_contract.ps1",
+  "tools/check_local_research.ps1",
+  "tools/start_local_research.ps1",
+  "tools/test_local_research_runtime_contract.ps1",
+  "tools/start_local_vision.cmd",
+  "tools/start_local_vision.ps1",
+  "tools/test_start_local_vision_contract.ps1",
+  "tools/start_whisper_server.ps1",
+  "tools/test_start_whisper_server_contract.ps1",
+  "tools/start_bridge_ai_supervised_qualification.ps1",
+  "tools/complete_bridge_ai_supervised_qualification.ps1",
+  "tools/test_bridge_ai_supervised_qualification_contract.ps1",
+  "tools/start_stackchan_dashboard.cmd",
+  "tools/start_stackchan_dashboard.ps1",
+  "tools/install_stackchan_dashboard_shortcut.ps1",
+  "tools/test_stackchan_dashboard_launcher_contract.cmd",
+  "tools/test_stackchan_dashboard_launcher_contract.ps1",
   "tools/start_rvc_worker.ps1",
   "tools/setup_voice_v2_directml.ps1",
   "tools/voice_v2_directml_constraints.txt",
@@ -950,6 +1017,15 @@ foreach ($file in $releaseTools) {
   Copy-Item -LiteralPath $file -Destination $toolsDir
 }
 
+$searxngToolsDir = Join-Path $toolsDir "searxng"
+New-Item -ItemType Directory -Force -Path $searxngToolsDir | Out-Null
+foreach ($file in @("tools/searxng/compose.yaml", "tools/searxng/settings.yml")) {
+  if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+    throw "Missing local research configuration: $file"
+  }
+  Copy-Item -LiteralPath $file -Destination $searxngToolsDir
+}
+
 Copy-Item -LiteralPath "platformio.ini" -Destination $provenanceDir
 Copy-Item -LiteralPath "partitions_esp_sr_16.csv" -Destination $provenanceDir
 Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
@@ -958,7 +1034,7 @@ Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceD
 Copy-Item -LiteralPath ".github/workflows/pages.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/companion-signing-readiness.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
-Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
+Copy-SourceTree -SourceRoot "bridge" -DestinationRoot (Join-Path $provenanceDir "bridge") -ExcludedDirectoryNames @("__pycache__")
 Copy-Item -LiteralPath "protocol-fixtures" -Destination (Join-Path $provenanceDir "protocol-fixtures") -Recurse
 Copy-Item -LiteralPath "personas" -Destination (Join-Path $provenanceDir "personas") -Recurse
 Copy-Item -LiteralPath "test" -Destination (Join-Path $provenanceDir "test") -Recurse
@@ -1385,7 +1461,7 @@ $manifest = [ordered]@{
   defaultEnvironment = "stackchan"
   includedEnvironments = @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")
   servoDefault = "display-only and calibration flows remain safety-gated; the production full firmware starts guarded autonomous motion after boot"
-  status = "public release; reference hardware accepted by owner"
+  status = "test-ready prerelease; hardware validation pending"
   dirty = ($sourceDirtyFiles.Count -gt 0)
   dirtyFiles = @($sourceDirtyFiles)
   generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
@@ -1412,6 +1488,7 @@ $manifest = [ordered]@{
   pagesWorkflow = "provenance/pages.yml"
   androidPlayIcon = "docs/store-assets/play/icon-512.png"
   androidPlayFeatureGraphic = "docs/store-assets/play/feature-graphic-1024x500.png"
+  desktopShortcutIcon = "docs/store-assets/desktop/stackchan-alive.ico"
   companionCrossPlatformPlan = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"
   conversationV2Roadmap = "docs/CONVERSATION_V2_ROADMAP.md"
   androidCompanionSource = "provenance/companion"
@@ -1432,6 +1509,9 @@ $manifest = [ordered]@{
   hardwareFeatureRoadmap = "docs/HARDWARE_FEATURE_ROADMAP.md"
   ltr553CalibrationGuide = "docs/LTR553_CALIBRATION.md"
   localResearchTooling = "docs/LOCAL_RESEARCH_TOOLING.md"
+  localResearchChecker = "tools/check_local_research.ps1"
+  localResearchStarter = "tools/start_local_research.ps1"
+  localResearchCompose = "tools/searxng/compose.yaml"
   localVisionGuide = "docs/LOCAL_VISION.md"
   bodySensorValidator = "tools/body_sensor_validation.ps1"
   bodySensorValidatorContract = "tools/test_body_sensor_validation_contract.ps1"
@@ -1463,6 +1543,9 @@ $manifest = [ordered]@{
   characterRedTeamReport = "character-red-team/CHARACTER_RED_TEAM.md"
   characterRedTeamReportJson = "character-red-team/character_red_team.json"
   bridgeProtocol = "docs/BRIDGE_PROTOCOL.md"
+  bridgeDashboard = "docs/BRIDGE_DASHBOARD.md"
+  bridgeDashboardService = "bridge/dashboard_service.py"
+  bridgeDashboardLauncher = "tools/start_stackchan_dashboard.ps1"
   privacyModel = "docs/PRIVACY.md"
   expressionProfiles = "data/expressions.yaml"
   voicePersona = "data/voice_persona.yaml"
@@ -1489,6 +1572,7 @@ $manifest = [ordered]@{
   mediaArtifacts = @(
     "media/stackchan_alive_preview.png",
     "media/stackchan_alive_expression_sheet.png",
+    "media/face_gallery.png",
     "media/stackchan_alive_preview.mp4",
     "media/stackchan_alive_preview.gif",
     "media/stackchan_alive_speech_preview.gif",
@@ -1671,6 +1755,26 @@ $manifest = [ordered]@{
     "tools/run_lan_smoke.ps1",
     "tools/start_pc_brain.cmd",
     "tools/start_pc_brain.ps1",
+    "tools/start_pc_brain_directml.ps1",
+    "tools/test_start_pc_brain_directml_contract.ps1",
+    "tools/check_local_research.ps1",
+    "tools/start_local_research.ps1",
+    "tools/test_local_research_runtime_contract.ps1",
+    "tools/searxng/compose.yaml",
+    "tools/searxng/settings.yml",
+    "tools/start_local_vision.cmd",
+    "tools/start_local_vision.ps1",
+    "tools/test_start_local_vision_contract.ps1",
+    "tools/start_whisper_server.ps1",
+    "tools/test_start_whisper_server_contract.ps1",
+    "tools/start_bridge_ai_supervised_qualification.ps1",
+    "tools/complete_bridge_ai_supervised_qualification.ps1",
+    "tools/test_bridge_ai_supervised_qualification_contract.ps1",
+    "tools/start_stackchan_dashboard.cmd",
+    "tools/start_stackchan_dashboard.ps1",
+    "tools/install_stackchan_dashboard_shortcut.ps1",
+    "tools/test_stackchan_dashboard_launcher_contract.cmd",
+    "tools/test_stackchan_dashboard_launcher_contract.ps1",
     "tools/start_rvc_worker.ps1",
     "tools/setup_voice_v2_directml.ps1",
     "tools/voice_v2_directml_constraints.txt",
@@ -1812,6 +1916,16 @@ $manifest = [ordered]@{
     "provenance/bridge/test_character_red_team.py",
     "provenance/bridge/reference_bridge.py",
     "provenance/bridge/test_reference_bridge.py",
+    "provenance/bridge/bridge_memory.py",
+    "provenance/bridge/test_bridge_memory.py",
+    "provenance/bridge/test_bridge_memory_v4.py",
+    "provenance/bridge/memory_maintenance.py",
+    "provenance/bridge/test_memory_maintenance.py",
+    "provenance/bridge/episode_distillation.py",
+    "provenance/bridge/test_episode_distillation.py",
+    "provenance/bridge/memory_probe.py",
+    "provenance/bridge/test_memory_probe.py",
+    "provenance/bridge/memory_prefill_probe.py",
     "provenance/bridge/local_runner.py",
     "provenance/bridge/test_local_runner.py",
     "provenance/bridge/litert_lm_stackchan_wrapper.py",
@@ -1822,15 +1936,39 @@ $manifest = [ordered]@{
     "provenance/bridge/test_engine_probe.py",
     "provenance/bridge/model_benchmark.py",
     "provenance/bridge/test_model_benchmark.py",
+    "provenance/bridge/utterance_text.py",
     "provenance/bridge/stt_normalization.py",
     "provenance/bridge/stt_adapter.py",
+    "provenance/bridge/stt_supervisor.py",
     "provenance/bridge/windows_speech_stt.py",
     "provenance/bridge/whisper_cpp_stt.py",
+    "provenance/bridge/whisper_server_stt.py",
     "provenance/bridge/test_stt_adapter.py",
+    "provenance/bridge/test_stt_supervisor.py",
+    "provenance/bridge/test_whisper_server_stt.py",
     "provenance/bridge/tts_adapter.py",
     "provenance/bridge/test_tts_adapter.py",
+    "provenance/bridge/conversation_session.py",
+    "provenance/bridge/test_conversation_session.py",
+    "provenance/bridge/conversation_latency.py",
+    "provenance/bridge/test_conversation_latency.py",
+    "provenance/bridge/conversation_latency_report.py",
+    "provenance/bridge/test_conversation_latency_report.py",
+    "provenance/bridge/initiative_policy.py",
+    "provenance/bridge/test_initiative_policy.py",
+    "provenance/bridge/room_context.py",
+    "provenance/bridge/test_room_context.py",
+    "provenance/bridge/ollama_room_vision.py",
+    "provenance/bridge/test_ollama_room_vision.py",
     "provenance/bridge/lan_service.py",
     "provenance/bridge/test_lan_service.py",
+    "provenance/bridge/bridge_ai_qualification.py",
+    "provenance/bridge/test_bridge_ai_qualification.py",
+    "provenance/bridge/dashboard_service.py",
+    "provenance/bridge/test_dashboard_service.py",
+    "provenance/bridge/dashboard/index.html",
+    "provenance/bridge/dashboard/styles.css",
+    "provenance/bridge/dashboard/app.js",
     "provenance/bridge/ollama_stackchan_runner.py",
     "provenance/bridge/test_ollama_stackchan_runner.py",
     "provenance/bridge/windows_speech_tts.py",
@@ -1842,6 +1980,13 @@ $manifest = [ordered]@{
     "provenance/bridge/voice_v2_directml_runtime.py",
     "provenance/bridge/voice_v2_directml_benchmark.py",
     "provenance/bridge/voice_v2_wire_benchmark.py",
+    "provenance/bridge/voice_device_truth.py",
+    "provenance/bridge/test_voice_device_truth.py",
+    "provenance/bridge/research_broker.py",
+    "provenance/bridge/test_research_broker.py",
+    "provenance/bridge/research_acceptance.py",
+    "provenance/bridge/fixtures/memory_probe.json",
+    "provenance/bridge/fixtures/searxng_search_response.json",
     "provenance/bridge/lan_smoke.py",
     "provenance/bridge/test_lan_smoke.py",
     "provenance/bridge/hardware_simulator.py",
@@ -1923,6 +2068,9 @@ $ciStatus = [ordered]@{
   repo = "RobVanProd/stackchan_alive"
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   status = "post-push-check-required"
+  promotionReady = $false
+  firmwareCandidateReady = $false
+  externalBlock = $false
   interpretation = "This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run tools/export_github_actions_status.cmd to replace this placeholder with the observed GitHub Actions result."
   requiredWorkflows = @("Firmware", "Release")
   missingRequiredWorkflows = @("Firmware", "Release")
@@ -1938,6 +2086,7 @@ Commit: $commit
 Repository: RobVanProd/stackchan_alive
 Status: post-push-check-required
 Required workflows: Firmware, Release
+Firmware candidate ready: False
 
 This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run:
 
@@ -1948,13 +2097,43 @@ If GitHub reports that jobs did not start because of account billing or spending
 Machine-readable status: ``github_actions_status.json``
 "@ | Set-Content -Path (Join-Path $outDir "GITHUB_ACTIONS_STATUS.md") -Encoding UTF8
 
+if ($ObserveCandidateActions) {
+  $actionsExporter = Join-Path $PSScriptRoot "export_github_actions_status.ps1"
+  $actionsOutput = @(
+    & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File $actionsExporter `
+      -Repo "RobVanProd/stackchan_alive" `
+      -Version $Version `
+      -Commit $commit `
+      -OutputDir $outDir `
+      -RequiredWorkflows "Firmware,Release" `
+      -AcceptFirmwareCandidate 2>&1
+  )
+  $actionsExit = $LASTEXITCODE
+  $actionsOutput | ForEach-Object { Write-Host ([string]$_) }
+  if ($actionsExit -ne 0) {
+    throw "Exact-commit Firmware Actions evidence is not ready for candidate packaging."
+  }
+
+  $observedActions = Get-Content -LiteralPath (Join-Path $outDir "github_actions_status.json") -Raw | ConvertFrom-Json
+  if ($observedActions.firmwareCandidateReady -ne $true -or $observedActions.promotionReady -ne $false) {
+    throw "Observed Actions report is not the required prerelease candidate state."
+  }
+  if (
+    $observedActions.status -ne "missing-required-workflow" -or
+    @($observedActions.missingRequiredWorkflows).Count -ne 1 -or
+    @($observedActions.missingRequiredWorkflows)[0] -ne "Release"
+  ) {
+    throw "Candidate packaging requires successful Firmware evidence with only the tag-only Release workflow pending."
+  }
+}
+
 $readinessReport = [ordered]@{
   schema = "stackchan.readiness-report.v1"
   version = $Version
   commit = $commit
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  status = "public-release"
-  consumerRollout = "owner-approved"
+  status = "test-ready-prerelease"
+  consumerRollout = "blocked-pending-hardware-validation"
   noHardwareProof = @(
     [ordered]@{ gate = "release-package-created"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ gate = "firmware-binaries-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
@@ -1983,7 +2162,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
     [ordered]@{ gate = "production-voice-assets"; status = "pass"; requiredEvidence = "media/voice/rvc/model.pth and model.index match the pinned production SHA-256 values" }
   )
-  promotionRule = "The owner approved this public release from exact-image reference evidence; each recipient still validates local power, calibration, and assembly."
+  promotionRule = "Promotion requires source-matched supervised hardware qualification, bridge AI qualification, the required soak, successful release checks, and explicit owner approval."
   nextOperatorCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
 }
 
@@ -1994,9 +2173,9 @@ $acceptanceChecklist = [ordered]@{
   version = $Version
   commit = $commit
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  releaseClass = "public-release"
-  currentDecision = "owner-approved-release"
-  consumerRolloutDecision = "released"
+  releaseClass = "test-ready-prerelease"
+  currentDecision = "test-ready-for-device-arrival"
+  consumerRolloutDecision = "blocked-pending-hardware-validation"
   noHardwareAcceptance = @(
     [ordered]@{ requirement = "clean-release-package"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ requirement = "firmware-artifacts-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
@@ -2025,7 +2204,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
     [ordered]@{ requirement = "production-voice-assets"; status = "pass"; requiredEvidence = "bundled model and index match the pinned production SHA-256 values" }
   )
-  promotionRule = "The public release is owner-approved; recipient hardware acceptance remains local to each assembled unit."
+  promotionRule = "This candidate remains blocked until source-matched supervised hardware qualification, bridge AI qualification, the required soak, successful release checks, and explicit owner approval."
 }
 
 $acceptanceChecklist | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "release_acceptance.json") -Encoding UTF8
@@ -2035,8 +2214,8 @@ $acceptanceChecklist | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $o
 
 Release: $Version
 Commit: $commit
-Decision: owner-approved public release
-Consumer rollout: released
+Decision: test-ready for device arrival
+Consumer rollout: blocked pending hardware validation
 
 ## Accepted Without Hardware
 
@@ -2057,13 +2236,13 @@ Consumer rollout: released
 - [x] Servo risk gated by explicit ``-ConfirmServoRisk``
 - [x] Share page can be verified by ``tools/verify_share_release.cmd``
 
-## Recipient Hardware Validation
+## Required Physical Qualification
 
-These gates apply to this public package and each recipient hardware configuration.
-The private paired reference robot is validated separately with exact-image evidence recorded in
-``docs/FIRST_DEPLOY_STATUS.md`` and ``docs/ARRIVAL_DAY_RUNBOOK.md``. That reference evidence does
-not substitute for validating a recipient's power source, calibration, voice model, credentials,
-or assembled hardware.
+These gates apply to this release candidate. Historical private paired-reference evidence is
+recorded in ``docs/FIRST_DEPLOY_STATUS.md`` and ``docs/ARRIVAL_DAY_RUNBOOK.md``, but it applies
+only to the source commit and firmware SHA-256 named by that evidence. It does not qualify this
+candidate or another recipient's power source, calibration, voice model, credentials, or
+assembled hardware.
 
 - [ ] Display-only flash with serial log, real photo/video, and 10-minute idle observation
 - [ ] Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff
@@ -2074,6 +2253,9 @@ or assembled hardware.
 - [ ] Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``
 - [x] Production RVC model and index match their pinned SHA-256 values
 
+Owner approval has not been recorded for this candidate. Promotion remains blocked until the
+source-matched physical qualification and release checks are complete.
+
 Machine-readable checklist: ``release_acceptance.json``
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_ACCEPTANCE.md") -Encoding UTF8
 
@@ -2082,8 +2264,8 @@ Machine-readable checklist: ``release_acceptance.json``
 
 Release: $Version
 Commit: $commit
-Status: public release
-Consumer rollout: owner-approved
+Status: test-ready prerelease
+Consumer rollout: blocked pending hardware validation
 
 ## Proven Without Hardware
 
@@ -2100,13 +2282,13 @@ Consumer rollout: owner-approved
 - Hardware media import helper is included as ``tools/add_hardware_evidence_media.cmd`` for copying phone photos/videos and speaker recordings into evidence packets with SHA256 hashes.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
 
-## Recipient Hardware Evidence
+## Required Physical Qualification
 
-This public package includes the production voice. The private paired reference robot has
-separate exact-image physical evidence in ``docs/FIRST_DEPLOY_STATUS.md`` and
-``docs/ARRIVAL_DAY_RUNBOOK.md``. Those results demonstrate the reference integration, but they do
-not validate a recipient's assembled hardware, power path, calibration, credentials, or local
-voice model. The following package-level gates therefore remain explicit:
+This candidate includes the production voice. Historical private paired-reference evidence is
+recorded in ``docs/FIRST_DEPLOY_STATUS.md`` and ``docs/ARRIVAL_DAY_RUNBOOK.md``, but it applies
+only to the source commit and firmware SHA-256 named by that evidence. It does not qualify this
+candidate or another recipient's assembled hardware, power path, calibration, credentials, or
+local voice model. The following package-level gates therefore remain explicit:
 
 - Display-only flash, visible procedural face, and 10-minute idle run.
 - Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff.
@@ -2117,7 +2299,9 @@ voice model. The following package-level gates therefore remain explicit:
 - Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``.
 - Production RVC model and index hash verification.
 
-The owner approved the reference release evidence. Each recipient should still complete these checks for its own power path, calibration, and assembly.
+Owner approval has not been recorded for this candidate. Promotion requires source-matched
+supervised hardware qualification, bridge AI qualification, the required soak, successful
+release checks, and explicit owner approval.
 
 Recommended arrival command from the extracted package:
 
@@ -2129,7 +2313,7 @@ Recommended arrival command from the extracted package:
 
 Commit: $commit
 
-This is the public $Version package for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and ships guarded autonomous motion in the production full firmware.
+This is the publicly shareable $Version prerelease candidate for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and ships guarded autonomous motion in the production full firmware. Consumer rollout remains blocked pending source-matched physical qualification and explicit owner approval.
 
 Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Production voice hashes are recorded in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md``, ``data/voice_source_provenance.yaml``, ``VOICE_SOURCE_STATUS.md``, and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, hardware simulation, flashing, publishing, evidence capture, and package verification helpers are included under ``tools/``.
 

@@ -110,6 +110,10 @@ def benchmark_case(
     for term in case.get("requires_spoken_terms", ()):
         if str(term).lower() not in spoken_text:
             issues.append(f"missing_required_spoken_term:{term}")
+    encoded_writes = json.dumps(normalized.get("memory_write", {}), sort_keys=True).lower()
+    for term in case.get("forbidden_memory_write_terms", ()):
+        if str(term).lower() in encoded_writes:
+            issues.append(f"forbidden_memory_write_term:{term}")
 
     base.update(
         {

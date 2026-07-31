@@ -1,0 +1,136 @@
+{
+  "schema": "stackchan.memory-v4-voice-research-evidence.v1",
+  "generated_at": "2026-07-15T23:00:10Z",
+  "runtime_dependencies_added": [],
+  "firmware_files_changed": 0,
+  "voice": {
+    "observed_topology": {
+      "bridge_port": 8765,
+      "bridge_tts_client": "bridge/rvc_tts_client.py",
+      "rocm_port": 5055,
+      "directml_port_listening": false,
+      "ollama_loaded": true
+    },
+    "p0": {
+      "path": "warm_http_worker",
+      "worker_url": "http://127.0.0.1:5055",
+      "requested_device": "cuda:0",
+      "method": "pm"
+    },
+    "p1": {
+      "fixed_phrase_calls": 2,
+      "call_1_convert_ms": 59578.83,
+      "call_1_infer_ms": 59578.82,
+      "call_2_convert_ms": 3234.51,
+      "call_2_infer_ms": 3234.51,
+      "queue_wait_ms": 0.0,
+      "health_uptime_seconds": 4407.77,
+      "health_convert_count": 7,
+      "worker_load_ms": 1139.98
+    },
+    "p2": {
+      "device_name": "AMD Radeon RX 7800 XT",
+      "device_available": true,
+      "health_fields_added_to_both_workers": true
+    },
+    "p3": {
+      "ollama_loaded_sample": "100% GPU",
+      "ollama_unloaded_sample": null,
+      "status": "unresolved-production-preservation"
+    },
+    "p4": {
+      "current_torch": "2.9.1+rocm7.2.1",
+      "current_rvc_python": "0.1.5",
+      "archive_torch": "2.9.1+rocm7.2.1",
+      "archive_rvc_python": "0.1.5",
+      "current_driver": "32.0.31021.5001",
+      "archive_driver": null
+    },
+    "classification": {
+      "H1": "rejected",
+      "H2": "supported-conversion-warmth-not-retained-between-idle-and-first-call",
+      "H3": "not-supported-by-device-identity",
+      "H4": "unresolved",
+      "H5": "rejected-by-immediate-3.23-second-repeat"
+    },
+    "qualified_directml_archive": {
+      "artifact": "output/voice-lab/directml-rvc-pm-full-index-20260710/benchmark.json",
+      "median_rtf": 0.222,
+      "warm_min_seconds": 0.4238,
+      "warm_max_seconds": 0.632
+    }
+  },
+  "memory_v4": {
+    "schema": "stackchan.bridge-memory.v4",
+    "migration": {"v3_durable_retained": 2, "v3_recent_retained": 1, "idempotent": true},
+    "capture_fixture": {
+      "positive_total": 10,
+      "positive_captures": 10,
+      "negative_total": 12,
+      "false_captures": 0,
+      "capture_rejections_exercised": 4
+    },
+    "distillation_fuzz": {"invalid_cases": 9, "whole_result_drops": 9, "counter_exercised": true},
+    "distillation_transport": {"loopback_http_only": true, "non_loopback_rejected": true},
+    "retrieval": {
+      "artifact": "output/memory-v4-evidence/memory-probe.json",
+      "v3_exact_rate": 1.0,
+      "v3_paraphrase_rate": 1.0,
+      "v3_false_rate": 0.0,
+      "v4_exact_rate": 1.0,
+      "v4_paraphrase_rate": 1.0,
+      "v4_false_rate": 0.0
+    },
+    "relationship_card": {"iterations": 1000, "p95_ms": 1.1885, "max_measured_chars": 1530},
+    "prefill": {
+      "artifact": "output/memory-v4-evidence/prefill-probe.json",
+      "repeats": 5,
+      "baseline_p50_ms": 1434.82,
+      "worst_card_p50_ms": 1358.27,
+      "delta_ms": -76.55,
+      "gate_ms": 500.0
+    },
+    "model_callbacks": {
+      "initial_attempts_failed": 5,
+      "final_callback_pass": true,
+      "final_callback_elapsed_ms": 1307.73,
+      "final_callback_mode": "speak",
+      "final_callback_arousal": 0.2,
+      "final_callback_valence": 0.1,
+      "final_callback_memory_write_empty": true,
+      "episode_case_pass": true,
+      "episode_case_elapsed_ms": 1183.14
+    },
+    "trusted_facts": {"ready": true, "model_invocations": 0, "audio_played": false},
+    "fallback_tts_flag_contract_exercised": true
+  },
+  "research": {
+    "offline_contract_tests": 8,
+    "offline_contract_status": "pass",
+    "loopback_listener_present": false,
+    "live_acceptance_status": "pending-owner-container-runtime",
+    "deployment": "tools/searxng/compose.yaml"
+  },
+  "verification": {
+    "bridge_tests": 320,
+    "bridge_tests_elapsed_seconds": 46.366,
+    "bridge_tests_status": "pass",
+    "native_tests": 261,
+    "native_tests_elapsed_seconds": 20.652,
+    "native_tests_status": "pass",
+    "full_system_soak_contract": "pass",
+    "current_lead_reproducibility_contract": "pass",
+    "current_lead_archive_contract": "pass",
+    "directml_environment_compile": "pass",
+    "directml_device_name": "AMD Radeon RX 7800 XT",
+    "directml_device_available": true
+  },
+  "negative_results": [
+    "The first ROCm conversion after idle measured 59.58 seconds despite a resident worker.",
+    "The Ollama-unloaded contention cell was not run because unloading the active brain violates production preservation.",
+    "The known-good archive does not contain a driver capture, so an exact archived-driver diff is unavailable.",
+    "Five live callback prompt attempts ignored the relationship card before the final trusted-context composition passed.",
+    "No SearXNG listener is present; live search/fetch acceptance and the mixed research/voice soak remain pending.",
+    "Memory v4 has not yet been exercised on the physical robot."
+  ]
+}

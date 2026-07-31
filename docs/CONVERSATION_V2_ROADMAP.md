@@ -92,12 +92,13 @@ firmware to its normal local face and wake behavior.
   bridge loss cancels a pending window. Native and host tests cover parsing, bounds, expiry, and
   host transitions. The source path remains opt-in and unpromoted until it passes exact-image
   hardware qualification.
-- Completed follow-ups now receive at most four prior user/Stackchan turns through a separately
+- Completed follow-ups now receive the played turns from the current bounded 24-turn lease through a separately
   labeled active-session prompt channel. A generated reply is staged after successful TTS and
   enters the ring only after its matching authoritative `playback_complete`; failed, interrupted,
   unplayed, closed, or bridge-lost turns do not survive. The ring is never written to
   `BridgeMemory`, turn telemetry exposes only its count, and all text is erased when the lease
-  closes.
+  closes. Each side of a turn is capped at 160 characters so the complete default lease remains
+  inside the local model context budget.
 - Reply-window firmware capture now uses a deterministic local endpoint detector. It requires
   sustained speech, waits through a 550 ms trailing pause, never closes before 600 ms, and keeps
   the prior 4.8-second maximum as its no-speech or ambiguous fallback. Initial wake-gated v1
@@ -119,13 +120,15 @@ firmware to its normal local face and wake behavior.
 ## Memory Model
 
 - Keep the current privacy-filtered `BridgeMemory` durable facts as the source of familiarity.
-- Done in post-release source: a four-turn recent-history ring exists only inside the active
+- Done in post-release source: a 24-turn recent-history ring exists only inside the active
   conversation lease and is cleared on every close path. Raw session text is not promoted to
   durable memory.
 - Retrieve durable facts by query relevance and importance. Do not inject or mark every fact as
   used on every turn.
-- Run optional consolidation only after a session, against privacy-filtered summaries, with
-  schema validation and user/project allowlists.
+- Production Conversation v2 runs local consolidation only after a session. It can persist only a
+  schema-validated, privacy-filtered episode; raw turns remain transient, and an operator can
+  disable distillation at launch. Precision-biased deterministic rules remain the only path for
+  future callbacks, so the summarizing model cannot invent reminders.
 - Keep speaker recognition opt-in and separate from face detection. Identity never grants motion,
   camera, tool, or memory authority.
 
@@ -135,6 +138,8 @@ firmware to its normal local face and wake behavior.
   resolved deterministically before Gemma.
 - Explicit search requests force one bounded local-first SearXNG research round even if the model
   fails to request it. Research evidence is untrusted data, cited, and cannot write memory.
+- Ordinary freshness-sensitive public questions also route deterministically to that bounded
+  research round; stable questions remain local so every turn does not pay web latency.
 - Live robot state comes only from typed, expiring heartbeat telemetry.
 - Tool syntax never enters spoken text, and a turn may not chain arbitrary tools.
 

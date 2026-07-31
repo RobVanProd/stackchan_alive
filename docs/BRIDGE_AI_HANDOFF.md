@@ -19,6 +19,10 @@ actuator, power, pairing, or OTA authority**, and nothing below changes that.
 Most of what follows needs **no firmware change**. Where firmware work is genuinely required it is
 called out.
 
+This bridge candidate does not modify firmware. The working image from `main` is an immutable
+qualification dependency; firmware findings are reported to its owner instead of being patched in
+this branch.
+
 ## How To Read The Robot's State
 
 Everything in this document was diagnosed from the robot itself. Use the same sources.
@@ -36,6 +40,99 @@ Useful serial commands: `status`, `demo off`, `motion off`, `motion on`.
 The `[face]` line prints every 5 s and includes `mode=`, which is the single most useful number
 when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend, 3 Listen,
 4 Think, 5 Speak, 6 React, 7 Sleep, 8 Error`.
+
+## Source Implementation Update (2026-07-26)
+
+- The host conversation harness now keeps typed, playback-gated tool state inside the
+  conversation lease. Terse weather corrections, time follow-ups, retries, cancellation, and
+  generic research verification no longer rely on one-turn keyword classification. Incidental
+  places remain session-only; only an explicit coarse default crosses sessions. Design,
+  research basis, privacy policy, adversarial matrix, and current boundaries are in
+  [CONVERSATION_HARNESS.md](CONVERSATION_HARNESS.md).
+- Main now includes PR #216 (`6d39af7605aa6a4dc88d137e03c344dbfc8f53ce`). The device
+  voice endpoint has a 12-second maximum, the dedicated capture ceiling is 130 100 ms chunks,
+  and both initial and follow-up utterances end after 550 ms of trailing silence. A live initial
+  turn delivered 118 chunks, proving the longer path is active rather than the old 96-chunk path.
+- Main now also includes PR #217 (`10b0cc5404e072bb5784d9cfd2fabb0babd8a02e`). Dedicated
+  capture reports real speech to the existing wake gate, the gate privacy limit is 15 seconds,
+  and a compile-time check enforces `12 s endpoint < 13 s capture < 15 s privacy guard`.
+  Native tests cover a ten-second utterance and the retained hard privacy limit. Exact-image live
+  evidence must still show zero uplink-error delta before promotion.
+- Conversation v2 now emits a constant 10-second reply lease and allows 24 user turns by default.
+  Completed turns no longer make the listener progressively less patient. The unchanged main
+  firmware rejects out-of-range values rather than silently clamping them. The feature remains
+  explicit and still needs exact-image hardware qualification before promotion.
+- `bridge/initiative_policy.py` implements the ten-minute hard floor, fresh-person requirement,
+  circadian suppression, busy/safety gates, curiosity decay, and two-ignored-opener backoff.
+  Initiative generation uses the normal Character Lock and TTS path but never opens a microphone
+  or motion lease.
+- `bridge/room_context.py` implements low-rate in-memory capture, typed privacy filtering, scene
+  diffs, prompt-safe ambient context, and clean degradation. `bridge/ollama_room_vision.py`
+  converts PGM to PNG in memory and permits only a loopback Ollama vision endpoint.
+- The loopback dashboard exposes initiative and room-observation switches plus a bounded
+  2-30 minute interval. Raw frames and free-form model descriptions never enter dashboard state.
+- Production startup now uses a resident loopback whisper.cpp server. A real robot utterance
+  measured about 0.51-0.59 seconds in-process, and normal startup uses redacted turn logs with no
+  microphone WAV persistence.
+- The pinned loopback-only SearXNG service now passes live JSON search, engine allowlist, broker
+  search, restricted HTTPS fetch, and audit gates. Explicit searches, freshness-sensitive
+  questions, and natural check/verify/fact-check wording route directly into one bounded research
+  round without wasting an initial model pass. A model claim that it cannot access the web also
+  recovers through the same policy-limited search path. Verification may fetch one public HTTPS
+  top result; gzip is decoded under the existing response-size cap, citations remain bounded, and
+  fetched text cannot write memory or gain robot authority. A live 2026-07-26 query returned the
+  Python 3.13.0 release date with Python.org citations in 3.9 seconds.
+- A visual question now requests one fresh privacy-filtered room observation before generation.
+  The final Character Lock pass retains only claims backed by the trusted `ambient_room` block.
+  A live 2026-07-26 robot-camera probe observed one person and produced a grounded door, shelf,
+  and bright-lighting answer in 2.6 seconds. The authenticated endpoint is grayscale, so deictic
+  colour questions receive an explicit grayscale limitation instead of a guess. Colour sensing
+  requires a separate firmware/camera endpoint candidate and is not part of this bridge PR.
+- The host freezes PCM on the socket thread at `utterance_end`, verifies declared byte/chunk
+  totals, and records late binary frames as protocol failures. Phrase streaming no longer applies
+  the final 250 ms drain pause between intermediate phrases.
+- Ordinary local generation now uses a compact typed prompt and an 80-token output ceiling; the
+  full 160-token memory mutation contract remains unchanged. A representative full-context prompt
+  fell from 1,011 to 448 words. Eight warm live generations had 1.13-second median model latency,
+  zero character fallbacks, and a 1.87-second maximum. Scheduled room observations defer while a
+  foreground turn is active and cancel an in-flight local vision subprocess when speech starts;
+  an explicit visual question can still request one foreground observation.
+- `bridge/bridge_ai_qualification.py` and the passive start/complete wrappers enforce the exact
+  physical gates in [BRIDGE_AI_QUALIFICATION.md](BRIDGE_AI_QUALIFICATION.md).
+- All new behavior is default-off at the command line. Use the explicit launch switches during
+  supervised qualification; do not infer hardware readiness from source tests.
+
+## Fault-Fix Candidate Update (2026-07-25)
+
+- F1 has a source-level wire guard. Once `response_start` is sent, cancellation and worker-error
+  paths discard buffered audio, send a nonfatal `response_aborted`, and send the matching
+  `response_end`. Overlap, sequence mismatch, and unrecovered closure events are privacy-safe
+  qualification failures.
+- F2 was a firmware-owned capture finding, not a bridge source change. PR #217 now renews the gate
+  from device VAD speech and orders the 12-second endpoint and 13-second capture ceiling before the
+  15-second privacy guard. The bridge still freezes each utterance, verifies declared totals, and
+  keeps privacy-safe counters. Qualification requires zero new robot uplink-error delta from an
+  exact PR #217-or-later image.
+- F3 is localized to production startup never launching `bridge/vision_service.py`. The DirectML
+  launcher now starts the pairing-file-only YuNet worker whenever face vision is requested or
+  room observation is enabled, then requires authenticated frame and target counters to advance.
+  The dashboard reports Waiting for host, Scanning, or Tracking instead of treating camera power
+  as proof of host vision.
+- F4 is localized to the current phrase-streaming cadence. The accepted 70 ms wire benchmark
+  predates per-chunk mouth frames; applying the general 40 ms text delay to every mouth frame left
+  only 18 ms of a 128 ms PCM chunk for scheduler and network jitter. Mouth frames no longer consume
+  that pacing budget, leaving 58 ms of nominal headroom, and qualification now rejects fewer than
+  25 ms.
+
+Silence or an explicit no-transcript STT result is also a normal turn outcome now. An initial
+capture with no transcript speaks one short retry through the Character Lock and TTS path. A
+follow-up capture that fails the firmware-matched PCM speech gate closes silently before STT,
+preventing room noise from creating a hallucinated turn. Neither path writes conversation history
+or opens another reply window.
+
+These are source-tested candidates, not physical closure. F1-F4 remain open until one exact clean
+bridge source commit passes the supervised qualification and soak against the unchanged accepted
+main firmware binary described below.
 
 ---
 
@@ -63,19 +160,31 @@ sequence is documented in [BRIDGE_PROTOCOL.md](BRIDGE_PROTOCOL.md); the ordered 
 `playback_starts: 0` on a response that supposedly began suggests the failure happens before or
 during TTS, so the error path is the likely culprit.
 
-## F2. Roughly 16 uplink errors per turn
+**Candidate fix:** implemented and socket-tested on 2026-07-25. Re-run cancellation, model/TTS
+failure, owner-loss, and long-running physical conversation cases; the qualification must report
+`host-response-wire-clean` with no unrecovered events.
 
-**Observed:** `bridge_uplink_errors: 80` across `bridge_uplink_turns: 5`, while
-`bridge_uplink_completed: 5`, `bridge_uplink_aborted: 0`, `bridge_uplink_gate_blocks: 0`,
-`bridge_uplink_queue_failures: 0`, and `audio_capture_drops: 0`.
+## F2. Long-capture wake-gate race (source fixed, physical validation pending)
 
-Every turn completed, so this is not breaking conversations. But the counter scales with turns, and
-by elimination against `src/io/BridgeAudioUplink.cpp` the likely path is `audio_uplink_not_active`:
-microphone chunks still being pushed after `utterance_end`, each one rejected and counted.
+**Observed after PR #216:** two captures produced 118 and 113 accepted chunks. The host received
+exactly 231 chunks / 369,600 bytes and both declared counts matched. The robot recorded
+`bridge_uplink_errors: 80`, `bridge_uplink_queue_failures: 0`,
+`bridge_uplink_last_error: audio_uplink_not_active`, and `mww_uplink_submit_failed: 2`.
 
-**What to check:** stop pushing PCM once `utterance_end` has been sent, or close the capture
-window before the tail chunks arrive. Low severity, but it makes the counter useless as a health
-signal, which matters once you are relying on telemetry to tune conversation pacing.
+The source timing closes the diagnosis. `VoiceActivityEndpointConfig.maximumCaptureMs` and
+`kBridgeWakeGateMaxTurnMs` are both 12,000 ms. When the wake gate reaches its hard limit before the
+endpoint service submits the last chunk, `BridgeAudioUplink` becomes inactive. The dedicated
+capture then retries that chunk exactly `STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS` (40)
+times, matching the observed 40 errors and one submit failure per affected capture.
+
+**Firmware resolution:** PR #217 preserves PR #216's endpoint behavior, renews the wake gate only
+while device VAD observes real speech, raises the hard privacy guard to 15 seconds, and adds a
+compile-time ordering assertion plus native long-utterance coverage. The source mechanism is
+closed. Do not hide or reset the error counter; exact-image physical evidence is still required.
+
+**Bridge-side status:** late audio is rejected and counted after the immutable utterance snapshot.
+The supervised run must show zero `bridge_uplink_errors` delta across completed turns; do not reset
+the counter to manufacture that result. A nonzero robot counter remains a firmware-owner finding.
 
 ## F3. Vision delivers nothing at all
 
@@ -97,6 +206,27 @@ the robot is serving frames; the host has never returned a single detection.
 parses the returned PGM, runs YuNet, and posts face targets back. Confirm it is running, that
 pairing succeeds, and that it can reach the camera endpoint. Note the frames are **grayscale PGM**,
 which is fine for detection but means no colour reasoning.
+
+**Candidate fix:** implemented and launcher-tested on 2026-07-25. Production startup now owns the
+vision worker and refuses a vision-enabled ready result until both authenticated frame requests and
+target updates advance with no new frame/auth failures. Physical qualification additionally
+requires advancing face batches, observed faces, and camera events.
+
+## F4. Speech is subtly choppy
+
+**Observed:** the operator heard slight choppiness while the bridge used 4096-byte, 16 kHz PCM
+chunks with 70 ms binary pacing and 40 ms text pacing.
+
+The earlier passing wire benchmark emitted no per-chunk mouth frames. Current speech emits one
+mouth frame before every PCM chunk, so the two sleeps became additive: 110 ms of configured cadence
+inside a 128 ms chunk. That byte-perfect stream can still starve under ordinary Windows and Wi-Fi
+jitter.
+
+**Candidate fix:** streaming mouth frames bypass the general text delay while ordinary bridge text
+frames retain it. Every completed streaming turn records chunk duration, configured cadence,
+headroom, and a 25 ms minimum-headroom result. Supervised qualification requires three or more
+streaming turns and rejects any unsafe result; the operator must still confirm continuous audio
+with no phrase-boundary gap or clipped tail.
 
 ---
 
@@ -132,10 +262,15 @@ automatically; the session ends on silence, an exit phrase, a turn limit, or bri
 
 ## Tuning the "conversation is over" feel
 
-The silence timeout is the entire feel of the ending. Too short and it hangs up on someone who is
-thinking; too long and it stares at an empty room. Start around 6–8 s of trailing silence for the
-first follow-up and shorten it on later turns — a conversation that has gone quiet twice is
-usually finished. Close with a short settling cue rather than a hard cut.
+Do not shorten the listening lease merely because several turns completed. That made Stackchan
+progressively less patient during an active exchange. The host default is now a constant ten
+seconds and a 24-turn safety bound.
+
+PR #216 replaced the former 4.8-second endpoint with a 12-second maximum and moved the dedicated
+capture ceiling to 13 seconds. Both initial and follow-up capture now end on 550 ms of trailing
+silence. PR #217 closes the equal-threshold F2 race by renewing from device VAD speech and placing
+the hard privacy guard at 15 seconds. This bridge PR must not alter or flash the accepted firmware;
+promotion still requires exact-image physical evidence with zero new uplink errors.
 
 ---
 
@@ -230,7 +365,9 @@ random character behaviour turned out to be this.
 
 # Part 5: Letting the model see the room
 
-**Status: the frame path exists, the model has never been given an image.** Blocked on F3.
+**Status: implemented and source/live-probe validated; supervised conversational qualification
+remains open.** The DirectML launcher supplies the local vision model, periodic observations remain
+default-off, and a visual question can request one fresh observation without persisting the frame.
 
 `bridge/vision_service.py` already polls the authenticated camera endpoint and runs YuNet. Frames
 are **grayscale PGM** — adequate for coarse scene description, useless for colour reasoning.
@@ -248,6 +385,10 @@ are **grayscale PGM** — adequate for coarse scene description, useless for col
    interval and an off switch user-visible.
 5. Degrade cleanly. No camera, no pairing, or no vision model must leave conversation fully
    working, the same way bridge loss leaves the local face and wake behaviour intact.
+
+The shipped camera contract remains grayscale. "What colour is this?" must report that limitation;
+it must not infer colour from luminance. General scene questions may use only the allowlisted typed
+summary (`person_count`, coarse activity, coarse objects, and lighting).
 
 ---
 

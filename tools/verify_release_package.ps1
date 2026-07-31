@@ -43,6 +43,18 @@ if (-not (Test-Path -LiteralPath $PackageRoot)) {
 
 $packageRootPath = (Resolve-Path $PackageRoot).Path
 $packageRootPrefix = $packageRootPath.TrimEnd('\') + '\'
+$generatedPythonArtifacts = @(
+  Get-ChildItem -LiteralPath $packageRootPath -Recurse -Force | Where-Object {
+    ($_.PSIsContainer -and $_.Name -eq "__pycache__") -or
+    (-not $_.PSIsContainer -and $_.Extension.ToLowerInvariant() -in @(".pyc", ".pyo"))
+  } | ForEach-Object {
+    $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
+  }
+)
+if ($generatedPythonArtifacts.Count -gt 0) {
+  throw "Release package contains generated Python cache artifacts: $($generatedPythonArtifacts -join ', ')"
+}
+
 $restrictedVoicePayloads = @(
   Get-ChildItem -LiteralPath $packageRootPath -File -Recurse | Where-Object {
     $relative = $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
@@ -187,6 +199,7 @@ $requiredFiles = @(
   "docs/store-assets/play/icon-512.png",
   "docs/store-assets/play/icon-512.svg",
   "docs/store-assets/play/feature-graphic-1024x500.png",
+  "docs/store-assets/desktop/stackchan-alive.ico",
   "docs/store-assets/play/README.md",
   "provenance/pages.yml",
   "docs/BRAIN_MODEL.md",
@@ -210,6 +223,9 @@ $requiredFiles = @(
   "docs/VOICE_V2_DIRECTML.md",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
+  "docs/BRIDGE_AI_HANDOFF.md",
+  "docs/BRIDGE_AI_QUALIFICATION.md",
+  "docs/BRIDGE_DASHBOARD.md",
   "docs/FIRST_DEPLOY_STATUS.md",
   "docs/ARRIVAL_DAY_RUNBOOK.md",
   "docs/stackchan_procedural_runtime_design.pdf",
@@ -220,6 +236,9 @@ $requiredFiles = @(
   "docs/ROLLOUT_CHECKLIST.md",
   "docs/VOICE_PERSONALITY.md",
   "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md",
+  "docs/media/voice/stackchan_spark_greeting.wav",
+  "docs/media/voice/stackchan_spark_thinking.wav",
+  "docs/media/voice/stackchan_spark_safety.wav",
   "bridge/models/LICENSE",
   "data/calibration.yaml",
   "data/expressions.yaml",
@@ -231,8 +250,14 @@ $requiredFiles = @(
   "bridge/README.md",
   "bridge/bridge_memory.py",
   "bridge/test_bridge_memory.py",
+  "bridge/test_bridge_memory_v4.py",
   "bridge/memory_maintenance.py",
   "bridge/test_memory_maintenance.py",
+  "bridge/episode_distillation.py",
+  "bridge/test_episode_distillation.py",
+  "bridge/memory_probe.py",
+  "bridge/test_memory_probe.py",
+  "bridge/memory_prefill_probe.py",
   "bridge/character_harness.py",
   "bridge/test_character_harness.py",
   "bridge/character_red_team.py",
@@ -243,6 +268,7 @@ $requiredFiles = @(
   "bridge/test_reference_bridge.py",
   "bridge/research_broker.py",
   "bridge/test_research_broker.py",
+  "bridge/research_acceptance.py",
   "bridge/robot_embodiment.py",
   "bridge/test_robot_embodiment.py",
   "bridge/local_facts.py",
@@ -264,15 +290,39 @@ $requiredFiles = @(
   "bridge/test_litert_lm_contract_smoke.py",
   "bridge/model_benchmark.py",
   "bridge/test_model_benchmark.py",
+  "bridge/utterance_text.py",
   "bridge/stt_normalization.py",
   "bridge/stt_adapter.py",
+  "bridge/stt_supervisor.py",
   "bridge/windows_speech_stt.py",
   "bridge/whisper_cpp_stt.py",
+  "bridge/whisper_server_stt.py",
   "bridge/test_stt_adapter.py",
+  "bridge/test_stt_supervisor.py",
+  "bridge/test_whisper_server_stt.py",
   "bridge/tts_adapter.py",
   "bridge/test_tts_adapter.py",
+  "bridge/conversation_session.py",
+  "bridge/test_conversation_session.py",
+  "bridge/conversation_latency.py",
+  "bridge/test_conversation_latency.py",
+  "bridge/conversation_latency_report.py",
+  "bridge/test_conversation_latency_report.py",
+  "bridge/initiative_policy.py",
+  "bridge/test_initiative_policy.py",
+  "bridge/room_context.py",
+  "bridge/test_room_context.py",
+  "bridge/ollama_room_vision.py",
+  "bridge/test_ollama_room_vision.py",
   "bridge/lan_service.py",
   "bridge/test_lan_service.py",
+  "bridge/bridge_ai_qualification.py",
+  "bridge/test_bridge_ai_qualification.py",
+  "bridge/dashboard_service.py",
+  "bridge/test_dashboard_service.py",
+  "bridge/dashboard/index.html",
+  "bridge/dashboard/styles.css",
+  "bridge/dashboard/app.js",
   "bridge/ollama_stackchan_runner.py",
   "bridge/test_ollama_stackchan_runner.py",
   "bridge/pc_brain_probe.py",
@@ -282,12 +332,16 @@ $requiredFiles = @(
   "bridge/rvc_tts_client.py",
   "bridge/rvc_worker_service.py",
   "bridge/rvc_directml_tts_client.py",
+  "bridge/test_rvc_directml_tts_client.py",
   "bridge/rvc_directml_worker_service.py",
+  "bridge/test_rvc_directml_worker_service.py",
   "bridge/rvc_production_tts_client.py",
   "bridge/test_rvc_production_tts_client.py",
   "bridge/voice_v2_directml_runtime.py",
   "bridge/voice_v2_directml_benchmark.py",
   "bridge/voice_v2_wire_benchmark.py",
+  "bridge/voice_device_truth.py",
+  "bridge/test_voice_device_truth.py",
   "bridge/vision_service.py",
   "bridge/test_vision_service.py",
   "bridge/requirements-vision.txt",
@@ -306,6 +360,8 @@ $requiredFiles = @(
   "bridge/test_hardware_simulator.py",
   "bridge/prearrival_sim_check.py",
   "bridge/test_prearrival_sim_check.py",
+  "bridge/fixtures/memory_probe.json",
+  "bridge/fixtures/searxng_search_response.json",
   "provenance/companion/settings.gradle.kts",
   "provenance/companion/build.gradle.kts",
   "provenance/companion/gradle.properties",
@@ -361,6 +417,7 @@ $requiredFiles = @(
   "firmware/full_online/firmware.elf",
   "firmware/full_online/partitions.bin",
   "media/stackchan_alive_expression_sheet.png",
+  "media/face_gallery.png",
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.png",
@@ -620,6 +677,26 @@ $requiredFiles = @(
   "tools/setup_whisper_cpp.ps1",
   "tools/start_pc_brain.cmd",
   "tools/start_pc_brain.ps1",
+  "tools/start_pc_brain_directml.ps1",
+  "tools/test_start_pc_brain_directml_contract.ps1",
+  "tools/check_local_research.ps1",
+  "tools/start_local_research.ps1",
+  "tools/test_local_research_runtime_contract.ps1",
+  "tools/searxng/compose.yaml",
+  "tools/searxng/settings.yml",
+  "tools/start_local_vision.cmd",
+  "tools/start_local_vision.ps1",
+  "tools/test_start_local_vision_contract.ps1",
+  "tools/start_whisper_server.ps1",
+  "tools/test_start_whisper_server_contract.ps1",
+  "tools/start_bridge_ai_supervised_qualification.ps1",
+  "tools/complete_bridge_ai_supervised_qualification.ps1",
+  "tools/test_bridge_ai_supervised_qualification_contract.ps1",
+  "tools/start_stackchan_dashboard.cmd",
+  "tools/start_stackchan_dashboard.ps1",
+  "tools/install_stackchan_dashboard_shortcut.ps1",
+  "tools/test_stackchan_dashboard_launcher_contract.cmd",
+  "tools/test_stackchan_dashboard_launcher_contract.ps1",
   "tools/start_rvc_worker.ps1",
   "tools/setup_voice_v2_directml.ps1",
   "tools/voice_v2_directml_constraints.txt",
@@ -742,6 +819,16 @@ $requiredFiles = @(
   "provenance/bridge/test_persona_pack.py",
   "provenance/bridge/reference_bridge.py",
   "provenance/bridge/test_reference_bridge.py",
+  "provenance/bridge/bridge_memory.py",
+  "provenance/bridge/test_bridge_memory.py",
+  "provenance/bridge/test_bridge_memory_v4.py",
+  "provenance/bridge/memory_maintenance.py",
+  "provenance/bridge/test_memory_maintenance.py",
+  "provenance/bridge/episode_distillation.py",
+  "provenance/bridge/test_episode_distillation.py",
+  "provenance/bridge/memory_probe.py",
+  "provenance/bridge/test_memory_probe.py",
+  "provenance/bridge/memory_prefill_probe.py",
   "provenance/bridge/local_facts.py",
   "provenance/bridge/test_local_facts.py",
   "provenance/bridge/trusted_facts_smoke.py",
@@ -760,15 +847,39 @@ $requiredFiles = @(
   "provenance/protocol-fixtures/invalid/wrong_protocol.json",
   "provenance/bridge/model_benchmark.py",
   "provenance/bridge/test_model_benchmark.py",
+  "provenance/bridge/utterance_text.py",
   "provenance/bridge/stt_normalization.py",
   "provenance/bridge/stt_adapter.py",
+  "provenance/bridge/stt_supervisor.py",
   "provenance/bridge/windows_speech_stt.py",
   "provenance/bridge/whisper_cpp_stt.py",
+  "provenance/bridge/whisper_server_stt.py",
   "provenance/bridge/test_stt_adapter.py",
+  "provenance/bridge/test_stt_supervisor.py",
+  "provenance/bridge/test_whisper_server_stt.py",
   "provenance/bridge/tts_adapter.py",
   "provenance/bridge/test_tts_adapter.py",
+  "provenance/bridge/conversation_session.py",
+  "provenance/bridge/test_conversation_session.py",
+  "provenance/bridge/conversation_latency.py",
+  "provenance/bridge/test_conversation_latency.py",
+  "provenance/bridge/conversation_latency_report.py",
+  "provenance/bridge/test_conversation_latency_report.py",
+  "provenance/bridge/initiative_policy.py",
+  "provenance/bridge/test_initiative_policy.py",
+  "provenance/bridge/room_context.py",
+  "provenance/bridge/test_room_context.py",
+  "provenance/bridge/ollama_room_vision.py",
+  "provenance/bridge/test_ollama_room_vision.py",
   "provenance/bridge/lan_service.py",
   "provenance/bridge/test_lan_service.py",
+  "provenance/bridge/bridge_ai_qualification.py",
+  "provenance/bridge/test_bridge_ai_qualification.py",
+  "provenance/bridge/dashboard_service.py",
+  "provenance/bridge/test_dashboard_service.py",
+  "provenance/bridge/dashboard/index.html",
+  "provenance/bridge/dashboard/styles.css",
+  "provenance/bridge/dashboard/app.js",
   "provenance/bridge/ollama_stackchan_runner.py",
   "provenance/bridge/test_ollama_stackchan_runner.py",
   "provenance/bridge/windows_speech_tts.py",
@@ -780,6 +891,13 @@ $requiredFiles = @(
   "provenance/bridge/voice_v2_directml_runtime.py",
   "provenance/bridge/voice_v2_directml_benchmark.py",
   "provenance/bridge/voice_v2_wire_benchmark.py",
+  "provenance/bridge/voice_device_truth.py",
+  "provenance/bridge/test_voice_device_truth.py",
+  "provenance/bridge/research_broker.py",
+  "provenance/bridge/test_research_broker.py",
+  "provenance/bridge/research_acceptance.py",
+  "provenance/bridge/fixtures/memory_probe.json",
+  "provenance/bridge/fixtures/searxng_search_response.json",
   "provenance/bridge/lan_smoke.py",
   "provenance/bridge/test_lan_smoke.py",
   "provenance/bridge/android_companion_probe.py",
@@ -811,6 +929,18 @@ $requiredFiles = @(
 
 foreach ($file in $requiredFiles) {
   Assert-File $file
+}
+
+. (Join-PackagePath "tools/preview_python_resolver.ps1")
+$bridgeRuntimePython = Get-StackchanPreviewPython
+$bridgeRuntimeHelp = @(
+  & $bridgeRuntimePython -B (Join-PackagePath "bridge/lan_service.py") --help 2>&1
+)
+if ($LASTEXITCODE -ne 0) {
+  throw "Packaged bridge runtime import smoke failed: $($bridgeRuntimeHelp -join ' ')"
+}
+if (($bridgeRuntimeHelp | Out-String) -notmatch "Run the local Stackchan P7 LAN WebSocket bridge") {
+  throw "Packaged bridge runtime help output is incomplete."
 }
 
 $projectLicenseText = Get-Content -LiteralPath (Join-PackagePath "LICENSE") -Raw
@@ -863,14 +993,14 @@ if ($visionModelSha256 -ne "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json", "-RequireArtifacts", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android\screen-off-soak\", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json", "-RequireArtifacts", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android\screen-off-soak\", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "Stackchan Spark Bright Robot Playback Aid", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
 }
 
 $arrivalRunbookText = Get-Content -LiteralPath (Join-PackagePath "ARRIVAL_DAY_RUNBOOK.md") -Raw
-foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio/", "HOSTED_MEDIA_REFERENCE.md", "verified local or Cloudflare share page", "share\VERIFIED_URL.txt", "pitch 2, index 0.62, RMS mix 0.72, and protect 0.28", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion; .\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "android/apk-install/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/screen-off-soak/", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.json", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hard stop if", "send", "status", "[heartbeat]", "[system]", "verified production voice hashes", "GitHub Actions")) {
+foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio/", "HOSTED_MEDIA_REFERENCE.md", "verified local or Cloudflare share page", "verified DirectML RVC model and index", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion; .\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "android/apk-install/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/screen-off-soak/", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.json", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hard stop if", "send", "status", "[heartbeat]", "[system]", "verified production voice hashes", "GitHub Actions")) {
   if ($arrivalRunbookText -notmatch [regex]::Escape($pattern)) {
     throw "ARRIVAL_DAY_RUNBOOK.md missing required bench guidance: $pattern"
   }
@@ -924,7 +1054,7 @@ foreach ($pattern in @("-All", "output/share", "Test-ShareOwnedProcess", "skippe
 }
 
 $hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Run Order", "Gates Still Expected", "Hard Stops", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "stackchan.ci-account-block-exception.v1", "starts unapproved", "false proof booleans", "TBD - accountable approver required", "TBD - CI account owner", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "Copy-ShareVerificationArtifactsFromRoot", "Write-EvidenceChecklist", "Set-ChecklistItemState", "Pre-marked no-hardware gates were proven", "GitHub Actions, production voice-source, media, audio, and promotion gates still require explicit evidence", "shareVerification", "HOSTED_MEDIA_REFERENCE.md", "share/share_verification_report.json", "share/VERIFIED_URL.txt", "verifiedUrl", "verifiedUrlFile", "urlKind", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_HARDWARE_SIM_BASELINE.cmd", "hardware_simulation_baseline.log", "simulation/hardware-sim/latest", "comparison baseline only", "run_hardware_simulation.ps1", "RUN_SIM_HARDWARE_COMPARE.cmd", "compare_hardware_sim_baseline.ps1", "SIM_HARDWARE_COMPARE.md", "SIM_HARDWARE_COMPARE.json", "advisory sim-vs-real", "compareCommand", "compareReport", "RUN_ANDROID_APK_INSTALL.cmd", "install_android_companion_apk.ps1", "android/apk-install", "apkInstallCommand", "android_apk_install.json", "RUN_ANDROID_COMPANION_PROBE.cmd", "run_android_companion_probe.ps1", "android/companion-probe", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "run_android_companion_soak.ps1", "android/screen-off-soak", "screenOffSoakCommand", "android_companion_soak.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "run_android_udp_beacon_probe.ps1", "android/udp-beacon-probe", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "capture_android_companion_logcat.ps1", "android/logcat", "logcatCommand", "android_companion_logcat.json", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "androidCompanionProbes", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speechDir", "lead_voice.speech_envelope.json", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_ROLLOUT_STATUS.cmd", "export_rollout_status.ps1", "ROLLOUT_STATUS.md", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1", "CompanionV1EvidenceRoot", "companion-v1-evidence-ready", "companionV1EvidenceRoot", "New-PowerShellCommandFile", "`$global:LASTEXITCODE", "exit /b %ERRORLEVEL%")) {
+foreach ($pattern in @("NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Run Order", "Gates Still Expected", "Hard Stops", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "stackchan.ci-account-block-exception.v1", "starts unapproved", "false proof booleans", "TBD - accountable approver required", "TBD - CI account owner", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "Copy-ShareVerificationArtifactsFromRoot", "Write-EvidenceChecklist", "Set-ChecklistItemState", "Pre-marked no-hardware gates were proven", "GitHub Actions, production voice-source, media, audio, and promotion gates still require explicit evidence", "shareVerification", "HOSTED_MEDIA_REFERENCE.md", "share/share_verification_report.json", "share/VERIFIED_URL.txt", "verifiedUrl", "verifiedUrlFile", "urlKind", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "media/voice/stackchan_spark_audition_bright_robot_greeting.wav", "stackchan.voice-playback-reference.v1", "playback-aid-only", "This packaged sample is not an RVC render.", "RUN_HARDWARE_SIM_BASELINE.cmd", "hardware_simulation_baseline.log", "simulation/hardware-sim/latest", "comparison baseline only", "run_hardware_simulation.ps1", "RUN_SIM_HARDWARE_COMPARE.cmd", "compare_hardware_sim_baseline.ps1", "SIM_HARDWARE_COMPARE.md", "SIM_HARDWARE_COMPARE.json", "advisory sim-vs-real", "compareCommand", "compareReport", "RUN_ANDROID_APK_INSTALL.cmd", "install_android_companion_apk.ps1", "android/apk-install", "apkInstallCommand", "android_apk_install.json", "RUN_ANDROID_COMPANION_PROBE.cmd", "run_android_companion_probe.ps1", "android/companion-probe", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "run_android_companion_soak.ps1", "android/screen-off-soak", "screenOffSoakCommand", "android_companion_soak.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "run_android_udp_beacon_probe.ps1", "android/udp-beacon-probe", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "capture_android_companion_logcat.ps1", "android/logcat", "logcatCommand", "android_companion_logcat.json", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "androidCompanionProbes", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speechDir", "lead_voice.speech_envelope.json", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_ROLLOUT_STATUS.cmd", "export_rollout_status.ps1", "ROLLOUT_STATUS.md", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1", "CompanionV1EvidenceRoot", "companion-v1-evidence-ready", "companionV1EvidenceRoot", "New-PowerShellCommandFile", "`$global:LASTEXITCODE", "exit /b %ERRORLEVEL%")) {
   if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
   }
@@ -945,14 +1075,14 @@ foreach ($pattern in @("stackchan.hardware-media-manifest.v1", "Test-PhotoEviden
 }
 
 $syntheticEvidenceGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/generate_synthetic_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvidence", "Synthetic hardware evidence packet", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "progress_check.log", "NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Copy-VoiceLeadArtifactsFromZip", "Copy-VoiceGateStatusFromZip", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "voiceGateStatus", "export_rollout_status.ps1", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RVC_LEAD_AUDITION.md", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "AUDIO_REVIEW.md", "synthetic_speaker_fixture.wav", "must not be used as rollout evidence", "-AllowExternalAccountCiBlock", "completed only in a real evidence packet", "Get-CompactEvidenceTag", "fps_window=30.0", "frame_budget_us=33333", "slow_frames=0", "blink_count=3", "saccade_count=4", "speech_env=0.00", "speech_mouth_demo_serial.log", "Speech mouth demo complete", "speak_all_intents_serial.log", "Speak-all-intents demo complete", "command=speak_intent", "[audio_out]", "command=speech_env", "[control] command=", "button_a_listen", "reduced_motion_on", "safe_stop", "[face] reduced_motion=1", "[speech] seq=", "earcon_delay_ms", "heap_free=243000", "stack_face_hwm=2800")) {
+foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvidence", "Synthetic hardware evidence packet", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "progress_check.log", "NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Copy-VoiceLeadArtifactsFromZip", "Copy-VoiceGateStatusFromZip", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "voiceGateStatus", "export_rollout_status.ps1", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RVC_LEAD_AUDITION.md", "RUN_PLAY_LEAD_VOICE.cmd", "media/voice/stackchan_spark_audition_bright_robot_greeting.wav", "stackchan.voice-playback-reference.v1", "playback-aid-only", "RUN_SPEAK_ALL_INTENTS.cmd", "AUDIO_REVIEW.md", "synthetic_speaker_fixture.wav", "must not be used as rollout evidence", "-AllowExternalAccountCiBlock", "completed only in a real evidence packet", "Get-CompactEvidenceTag", "fps_window=30.0", "frame_budget_us=33333", "slow_frames=0", "blink_count=3", "saccade_count=4", "speech_env=0.00", "speech_mouth_demo_serial.log", "Speech mouth demo complete", "speak_all_intents_serial.log", "Speak-all-intents demo complete", "command=speak_intent", "[audio_out]", "command=speech_env", "[control] command=", "button_a_listen", "reduced_motion_on", "safe_stop", "[face] reduced_motion=1", "[speech] seq=", "earcon_delay_ms", "heap_free=243000", "stack_face_hwm=2800")) {
   if ($syntheticEvidenceGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/generate_synthetic_hardware_evidence.ps1 missing synthetic evidence safety logic: $pattern"
   }
 }
 
 $hardwareProgressText = Get-Content -LiteralPath (Join-PackagePath "tools/check_hardware_evidence_progress.ps1") -Raw
-foreach ($pattern in @("NEXT_STEPS.md", "Generated source WAVs alone do not count", "OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "logs/display_only_serial\.log.*display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speechMouthFinding", "speakAllFinding", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "soak display frame-budget telemetry", "soak face animator telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "RVC lead audition reference hash matches metadata", "metadata.json has no shareVerification reference", "Hosted media share verification report matches metadata", "VERIFIED_URL.txt", "metadata.json missing voiceGateStatus reference", "Voice source status report matches metadata", "RVC voice base status report matches metadata", "Test-OptionalAndroidProbeReport", "apkSha256", "valid apkSha256", "sourceCommit", "full sourceCommit SHA", "versionName/versionCode", "-SourceCommit <git-commit>", "Test-AndroidDashboardManifestEvidence", "androidDashboardFinding", "Import the Android connected-dashboard screenshot", "Android APK install evidence", "Android companion bridge probe", "Android screen-off soak", "Android UDP beacon probe", "stackchan.android-apk-install.v1", "stackchan.android-companion-probe.v1", "stackchan.android-companion-soak.v1", "stackchan.android-udp-beacon-probe.v1", "optional unless Android is the companion bridge host", "media_manifest.json needs a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "Get-BenchNextAction", "Write-BenchStatusReport", "nextAction", "nextCommand", "ready-for-strict-evidence-verify", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_EVIDENCE_VERIFY.cmd")) {
+foreach ($pattern in @("NEXT_STEPS.md", "Generated source WAVs alone do not count", "OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "logs/display_only_serial\.log.*display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speechMouthFinding", "speakAllFinding", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "soak display frame-budget telemetry", "soak face animator telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "Voice playback reference hash matches metadata", "metadata.json has no shareVerification reference", "Hosted media share verification report matches metadata", "VERIFIED_URL.txt", "metadata.json missing voiceGateStatus reference", "Voice source status report matches metadata", "RVC voice base status report matches metadata", "Test-OptionalAndroidProbeReport", "apkSha256", "valid apkSha256", "sourceCommit", "full sourceCommit SHA", "versionName/versionCode", "-SourceCommit <git-commit>", "Test-AndroidDashboardManifestEvidence", "androidDashboardFinding", "Import the Android connected-dashboard screenshot", "Android APK install evidence", "Android companion bridge probe", "Android screen-off soak", "Android UDP beacon probe", "stackchan.android-apk-install.v1", "stackchan.android-companion-probe.v1", "stackchan.android-companion-soak.v1", "stackchan.android-udp-beacon-probe.v1", "optional unless Android is the companion bridge host", "media_manifest.json needs a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "Get-BenchNextAction", "Write-BenchStatusReport", "nextAction", "nextCommand", "ready-for-strict-evidence-verify", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_EVIDENCE_VERIFY.cmd")) {
   if ($hardwareProgressText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_hardware_evidence_progress.ps1 missing evidence progress check: $pattern"
   }
@@ -1092,7 +1222,7 @@ foreach ($pattern in @("[double]`$Timeout = 10.0", "[int]`$ExpectedBridgePort = 
 }
 
 $hardwareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("BENCH_STATUS.md", "BENCH_STATUS.json", "Stackchan Bench Status", "stackchan.bench-status.v1", "nextAction", "nextCommand", "NEXT_STEPS.md", "Stackchan Evidence Next Steps", "production voice-source provenance", "stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Speech-mouth demo evidence", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "Test-AudioEvidenceFile", "Speaker recording file", "Intelligible through device speaker", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "RVC lead audition reference hash does not match metadata", "voiceGateStatus", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "stackchan.voice-source-status.v1", "voice_source_status.json status does not match metadata voiceGateStatus", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "stackchan.rvc-voice-base-status.v1", "rvc_voice_base_status.json distributionApproved does not match metadata voiceGateStatus", "shareVerification", "stackchan.share-verification.v1", "verifiedShareUrl", "verifiedUrlFile", "share verification report does not show all probes HTTP 200", "HOSTED_MEDIA_REFERENCE.md missing expected marker", "display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "Speak-all-intents demo complete", "command=speak_intent", "cue_intent=", "source=packaged_prompt", "soak display frame-budget telemetry", "soak face animator telemetry", "soak speech cue telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "Test-AndroidDashboardManifestEntry", "Assert-AndroidDashboardManifestEvidence", "Assert-AndroidReportEvidence", "Assert-AndroidCompanionReportEvidence", "AndroidApkEvidenceContractSelfTest", "AndroidDashboardEvidenceContractSelfTest", "AndroidProbeEvidenceContractSelfTest", "Android APK strict evidence contract verified", "Android dashboard strict evidence contract verified", "Android probe strict evidence contract verified", "status is not accepted", "stackchan.android-companion-probe.v1", "stackchan.android-companion-soak.v1", "stackchan.android-udp-beacon-probe.v1", "stackchan.android-companion-logcat.v1", "apkSha256", "valid apkSha256", "sourceCommit", "full sourceCommit SHA", "versionName/versionCode", "-SourceCommit <git-commit>", "Android companion reports are present", "media_manifest.json is missing a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "AllowSyntheticEvidence", "diagnosticOnly")) {
+foreach ($pattern in @("BENCH_STATUS.md", "BENCH_STATUS.json", "Stackchan Bench Status", "stackchan.bench-status.v1", "nextAction", "nextCommand", "NEXT_STEPS.md", "Stackchan Evidence Next Steps", "production voice-source provenance", "stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Speech-mouth demo evidence", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "Test-AudioEvidenceFile", "Speaker recording file", "Intelligible through device speaker", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "Voice playback reference hash does not match metadata", "voiceGateStatus", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "stackchan.voice-source-status.v1", "voice_source_status.json status does not match metadata voiceGateStatus", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "stackchan.rvc-voice-base-status.v1", "rvc_voice_base_status.json distributionApproved does not match metadata voiceGateStatus", "shareVerification", "stackchan.share-verification.v1", "verifiedShareUrl", "verifiedUrlFile", "share verification report does not show all probes HTTP 200", "HOSTED_MEDIA_REFERENCE.md missing expected marker", "display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "Speak-all-intents demo complete", "command=speak_intent", "cue_intent=", "source=packaged_prompt", "soak display frame-budget telemetry", "soak face animator telemetry", "soak speech cue telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "Test-AndroidDashboardManifestEntry", "Assert-AndroidDashboardManifestEvidence", "Assert-AndroidReportEvidence", "Assert-AndroidCompanionReportEvidence", "AndroidApkEvidenceContractSelfTest", "AndroidDashboardEvidenceContractSelfTest", "AndroidProbeEvidenceContractSelfTest", "Android APK strict evidence contract verified", "Android dashboard strict evidence contract verified", "Android probe strict evidence contract verified", "status is not accepted", "stackchan.android-companion-probe.v1", "stackchan.android-companion-soak.v1", "stackchan.android-udp-beacon-probe.v1", "stackchan.android-companion-logcat.v1", "apkSha256", "valid apkSha256", "sourceCommit", "full sourceCommit SHA", "versionName/versionCode", "-SourceCommit <git-commit>", "Android companion reports are present", "media_manifest.json is missing a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "AllowSyntheticEvidence", "diagnosticOnly")) {
   if ($hardwareVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_hardware_evidence.ps1 missing acceptance artifact verification logic: $pattern"
   }
@@ -1340,7 +1470,7 @@ foreach ($pattern in @("verify_share_release.cmd -Version <version> -Offline", "
 }
 
 $actionsStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_github_actions_status.ps1") -Raw
-foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows", "FixtureRoot", "requiredWorkflows", "missingRequiredWorkflows", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "promotionReady", "externalBlock", "nextAction", "nextCommand", "payments have failed", "spending limit", "runnerId", "stepCount")) {
+foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows", "FixtureRoot", "AcceptFirmwareCandidate", "requiredWorkflows", "missingRequiredWorkflows", "missing-required-workflow", "firmwareCandidateReady", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "promotionReady", "externalBlock", "nextAction", "nextCommand", "payments have failed", "spending limit", "runnerId", "stepCount")) {
   if ($actionsStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_github_actions_status.ps1 missing required Actions status export logic: $pattern"
   }
@@ -1350,6 +1480,11 @@ $preflightText = Get-Content -LiteralPath (Join-PackagePath "tools/run_device_pr
 foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "promotionReady", "externalBlock", "nextAction", "nextCommand", "Assert-CiAccountBlockExceptionDraftGate", "Check CI account-block exception draft helper", "CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json", "riskAccepted should remain false", "not an external account block", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-RolloutStatusActionsOverrideGate", "Check rollout status Actions override", "ActionsStatusPath", "Packaged missing-workflow status leaked", "Check LiteRT-LM contract smoke", "run_litert_lm_smoke.ps1", "Check LAN bridge smoke report", "run_lan_smoke.ps1", "Check pre-arrival simulation report", "run_prearrival_sim_check.ps1", "Assert-HardwareSimComparisonGate", "Check hardware simulation comparator", "SIM_HARDWARE_COMPARE.json", "stackchan.hardware-sim-compare.v1", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Speech mouth demo complete", "Speak-all-intents demo complete", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "completed only in a real evidence packet", "reduced_motion_on", "[face] reduced_motion=1", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
   if ($preflightText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_device_preflight.ps1 missing required preflight self-test: $pattern"
+  }
+}
+foreach ($pattern in @("AcceptFirmwareCandidate", "firmwareCandidateReady", "supervised prerelease hardware qualification", "v0.0.0-media-selftest", "v0.0.0-serial-selftest", "STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE", "subst.exe")) {
+  if ($preflightText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_device_preflight.ps1 missing Firmware candidate Actions self-test: $pattern"
   }
 }
 
@@ -1978,21 +2113,21 @@ foreach ($pattern in @("ALLOWED_MODES", "ALLOWED_EARCONS", "MODEL_PROFILES", "ge
 }
 
 $characterHarnessTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_character_harness.py") -Raw
-foreach ($pattern in @("CharacterHarnessTests", "test_valid_response_passes_character_lock", "test_malformed_json_returns_in_character_fallback", "test_memory_policy_drops_forbidden_keys_and_values", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("CharacterHarnessTests", "test_valid_response_passes_character_lock", "test_malformed_json_returns_in_character_fallback", "test_unsolicited_identity_intro_is_replaced_but_direct_identity_is_allowed", "test_unsafe_actuator_claim_is_replaced_by_persona_safety_response", "test_memory_policy_drops_forbidden_keys_and_values", "gemma4-e2b-litert-lm")) {
   if ($characterHarnessTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_character_harness.py missing character harness test coverage: $pattern"
   }
 }
 
 $characterRedTeamText = Get-Content -LiteralPath (Join-PackagePath "bridge/character_red_team.py") -Raw
-foreach ($pattern in @("stackchan.character-red-team.v1", "RED_TEAM_SUITE", "run_red_team", "requires_memory_forget", "dry-run-no-runner-configured", "deterministic_red_team_fallback", "CHARACTER_RED_TEAM.md", "character_red_team.json")) {
+foreach ($pattern in @("stackchan.character-red-team.v1", "RED_TEAM_SUITE", "run_red_team", "requires_memory_forget", "required_memory_forget", "incorrect_required_memory_forget", "dry-run-no-runner-configured", "deterministic_red_team_fallback", "CHARACTER_RED_TEAM.md", "character_red_team.json")) {
   if ($characterRedTeamText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/character_red_team.py missing red-team gate support: $pattern"
   }
 }
 
 $characterRedTeamTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_character_red_team.py") -Raw
-foreach ($pattern in @("CharacterRedTeamTests", "test_red_team_suite_has_required_size_and_topics", "test_dry_run_reports_no_candidate_without_real_runner", "test_forget_case_fallback_emits_memory_forget", "test_glow_red_team_fallback_uses_persona_safety_line", "test_bad_adversarial_response_fails_existing_validator", "test_report_outputs_json_and_markdown")) {
+foreach ($pattern in @("CharacterRedTeamTests", "test_red_team_suite_has_required_size_and_topics", "test_dry_run_reports_no_candidate_without_real_runner", "test_forget_case_fallback_emits_memory_forget", "test_glow_red_team_fallback_uses_persona_safety_line", "test_bad_adversarial_response_fails_existing_validator", "test_unsafe_actuator_claim_cannot_pass_or_reach_spoken_output", "test_report_outputs_json_and_markdown")) {
   if ($characterRedTeamTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_character_red_team.py missing red-team test coverage: $pattern"
   }
@@ -2115,7 +2250,7 @@ foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_prot
 }
 
 $localRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/local_runner.py") -Raw
-foreach ($pattern in @("RUNNER_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND", "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND", "litert_lm_stackchan_wrapper.py", "run_runner_profile", "approx_tokens_per_sec", "deterministic_fallback", "persona_id", "--persona")) {
+foreach ($pattern in @("RUNNER_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND", "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND", "litert_lm_stackchan_wrapper.py", "run_runner_profile", "run_in_process_ollama", "in-process-ollama-api", "approx_tokens_per_sec", "deterministic_fallback", "persona_id", "--persona")) {
   if ($localRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/local_runner.py missing local runner support: $pattern"
   }
@@ -2150,7 +2285,7 @@ foreach ($pattern in @("LiteRtLmContractSmokeTests", "test_build_report_exercise
 }
 
 $localRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_local_runner.py") -Raw
-foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_deterministic_fallback_uses_selected_persona", "test_reference_bridge_runner_fallback_uses_selected_persona", "test_command_runner_measures_speed_and_validates_json", "test_user_text_replaces_the_canned_case_example_in_the_prompt", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_deterministic_fallback_uses_selected_persona", "test_reference_bridge_runner_fallback_uses_selected_persona", "test_command_runner_measures_speed_and_validates_json", "test_in_process_ollama_runner_is_explicit_and_validated", "test_runner_does_not_replace_answer_with_optional_episode", "test_runner_still_enforces_due_open_loop_without_second_model_call", "test_runner_repairs_empty_pickup_reaction_without_second_model_call", "test_runner_repairs_empty_actual_greeting_without_second_model_call", "test_runner_repairs_only_matching_approved_forget_key", "test_runner_does_not_guess_an_unmatched_forget_key", "test_runner_narrows_broad_forget_to_matching_approved_key", "test_user_text_replaces_the_canned_case_example_in_the_prompt", "gemma4-e2b-litert-lm")) {
   if ($localRunnerTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_local_runner.py missing local runner test coverage: $pattern"
   }
@@ -2185,35 +2320,62 @@ foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_mark
 }
 
 $lanServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_service.py") -Raw
-foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES", "mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text")) {
+foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "in_process_ollama_runner", "in_process_directml_tts", "--in-process-ollama-runner", "--in-process-directml-tts", "WebSocketProtocolError", "SttNoTranscriptError", "no_speech_character_response", "analyze_reply_pcm16_speech", "reply_pcm_no_speech", "explicit_forget_keys", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES", "mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text", "DashboardRuntime", "--dashboard", "--dashboard-host", "--robot-host")) {
   if ($lanServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_service.py missing LAN bridge service support: $pattern"
   }
 }
 
+$dashboardServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard_service.py") -Raw
+foreach ($pattern in @("stackchan.bridge-dashboard.v1", "ThreadingHTTPServer", "/api/status", "/api/refresh", "/api/motion", "/motion-stop", "/motion-resume", "robot_clear", "servo_rail_enabled", "servo_torque_enabled", "motion_thermal_suppressed", "motion_power_suppressed", "X-Stackchan-Dashboard", "Content-Security-Policy", "Dashboard must bind to a loopback host.")) {
+  if ($dashboardServiceText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/dashboard_service.py missing dashboard safety support: $pattern"
+  }
+}
+
+$dashboardTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_dashboard_service.py") -Raw
+foreach ($pattern in @("DashboardRuntimeTests", "DashboardHttpTests", "DashboardBridgeIntegrationTests", "test_stop_requires_motion_rail_and_torque_verification", "test_cross_origin_write_is_rejected", "test_bridge_dashboard_receives_live_robot_heartbeat")) {
+  if ($dashboardTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_dashboard_service.py missing dashboard coverage: $pattern"
+  }
+}
+
+$dashboardHtml = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard/index.html") -Raw
+$dashboardCss = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard/styles.css") -Raw
+$dashboardJs = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard/app.js") -Raw
+foreach ($pattern in @("Stop motion", "Robot is upright and clear", "Resume motion", "Stackchan face status")) {
+  if ($dashboardHtml -notmatch [regex]::Escape($pattern)) { throw "Dashboard HTML missing control: $pattern" }
+}
+foreach ($pattern in @("aspect-ratio: 1", "env(safe-area-inset-top)", "env(safe-area-inset-bottom)", ".mobile-nav")) {
+  if ($dashboardCss -notmatch [regex]::Escape($pattern)) { throw "Dashboard CSS missing responsive contract: $pattern" }
+}
+foreach ($pattern in @("robot_clear", "/api/motion", "resumeMotionButton", "setInterval")) {
+  if ($dashboardJs -notmatch [regex]::Escape($pattern)) { throw "Dashboard JavaScript missing behavior: $pattern" }
+}
+
 $ollamaRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/ollama_stackchan_runner.py") -Raw
-foreach ($pattern in @("Ollama-backed Stackchan runner", "DEFAULT_MODEL", "STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_OLLAMA_API_URL", "STACKCHAN_OLLAMA_TRANSPORT", "/api/generate", '"think": False', '"keep_alive": -1', "run_api", "run_cli", "--format", "json", "validate_response")) {
+foreach ($pattern in @("Ollama-backed Stackchan runner", "DEFAULT_MODEL", "STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_OLLAMA_API_URL", "STACKCHAN_OLLAMA_TRANSPORT", "/api/generate", '"think": False', '"keep_alive": -1', "run_api", "run_cli", "compact_generation_prompt", "expand_compact_response", "normalize_surface_policy", "explicit_forget_keys", "--format", "json", "validate_response")) {
   if ($ollamaRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/ollama_stackchan_runner.py missing PC brain runner support: $pattern"
   }
 }
 
 $ollamaRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_ollama_stackchan_runner.py") -Raw
-foreach ($pattern in @("OllamaStackchanRunnerTests", "test_api_uses_warm_json_generation_with_bounded_output", "test_default_transport_falls_back_to_cli_when_api_is_unavailable", "keep_alive", "num_predict")) {
+foreach ($pattern in @("OllamaStackchanRunnerTests", "test_ordinary_turn_uses_compact_internal_contract", "test_memory_action_keeps_full_contract", "test_compact_response_expands_to_character_lock_shape", "test_compact_unsafe_motion_request_is_forced_to_safety_delivery", "test_run_character_prompt_returns_valid_full_response_from_compact_model_output", "test_policy_guard_repairs_empty_self_intro_for_tone_feedback", "test_policy_guard_restores_explicit_forget_keys_after_model_repair", "test_surface_normalization_expands_contraction_without_losing_memory", "test_surface_normalization_allows_requested_identity_only", "test_surface_normalization_removes_helpdesk_tail_and_preserves_answer", "test_surface_normalization_narrows_explicit_forget_to_exact_keys", "test_api_uses_warm_json_generation_with_bounded_output", "test_default_transport_falls_back_to_cli_when_api_is_unavailable", "keep_alive", "num_predict")) {
   if ($ollamaRunnerTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_ollama_stackchan_runner.py missing warm Ollama API coverage: $pattern"
   }
 }
 
 $directMlClientText = Get-Content -LiteralPath (Join-PackagePath "bridge/rvc_directml_tts_client.py") -Raw
-foreach ($pattern in @("STACKCHAN_RVC_DIRECTML_WORKER_URL", "STACKCHAN_RVC_DIRECTML_TIMEOUT_SECONDS", "/convert", "stackchan.tts-metadata.v1", "audio_b64")) {
+foreach ($pattern in @("STACKCHAN_RVC_DIRECTML_WORKER_URL", "STACKCHAN_RVC_DIRECTML_TIMEOUT_SECONDS", "/convert", "/synthesize", "audio_decode_backend", "persistent-system-speech", "one-shot-system-speech", "stackchan.tts-metadata.v1", "audio_b64")) {
   if ($directMlClientText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/rvc_directml_tts_client.py missing Voice V2 client support: $pattern"
   }
 }
 
 $directMlWorkerText = Get-Content -LiteralPath (Join-PackagePath "bridge/rvc_directml_worker_service.py") -Raw
-foreach ($pattern in @("DirectMlRvcRuntime", "ThreadingHTTPServer", "/health", "/convert")) {
+foreach ($pattern in @("DirectMlRvcRuntime", "PersistentWindowsSpeechSynthesizer", "ThreadingHTTPServer", "/health", "/convert", "/synthesize", "worker-numpy-fir-", "synthesis_ready")) {
   if ($directMlWorkerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/rvc_directml_worker_service.py missing Voice V2 worker support: $pattern"
   }
@@ -2234,14 +2396,50 @@ foreach ($pattern in @("stackchan.pc-brain-probe.v1", "endpoint_hello", "claim_b
 }
 
 $startPcBrainText = Get-Content -LiteralPath (Join-PackagePath "tools/start_pc_brain.ps1") -Raw
-foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "whisper_cpp_stt.py", "selected_voice_tts.py", "StreamTtsPhrases", "--stream-tts-phrases", "--tts-phrase-max-chars", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid")) {
+foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "whisper_cpp_stt.py", "selected_voice_tts.py", "InProcessOllamaRunner", "InProcessDirectMlTts", "--in-process-ollama-runner", "--in-process-directml-tts", "StreamTtsPhrases", "--stream-tts-phrases", "--tts-phrase-max-chars", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid", "EnableDashboard", "DashboardHost must be loopback-only.", "--robot-http-port")) {
   if ($startPcBrainText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_pc_brain.ps1 missing PC brain launch support: $pattern"
   }
 }
 
+$dashboardLauncherText = Get-Content -LiteralPath (Join-PackagePath "tools/start_stackchan_dashboard.ps1") -Raw
+foreach ($pattern in @("stackchan.bridge-dashboard.v1", "dashboard_service.py", "start_pc_brain_directml.ps1", "start_local_research.ps1", "EnableConversationV2", "EnableInitiative", "DisableResearch", "Start-Process `$DashboardUrl")) {
+  if ($dashboardLauncherText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/start_stackchan_dashboard.ps1 missing reset-safe launch support: $pattern"
+  }
+}
+if ($dashboardLauncherText -match 'EnableRoomObservation\s*=\s*\$true') {
+  throw "tools/start_stackchan_dashboard.ps1 must leave room observation default-off."
+}
+
+$researchCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_local_research.ps1") -Raw
+$researchStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_local_research.ps1") -Raw
+$researchComposeText = Get-Content -LiteralPath (Join-PackagePath "tools/searxng/compose.yaml") -Raw
+foreach ($pattern in @("stackchan.local-research-gate.v1", "searxng_listener_not_loopback_only", "research_acceptance.py")) {
+  if ($researchCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_local_research.ps1 missing fail-closed research gate: $pattern"
+  }
+}
+foreach ($pattern in @("stackchan.local-research-start.v1", "container_runtime_missing", "RandomNumberGenerator", "2026.7.24-4f64d9501")) {
+  if ($researchStarterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/start_local_research.ps1 missing guarded local startup: $pattern"
+  }
+}
+if ($researchComposeText -notmatch 'docker\.io/searxng/searxng:2026\.7\.24-4f64d9501' -or
+    $researchComposeText -match 'searxng:latest' -or
+    $researchComposeText -notmatch '"127\.0\.0\.1:8080:8080"') {
+  throw "tools/searxng/compose.yaml does not pin the reviewed loopback-only deployment."
+}
+
+$shortcutInstallerText = Get-Content -LiteralPath (Join-PackagePath "tools/install_stackchan_dashboard_shortcut.ps1") -Raw
+foreach ($pattern in @("Stackchan Alive.lnk", "WScript.Shell", "LocalApplicationData", "StableLauncher", "Bootstrap")) {
+  if ($shortcutInstallerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/install_stackchan_dashboard_shortcut.ps1 missing stable shortcut support: $pattern"
+  }
+}
+
 $voiceV2StartText = Get-Content -LiteralPath (Join-PackagePath "tools/start_voice_v2_supervised_validation.ps1") -Raw
-foreach ($pattern in @("stackchan.voice-v2-supervised-session.v1", "speaker_stream_chunked", "STACKCHAN_RVC_DIRECTML_WORKER_URL", "StreamTtsPhrases", "OperatorPresent", "ConfirmSpeakerTest", "max_first_audio_ms")) {
+foreach ($pattern in @("stackchan.voice-v2-supervised-session.v1", "speaker_stream_chunked", "STACKCHAN_RVC_DIRECTML_WORKER_URL", "synthesis_ready", "StreamTtsPhrases", "OperatorPresent", "ConfirmSpeakerTest", "max_first_audio_ms")) {
   if ($voiceV2StartText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_voice_v2_supervised_validation.ps1 missing guarded Voice V2 support: $pattern"
   }
@@ -2429,7 +2627,7 @@ foreach ($pattern in @("placeholder Companion v1 evidence bundle is pending", "c
 }
 
 $lanServiceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_lan_service.py") -Raw
-foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_bridge_frames", "test_endpoint_controls_track_owner_settings_and_forget", "test_endpoint_control_state_survives_sequential_sessions", "test_settings_version_conflict_returns_current_snapshot", "test_identified_non_owner_cannot_start_speech_turn", "test_audio_downlink_clamps_chunks_to_firmware_payload_limit", "test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript", "test_audio_only_turn_uses_configured_stt_command", "test_configured_tts_command_replaces_response_mouth_beats")) {
+foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_bridge_frames", "test_endpoint_controls_track_owner_settings_and_forget", "test_endpoint_control_state_survives_sequential_sessions", "test_settings_version_conflict_returns_current_snapshot", "test_identified_non_owner_cannot_start_speech_turn", "test_audio_downlink_clamps_chunks_to_firmware_payload_limit", "test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript", "test_audio_only_turn_uses_configured_stt_command", "test_configured_tts_command_replaces_response_mouth_beats", "in_process_ollama_runner=True", "in_process_directml_tts=True", "test_unsafe_model_actuator_claim_is_replaced_without_protocol_error", "test_unsolicited_identity_intro_and_helpdesk_fallback_are_not_spoken", "test_multi_subject_forget_is_local_exact_and_preserves_other_facts", "test_stt_no_transcript_is_nonfatal_and_does_not_run_model", "test_conversation_v2_no_transcript_closes_without_reply_window_or_history", "test_reply_pcm_speech_gate_rejects_ambient_and_detects_voiced_audio", "test_conversation_followup_ambient_pcm_bypasses_stt_and_closes_silently", "test_initial_conversation_audio_still_reaches_stt_before_reply_gate_applies", "test_detected_followup_logs_reply_vad_and_stt_evidence_together")) {
   if ($lanServiceTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_lan_service.py missing LAN bridge service test coverage: $pattern"
   }
@@ -2450,14 +2648,14 @@ foreach ($pattern in @("LanSmokeTests", "test_client_frames_are_masked_for_serve
 }
 
 $sttAdapterText = Get-Content -LiteralPath (Join-PackagePath "bridge/stt_adapter.py") -Raw
-foreach ($pattern in @("STACKCHAN_AUDIO_SAMPLE_RATE", "STACKCHAN_AUDIO_FORMAT", "STACKCHAN_AUDIO_BYTES", "run_stt_command", "normalize_transcript")) {
+foreach ($pattern in @("STACKCHAN_AUDIO_SAMPLE_RATE", "STACKCHAN_AUDIO_FORMAT", "STACKCHAN_AUDIO_BYTES", "SttNoTranscriptError", "run_stt_command", "normalize_transcript")) {
   if ($sttAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/stt_adapter.py missing STT adapter support: $pattern"
   }
 }
 
 $sttAdapterTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_stt_adapter.py") -Raw
-foreach ($pattern in @("SttAdapterTests", "test_transcript_output_accepts_plain_text_and_json", "test_stt_command_receives_pcm_and_audio_environment", "test_empty_stt_output_is_an_execution_error", "test_whisper_adapter_runs_fake_whisper_cli_and_normalizes")) {
+foreach ($pattern in @("SttAdapterTests", "test_transcript_output_accepts_plain_text_and_json", "test_stt_command_receives_pcm_and_audio_environment", "test_empty_stt_output_is_a_no_transcript_outcome", "test_command_no_transcript_exit_is_typed_separately", "test_command_infrastructure_failure_remains_an_execution_error", "test_loopback_server_no_transcript_is_typed_separately", "test_whisper_adapter_runs_fake_whisper_cli_and_normalizes")) {
   if ($sttAdapterTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_stt_adapter.py missing STT adapter test coverage: $pattern"
   }
@@ -2471,21 +2669,21 @@ foreach ($pattern in @("STACKCHAN_WHISPER_CPP_EXE", "STACKCHAN_WHISPER_MODEL", "
 }
 
 $setupWhisperText = Get-Content -LiteralPath (Join-PackagePath "tools/setup_whisper_cpp.ps1") -Raw
-foreach ($pattern in @("stackchan.whisper-cpp-setup.v1", "whisper-bin-x64.zip", 'ggml-$Model.bin', "STACKCHAN_WHISPER_CPP_EXE", "STACKCHAN_WHISPER_MODEL")) {
+foreach ($pattern in @("stackchan.whisper-cpp-setup.v1", "whisper-bin-x64.zip", 'ggml-$Model.bin', "STACKCHAN_WHISPER_CPP_EXE", "STACKCHAN_WHISPER_SERVER_EXE", "whisper-server.exe", "whisperServerExe", "STACKCHAN_WHISPER_MODEL")) {
   if ($setupWhisperText -notmatch [regex]::Escape($pattern)) {
     throw "tools/setup_whisper_cpp.ps1 missing whisper.cpp setup support: $pattern"
   }
 }
 
 $ttsAdapterText = Get-Content -LiteralPath (Join-PackagePath "bridge/tts_adapter.py") -Raw
-foreach ($pattern in @("STACKCHAN_TTS_TEXT_BYTES", "STACKCHAN_TTS_VOICE", "STACKCHAN_TTS_OUTPUT", "normalize_tts_output", "audio_b64", "stackchan.tts-metadata.v1")) {
+foreach ($pattern in @("STACKCHAN_TTS_TEXT_BYTES", "STACKCHAN_TTS_VOICE", "STACKCHAN_TTS_OUTPUT", "normalize_tts_output", "directml_in_process", "in-process-directml", "audio_b64", "stackchan.tts-metadata.v1")) {
   if ($ttsAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/tts_adapter.py missing TTS adapter support: $pattern"
   }
 }
 
 $ttsAdapterTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_tts_adapter.py") -Raw
-foreach ($pattern in @("TtsAdapterTests", "test_compact_beat_output_normalizes_and_marks_final", "test_sidecar_frame_output_uses_frame_timing", "test_optional_audio_b64_is_decoded_and_counted", "test_tts_command_receives_text_and_voice_environment")) {
+foreach ($pattern in @("TtsAdapterTests", "test_compact_beat_output_normalizes_and_marks_final", "test_sidecar_frame_output_uses_frame_timing", "test_optional_audio_b64_is_decoded_and_counted", "test_tts_command_receives_text_and_voice_environment", "test_in_process_directml_tts_is_explicit_and_preserves_style", "test_in_process_directml_failure_uses_configured_command_fallback")) {
   if ($ttsAdapterTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_tts_adapter.py missing TTS adapter test coverage: $pattern"
   }
@@ -2615,6 +2813,7 @@ Assert-File "firmware/servo_calibration/firmware.bin" 100000
 Assert-File "firmware/full_online/firmware.bin" 1000000
 Assert-File "media/stackchan_alive_preview.png" 1000
 Assert-File "media/stackchan_alive_expression_sheet.png" 2000
+Assert-File "media/face_gallery.png" 2000
 Assert-File "media/stackchan_alive_preview.gif" 1000
 Assert-File "media/stackchan_alive_preview.mp4" 1000
 Assert-File "media/stackchan_alive_speech_preview.gif" 1000
@@ -2650,6 +2849,7 @@ Assert-File "media/voice/rvc/README.md" 400
 
 Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_expression_sheet.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "media/face_gallery.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "media/stackchan_alive_preview.mp4" ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
 Assert-Bytes "media/stackchan_alive_speech_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
@@ -2732,8 +2932,8 @@ if (-not ($envs -contains "stackchan") -or
   throw "Manifest missing expected environments"
 }
 
-if ($manifest.status -notmatch "public release" -or $manifest.status -notmatch "accepted by owner") {
-  throw "Manifest status must identify the owner-accepted public release"
+if ($manifest.status -notmatch "test-ready prerelease" -or $manifest.status -notmatch "hardware validation pending") {
+  throw "Manifest status must identify a test-ready prerelease with hardware validation pending"
 }
 
 if ($manifest.dirty -and -not $AllowDirtyPackage) {
@@ -2905,6 +3105,34 @@ if ($manifest.projectLicenseFile -ne "LICENSE") {
 
 if ($manifest.docsIndex -ne "docs/README.md") {
   throw "Manifest docsIndex mismatch: $($manifest.docsIndex)"
+}
+
+if ($manifest.bridgeDashboard -ne "docs/BRIDGE_DASHBOARD.md") {
+  throw "Manifest bridgeDashboard mismatch: $($manifest.bridgeDashboard)"
+}
+
+if ($manifest.bridgeDashboardService -ne "bridge/dashboard_service.py") {
+  throw "Manifest bridgeDashboardService mismatch: $($manifest.bridgeDashboardService)"
+}
+
+if ($manifest.bridgeDashboardLauncher -ne "tools/start_stackchan_dashboard.ps1") {
+  throw "Manifest bridgeDashboardLauncher mismatch: $($manifest.bridgeDashboardLauncher)"
+}
+
+if ($manifest.localResearchChecker -ne "tools/check_local_research.ps1") {
+  throw "Manifest localResearchChecker mismatch: $($manifest.localResearchChecker)"
+}
+
+if ($manifest.localResearchStarter -ne "tools/start_local_research.ps1") {
+  throw "Manifest localResearchStarter mismatch: $($manifest.localResearchStarter)"
+}
+
+if ($manifest.localResearchCompose -ne "tools/searxng/compose.yaml") {
+  throw "Manifest localResearchCompose mismatch: $($manifest.localResearchCompose)"
+}
+
+if ($manifest.desktopShortcutIcon -ne "docs/store-assets/desktop/stackchan-alive.ico") {
+  throw "Manifest desktopShortcutIcon mismatch: $($manifest.desktopShortcutIcon)"
 }
 
 if ($manifest.androidCompanionSource -ne "provenance/companion") {
@@ -3130,6 +3358,7 @@ if ($companionEvidenceManifest.result.diagnostics_exports_attached -ne $true) {
 $expectedMediaArtifacts = @(
   "media/stackchan_alive_preview.png",
   "media/stackchan_alive_expression_sheet.png",
+  "media/face_gallery.png",
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_speech_preview.gif",
@@ -3352,15 +3581,36 @@ foreach ($duplicate in $duplicateResolvedPackages) {
   $knownLegacyScServo = $duplicate.name -eq "SCServo" -and $duplicate.environment -in @("stackchan", "stackchan_servo_calibration")
   $duplicateEntries = ConvertTo-Array $duplicate.entries
   $duplicateVersions = @($duplicateEntries | ForEach-Object { [string]$_.version } | Sort-Object -Unique)
-  $knownFullOnlineM5Gfx = (
+  $knownPinnedM5GfxWithTransitiveCopy = (
     $duplicate.name -eq "M5GFX" -and
-    $duplicate.environment -eq "stackchan_release_full" -and
+    $duplicate.environment -in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full") -and
     $duplicate.count -eq 2 -and
     $duplicateVersions.Count -eq 2 -and
     $duplicateVersions[0] -eq "0.2.24" -and
-    $duplicateVersions[1] -eq "0.2.25"
+    $duplicateVersions[1] -eq "0.2.26"
   )
-  if (-not $knownLegacyScServo -and -not $knownFullOnlineM5Gfx) {
+  $knownPinnedM5UnifiedWithTransitiveCopy = (
+    $duplicate.name -eq "M5Unified" -and
+    $duplicate.environment -in @("stackchan", "stackchan_servo_calibration") -and
+    $duplicate.count -eq 2 -and
+    $duplicateEntries.Count -eq 2 -and
+    $duplicateVersions.Count -eq 2 -and
+    $duplicateVersions[0] -eq "0.2.17" -and
+    $duplicateVersions[1] -eq "0.2.19" -and
+    @($duplicateEntries | Where-Object {
+      $_.version -eq "0.2.17" -and
+      $_.required -eq "M5Stack/M5Unified @ 0.2.17"
+    }).Count -eq 1 -and
+    @($duplicateEntries | Where-Object {
+      $_.version -eq "0.2.19" -and
+      $_.required -eq "M5Stack/M5Unified @ ^0.2.5"
+    }).Count -eq 1
+  )
+  if (
+    -not $knownLegacyScServo -and
+    -not $knownPinnedM5GfxWithTransitiveCopy -and
+    -not $knownPinnedM5UnifiedWithTransitiveCopy
+  ) {
     throw "dependency_lock.json has unexpected duplicate resolved package: $($duplicate.environment)/$($duplicate.name)"
   }
 }
@@ -3716,10 +3966,13 @@ $acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.jso
 if ($acceptance.schema -ne "stackchan.release-acceptance.v1") {
   throw "release_acceptance.json schema mismatch: $($acceptance.schema)"
 }
-if ($acceptance.currentDecision -ne "owner-approved-release") {
+if ($acceptance.releaseClass -ne "test-ready-prerelease") {
+  throw "release_acceptance.json releaseClass mismatch: $($acceptance.releaseClass)"
+}
+if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
   throw "release_acceptance.json currentDecision mismatch: $($acceptance.currentDecision)"
 }
-if ($acceptance.consumerRolloutDecision -ne "released") {
+if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
   throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
 }
 foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "companion-c6-brain-supervision-evidence", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
@@ -3740,7 +3993,7 @@ if ($productionVoiceRequirement.Count -ne 1) {
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("owner-approved public release", "Consumer rollout: released", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Production RVC model and index")) {
+foreach ($pattern in @("test-ready for device arrival", "Consumer rollout: blocked pending hardware validation", "Required Physical Qualification", "source commit and firmware SHA-256", "Owner approval has not been recorded for this candidate", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Production RVC model and index")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -3756,6 +4009,9 @@ if ($actionsStatus.version -ne $Version) {
 if ($actionsStatus.commit -ne $ExpectedCommit) {
   throw "github_actions_status.json commit mismatch: expected $ExpectedCommit, got $($actionsStatus.commit)"
 }
+if ($null -eq $actionsStatus.firmwareCandidateReady) {
+  throw "github_actions_status.json missing firmwareCandidateReady"
+}
 if (@("post-push-check-required", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "success") -notcontains $actionsStatus.status) {
   throw "github_actions_status.json status is not release-acceptable: $($actionsStatus.status)"
 }
@@ -3763,6 +4019,20 @@ $requiredActionWorkflowNames = @($actionsStatus.requiredWorkflows | ForEach-Obje
 foreach ($workflowName in @("Firmware", "Release")) {
   if ($requiredActionWorkflowNames -notcontains $workflowName) {
     throw "github_actions_status.json missing required workflow contract: $workflowName"
+  }
+}
+if ($actionsStatus.firmwareCandidateReady -eq $true) {
+  $candidateMissingWorkflows = @($actionsStatus.missingRequiredWorkflows | ForEach-Object { [string]$_ })
+  $candidateFirmwareRuns = @($actionsStatus.workflows | Where-Object { $_.workflow -eq "Firmware" })
+  if (
+    $actionsStatus.status -ne "missing-required-workflow" -or
+    $actionsStatus.promotionReady -ne $false -or
+    $candidateMissingWorkflows.Count -ne 1 -or
+    $candidateMissingWorkflows[0] -ne "Release" -or
+    $candidateFirmwareRuns.Count -lt 1 -or
+    @($candidateFirmwareRuns | Where-Object { $_.status -ne "completed" -or $_.conclusion -ne "success" }).Count -gt 0
+  ) {
+    throw "github_actions_status.json has invalid Firmware candidate evidence"
   }
 }
 
@@ -3774,7 +4044,7 @@ foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "Requ
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "Status: public release", "Consumer rollout: owner-approved", "Proven Without Hardware", "Recipient Hardware Evidence", "private paired reference robot", "exact-image physical evidence", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "owner approved the reference release evidence")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "Status: test-ready prerelease", "Consumer rollout: blocked pending hardware validation", "Proven Without Hardware", "Required Physical Qualification", "Historical private paired-reference evidence", "source commit and firmware SHA-256", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "Owner approval has not been recorded for this candidate")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
@@ -3790,8 +4060,11 @@ if ($readinessJson.version -ne $Version) {
 if ($readinessJson.commit -ne $ExpectedCommit) {
   throw "readiness_report.json commit mismatch: expected $ExpectedCommit, got $($readinessJson.commit)"
 }
-if ($readinessJson.consumerRollout -ne "owner-approved") {
-  throw "readiness_report.json must record the owner's release decision"
+if ($readinessJson.status -ne "test-ready-prerelease") {
+  throw "readiness_report.json status mismatch: $($readinessJson.status)"
+}
+if ($readinessJson.consumerRollout -ne "blocked-pending-hardware-validation") {
+  throw "readiness_report.json must block rollout pending hardware validation"
 }
 foreach ($gate in @($readinessJson.noHardwareProof)) {
   if ($gate.status -ne "pass") {

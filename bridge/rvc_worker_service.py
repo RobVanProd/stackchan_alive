@@ -20,6 +20,7 @@ os.environ.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
 from rvc_python.infer import RVCInference
 
 from rvc_tts import float_env, int_env, rvc_index_path, rvc_model_path
+from voice_device_truth import torch_device_truth
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -74,10 +75,13 @@ class RvcWorker:
         avg_ms = self.total_convert_ms / self.convert_count if self.convert_count else 0.0
         avg_queue_ms = self.total_queue_wait_ms / self.convert_count if self.convert_count else 0.0
         avg_infer_ms = self.total_infer_ms / self.convert_count if self.convert_count else 0.0
+        device_name, device_available = torch_device_truth(self.device)
         return {
             "schema": "stackchan.rvc-worker.health.v1",
             "ready": True,
             "device": self.device,
+            "device_name": device_name,
+            "device_available": device_available,
             "method": self.method,
             "model": str(self.model_path),
             "index": str(self.index_path),

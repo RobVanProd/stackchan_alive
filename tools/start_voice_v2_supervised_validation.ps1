@@ -82,22 +82,28 @@ try {
   $WorkerHealth = $null
   while ((Get-Date) -lt $Deadline) {
     try { $WorkerHealth = Invoke-RestMethod -Uri "http://127.0.0.1:5059/health" -TimeoutSec 3 } catch { $WorkerHealth = $null }
-    if ($WorkerHealth -and $WorkerHealth.ready) { break }
+    if ($WorkerHealth -and $WorkerHealth.ready -and
+        $WorkerHealth.synthesis_ready) { break }
     Start-Sleep -Seconds 1
   }
-  if (-not $WorkerHealth -or -not $WorkerHealth.ready) { throw "DirectML candidate worker did not become ready." }
+  if (-not $WorkerHealth -or -not $WorkerHealth.ready -or
+      -not $WorkerHealth.synthesis_ready) {
+    throw "DirectML candidate worker did not become ready."
+  }
   $WorkerHealth | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $EvidencePath "worker-health.json") -Encoding UTF8
 
   $env:STACKCHAN_RVC_DIRECTML_WORKER_URL = "http://127.0.0.1:5059"
   $TtsCommand = "$PythonExe bridge\rvc_directml_tts_client.py"
   & (Join-Path $PSScriptRoot "start_pc_brain.ps1") `
     -StopExisting -Background -EnableAudioDownlink -StreamTtsPhrases `
+    -InProcessOllamaRunner -InProcessDirectMlTts `
     -TtsCommand $TtsCommand -TtsVoice "stackchan-rvc-directml-v2" `
     -TtsPhraseMaxChars 96 -DownlinkAudioChunkBytes 4096 `
     -DownlinkBinaryFrameDelayMs 70 -DownlinkTextFrameDelayMs 40 `
     -LogDir $EvidencePath -MemoryFile "output\pc-brain\latest\memory.json" `
     -TurnLogFile (Join-Path $EvidencePath "turns.jsonl") `
-    -AudioEvidenceDir (Join-Path $EvidencePath "audio-evidence")
+    -AudioEvidenceDir (Join-Path $EvidencePath "audio-evidence") `
+    -EnablePrivateTurnEvidence
   if ($LASTEXITCODE -ne 0) { throw "Could not start the candidate bridge." }
 
   $CandidatePid = [int](Get-Content -LiteralPath (Join-Path $EvidencePath "lan_service.pid") -Raw)

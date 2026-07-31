@@ -46,18 +46,54 @@ firmware. See `LOCAL_VISION.md`.
 
 If a future bridge feature needs remote analysis, it must be implemented as an explicit host-side bridge feature with user configuration, release documentation, and evidence showing when data leaves the device.
 
+Post-release source now includes an explicit local room-observation path. It is default-off,
+accepts only an authenticated private-LAN grayscale frame, converts that frame in memory, and
+sends it only to an operator-configured loopback Ollama vision model. The bridge retains only
+allowlisted typed fields: bounded person count, coarse activity, coarse object categories,
+lighting, and locally computed changes. It rejects identity and free-form person descriptions,
+never writes frames to disk, and clears the current summary when observation is disabled. The
+loopback dashboard exposes both the off switch and a bounded 2-30 minute interval. Missing camera
+authentication or a missing vision model degrades this feature without changing conversation.
+
 ## Bridge Ownership
 
 The bridge owns host-side STT, LLM, TTS, memory, and persona composition. The firmware owns modes, animation, motion, safety, timeout recovery, and serial-visible telemetry.
 
-The minimum bridge memory scaffold is intentionally small:
+The bridge memory store is one bounded, atomically replaced local JSON file. Schema v4 contains:
 
 - `preferred_name`
 - `recent_topics`
 - `physical_context`
 - `turns_seen`
+- approved durable facts and expiring recent context
+- up to 30 sanitized session episodes
+- up to 6 sanitized one-shot open loops
+- aggregate rejection, distillation-drop, and durable-eviction counters
 
-The current scaffold does not perform biometric identification and does not persist private audio. The reference bridge can persist only the minimal fields above to a local JSON file when `--memory-file --save-memory` is explicitly used, and `--reset-memory` deletes that store before rendering. The LAN service may keep raw PCM in an in-memory bounded buffer only during one active utterance; that buffer is cleared at `utterance_end` or `cancel`. If an STT command is configured, that one-turn PCM is passed to the command on stdin with sample-rate metadata in environment variables. If a TTS command is configured, response text is passed to the command on stdin and the command may return mouth-timing metadata plus audio bytes for LAN downlink. Operators should keep these commands local and avoid transcript/audio logging unless explicitly collecting evidence. Generated TTS audio bytes should remain within the configured LAN session and should not be persisted unless evidence collection explicitly requires it.
+Every episode and open loop passes the existing denylist at creation, load, and prompt assembly.
+Medical/health and relationship callbacks are impossible by design; there is no exception. Web
+evidence never creates episodes or loops. Conversation lease turns remain in memory only and are
+erased at close. The default session-close episode is derived from eligible topic labels and a
+turn count, not raw dialogue.
+
+Episode distillation changes that lease-erasure boundary, so the base launcher keeps it opt-in;
+the production Conversation v2 launcher enables it unless the owner disables it. At most 24
+bounded local lease turns are sent to the configured local Ollama model after session close; the
+transport rejects non-loopback endpoints, and only one strict, fully sanitized episode may
+persist. The model cannot create callbacks; open loops remain deterministic. Any invalid field
+drops the whole result. No distillation data is sent to a cloud service by this feature.
+
+The bridge does not perform biometric identification or persist private audio. The LAN service may
+keep raw PCM in a bounded buffer only during one active utterance; it clears that buffer at
+`utterance_end` or `cancel`. At the end marker, the socket thread freezes one immutable PCM
+snapshot before model work starts, verifies the sender's declared byte/chunk totals, and rejects
+late binary frames instead of adding them to the next turn. Production STT uses an in-memory WAV
+request to a loopback-only resident whisper.cpp server; it rejects redirects and writes no
+temporary microphone file. TTS receives response text and may return timing plus local audio
+bytes. Normal production launch redacts transcript and response fields from the turn log and
+does not configure an audio-evidence directory. Raw WAV and unredacted turn evidence require an
+explicit private validation switch. Generated audio remains session-local unless that private
+evidence collection is enabled.
 
 ## Evidence Requirements
 
@@ -71,6 +107,8 @@ Release and hardware evidence should prove the privacy boundary, not just descri
 - Voice-source status showing the exact public production RVC hashes while raw microphone recordings and generated conversation audio remain local.
 - Camera evidence showing paired requests, zero authentication failures, no frame persistence,
   bounded face-box output, and camera/host-vision endpoints absent from the production image.
+- Conversation evidence showing declared upload totals equal received totals, no
+  `stackchan.audio-protocol-event.v1` late-frame records, and no writer text/binary drops.
 
 ## User Controls
 

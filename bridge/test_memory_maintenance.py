@@ -26,7 +26,7 @@ class MemoryMaintenanceTests(unittest.TestCase):
             self.assertEqual(original, json.loads(path.read_text(encoding="utf-8")))
             self.assertEqual([], list(path.parent.glob("memory.backup-*.json")))
 
-    def test_apply_backs_up_and_writes_sanitized_v3(self) -> None:
+    def test_apply_backs_up_and_writes_sanitized_v4(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "memory.json"
             path.write_text(
@@ -50,6 +50,8 @@ class MemoryMaintenanceTests(unittest.TestCase):
             self.assertEqual("", repaired["preferred_name"])
             self.assertEqual(["voice"], repaired["recent_topics"])
             self.assertEqual([], repaired["physical_context"])
+            self.assertEqual([], repaired["episodes"])
+            self.assertEqual([], repaired["open_loops"])
 
             clean_report = audit_or_repair(path, apply=False)
             self.assertEqual("clean", clean_report["status"])

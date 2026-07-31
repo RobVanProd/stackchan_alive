@@ -8,8 +8,10 @@ import base64
 import binascii
 import io
 import json
+import math
 import os
 import re
+import time
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +29,19 @@ MAX_TTS_AUDIO_BYTES = 2 * 1024 * 1024
 PLAYABLE_AUDIO_FORMATS = {"pcm16", "s16le", "raw16", "pcm_s16le"}
 WAV_AUDIO_FORMATS = {"wav", "wave", "audio/wav", "audio/x-wav"}
 SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+TTS_STYLE_MODES = {
+    "idle",
+    "attend",
+    "listen",
+    "think",
+    "speak",
+    "react",
+    "happy",
+    "concern",
+    "sleep",
+    "error",
+    "safety",
+}
 
 
 class TtsConfigurationError(RuntimeError):
@@ -232,10 +247,15 @@ def normalize_tts_output(raw_output: bytes) -> tuple[tuple[TtsBeat, ...], dict[s
     for key in (
         "audio_truncated",
         "base_tts_elapsed_ms",
+        "base_tts_backend",
+        "base_tts_fallback_reason",
+        "audio_decode_backend",
+        "audio_decode_elapsed_ms",
         "rvc_elapsed_ms",
         "rvc_worker_elapsed_ms",
         "rvc_queue_wait_ms",
         "rvc_infer_elapsed_ms",
+        "rvc_synthesis_elapsed_ms",
         "rvc_adapter_elapsed_ms",
         "rvc_device",
         "rvc_f0_method",
@@ -329,18 +349,36 @@ def clamp_int(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
 
+def bounded_float(value: object, default: float, low: float, high: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(parsed):
+        return default
+    return max(low, min(high, parsed))
+
+
 def run_tts_command(
     command: str,
     text: str,
     voice: str,
     timeout_ms: int,
     cancellation: CancellationToken | None = None,
+    *,
+    mode: str = "speak",
+    arousal: float = 0.5,
+    valence: float = 0.0,
 ) -> tuple[tuple[TtsBeat, ...], dict[str, object], float]:
     payload = text.encode("utf-8")
     env = os.environ.copy()
     env["STACKCHAN_TTS_TEXT_BYTES"] = str(len(payload))
     env["STACKCHAN_TTS_VOICE"] = voice
     env["STACKCHAN_TTS_OUTPUT"] = "stackchan.tts-metadata.v1"
+    clean_mode = str(mode or "speak").strip().lower()
+    env["STACKCHAN_TTS_MODE"] = clean_mode if clean_mode in TTS_STYLE_MODES else "speak"
+    env["STACKCHAN_TTS_AROUSAL"] = f"{bounded_float(arousal, 0.5, 0.0, 1.0):.3f}"
+    env["STACKCHAN_TTS_VALENCE"] = f"{bounded_float(valence, 0.0, -1.0, 1.0):.3f}"
     try:
         completed = run_cancellable_process(
             command,
@@ -366,6 +404,10 @@ def synthesize_speech(
     voice: str = DEFAULT_TTS_VOICE,
     timeout_ms: int = DEFAULT_TTS_TIMEOUT_MS,
     cancellation: CancellationToken | None = None,
+    mode: str = "speak",
+    arousal: float = 0.5,
+    valence: float = 0.0,
+    directml_in_process: bool = False,
 ) -> TtsResult:
     resolved_command, command_source = resolve_tts_command(command)
     if not resolved_command:
@@ -374,9 +416,49 @@ def synthesize_speech(
     if not clean_text:
         raise TtsExecutionError("tts text is empty")
     clean_voice = " ".join(str(voice or DEFAULT_TTS_VOICE).split())[:80]
-    beats, metadata, elapsed_ms = run_tts_command(
-        resolved_command, clean_text, clean_voice, timeout_ms, cancellation
-    )
+    if directml_in_process:
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
+        started = time.perf_counter()
+        try:
+            from rvc_production_tts_client import synthesize_production
+
+            produced = synthesize_production(
+                clean_text,
+                mode=mode,
+                arousal=arousal,
+                valence=valence,
+            )
+            beats, metadata = normalize_tts_output(
+                json.dumps(produced, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+            )
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            command_source = "in-process-directml"
+        except Exception:
+            beats, metadata, elapsed_ms = run_tts_command(
+                resolved_command,
+                clean_text,
+                clean_voice,
+                timeout_ms,
+                cancellation,
+                mode=mode,
+                arousal=arousal,
+                valence=valence,
+            )
+            command_source = f"{command_source}:fallback"
+    else:
+        beats, metadata, elapsed_ms = run_tts_command(
+            resolved_command,
+            clean_text,
+            clean_voice,
+            timeout_ms,
+            cancellation,
+            mode=mode,
+            arousal=arousal,
+            valence=valence,
+        )
+    if cancellation is not None:
+        cancellation.raise_if_cancelled()
     return TtsResult(
         beats=beats,
         elapsed_ms=elapsed_ms,

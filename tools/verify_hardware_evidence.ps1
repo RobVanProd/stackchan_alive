@@ -866,11 +866,11 @@ Assert-File "reference_audio/RVC_AUDITIONS.json" 500
 $leadReferencePath = Join-EvidencePath ([string]$metadata.voiceLeadAudition.referenceFile)
 $leadReferenceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $leadReferencePath).Hash.ToLowerInvariant()
 if ($leadReferenceHash -ne [string]$metadata.voiceLeadAudition.sha256) {
-  throw "RVC lead audition reference hash does not match metadata"
+  throw "Voice playback reference hash does not match metadata"
 }
 
 $leadReferenceText = Get-Content -LiteralPath (Join-EvidencePath "RVC_LEAD_AUDITION.md") -Raw
-foreach ($pattern in @("RVC Lead Audition Reference", [string]$metadata.voiceLeadAudition.title, [string]$metadata.voiceLeadAudition.referenceFile, [string]$metadata.voiceLeadAudition.sha256, "not production voice-source approval")) {
+foreach ($pattern in @("Stackchan Voice Playback Reference", [string]$metadata.voiceLeadAudition.title, [string]$metadata.voiceLeadAudition.referenceFile, [string]$metadata.voiceLeadAudition.sha256, "not production voice-source approval")) {
   if ($leadReferenceText -notmatch [regex]::Escape($pattern)) {
     throw "RVC_LEAD_AUDITION.md missing expected marker: $pattern"
   }

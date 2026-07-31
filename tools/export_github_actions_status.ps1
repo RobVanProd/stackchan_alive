@@ -4,7 +4,8 @@ param(
   [string]$Commit = "",
   [string]$OutputDir = "",
   [string[]]$RequiredWorkflows = @("Firmware", "Release"),
-  [string]$FixtureRoot = ""
+  [string]$FixtureRoot = "",
+  [switch]$AcceptFirmwareCandidate
 )
 
 $ErrorActionPreference = "Stop"
@@ -186,6 +187,15 @@ $billingMessages = @(
 )
 $jobsNeverReachedRunner = ($allJobs.Count -gt 0 -and @($allJobs | Where-Object { $_.runnerId -eq 0 -and $_.stepCount -eq 0 }).Count -eq $allJobs.Count)
 $allSuccessful = ($allRequiredWorkflowsObserved -and $runReports.Count -gt 0 -and @($runReports | Where-Object { $_.conclusion -ne "success" }).Count -eq 0)
+$firmwareReports = @($runReports | Where-Object { $_.workflow -eq "Firmware" })
+$firmwareCandidateReady = (
+  $RequiredWorkflows -contains "Firmware" -and
+  $RequiredWorkflows -contains "Release" -and
+  $missingRequiredWorkflows.Count -eq 1 -and
+  $missingRequiredWorkflows[0] -eq "Release" -and
+  $firmwareReports.Count -gt 0 -and
+  @($firmwareReports | Where-Object { $_.status -ne "completed" -or $_.conclusion -ne "success" }).Count -eq 0
+)
 
 $summaryStatus = "missing"
 if (-not $allRequiredWorkflowsObserved -and $runReports.Count -gt 0) {
@@ -234,6 +244,7 @@ $report = [ordered]@{
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   status = $summaryStatus
   promotionReady = $promotionReady
+  firmwareCandidateReady = $firmwareCandidateReady
   externalBlock = $externalBlock
   nextAction = $nextAction
   nextCommand = $nextCommand
@@ -243,6 +254,8 @@ $report = [ordered]@{
     "GitHub Actions did not start any job steps and no runner was assigned to any matching job. GitHub did not provide a billing annotation, so this is recorded as an external pre-runner allocation failure rather than an in-repo build or test failure. Treat local release verification and device preflight as the available technical evidence until hosted jobs can start."
   } elseif ($summaryStatus -eq "success") {
     "GitHub Actions completed successfully for all required workflows on the matching commit."
+  } elseif ($firmwareCandidateReady) {
+    "The exact-commit Firmware workflow completed successfully. The tag-only Release workflow is intentionally pending, so this is suitable for supervised prerelease hardware qualification but not promotion."
   } elseif ($summaryStatus -eq "missing-required-workflow") {
     "At least one required GitHub Actions workflow was not found for this commit in the recent run list. This is not promotion-ready because success requires every required workflow to be observed."
   } elseif ($summaryStatus -eq "missing") {
@@ -290,6 +303,7 @@ Commit: $Commit
 Repository: $Repo
 Status: $summaryStatus
 Required workflows: $($RequiredWorkflows -join ", ")
+Firmware candidate ready: $firmwareCandidateReady
 
 $($report.interpretation)
 
@@ -315,6 +329,10 @@ Write-Host "GitHub Actions status exported:"
 Write-Host $mdPath
 Write-Host $jsonPath
 
-if ($summaryStatus -eq "failed-or-incomplete" -or $summaryStatus -eq "missing" -or $summaryStatus -eq "missing-required-workflow") {
+if (
+  $summaryStatus -eq "failed-or-incomplete" -or
+  $summaryStatus -eq "missing" -or
+  ($summaryStatus -eq "missing-required-workflow" -and -not ($AcceptFirmwareCandidate -and $firmwareCandidateReady))
+) {
   exit 1
 }

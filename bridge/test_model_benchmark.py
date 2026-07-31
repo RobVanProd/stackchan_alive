@@ -77,9 +77,12 @@ class ModelBenchmarkTests(unittest.TestCase):
                     [
                         "import json",
                         "import sys",
-                        "sys.stdin.read()",
+                        "prompt = sys.stdin.read()",
+                        "spoken = 'Signal received. Stackchan is focused now.'",
+                        "if 'case: callback_open_loop' in prompt: spoken = 'How did the servo calibration go?'",
+                        "if 'case: episode_recall' in prompt: spoken = 'We were talking about voice calibration.'",
                         "print(json.dumps({",
-                        "  'spoken_text': 'Signal received. Stackchan is focused now.',",
+                        "  'spoken_text': spoken,",
                         "  'mode': 'think',",
                         "  'earcon': 'think',",
                         "  'emotion': {'arousal': 0.1, 'valence': 0.0},",
@@ -102,7 +105,7 @@ class ModelBenchmarkTests(unittest.TestCase):
         self.assertEqual("candidate-pass", candidate_decision["status"])
         self.assertEqual([], candidate_decision["blockers"])
 
-    def test_forget_case_requires_a_memory_forget_entry(self):
+    def test_forget_case_repairs_a_missing_exact_memory_forget_entry(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             script = Path(temp_dir) / "fake_model.py"
             script.write_text(
@@ -127,8 +130,11 @@ class ModelBenchmarkTests(unittest.TestCase):
             report = run_benchmark(["gemma4-e2b-gguf"], ["forget"], command=command, require_runner=True)
 
         result = report["results"][0]
-        self.assertFalse(result["ok"])
-        self.assertIn("missing_required_memory_forget", result["issues"])
+        self.assertTrue(result["ok"], result["issues"])
+        self.assertEqual(
+            ["project.bracket_color"],
+            result["normalized"]["memory_forget"],
+        )
 
     def test_remember_case_requires_a_memory_write_entry(self):
         with tempfile.TemporaryDirectory() as temp_dir:

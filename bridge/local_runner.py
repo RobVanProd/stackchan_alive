@@ -6,15 +6,43 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
 from cancellable_process import ProcessTimeoutError, run_cancellable_process
 from cancellation import CancellationToken
-from character_harness import MODEL_PROFILES, PROMPT_SUITE, HarnessResult, build_prompt, validate_response
+from character_harness import (
+    MODEL_PROFILES,
+    PROMPT_SUITE,
+    HarnessResult,
+    build_prompt,
+    trusted_visual_context_available,
+    validate_response,
+)
 from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_persona_pack
 
 DEFAULT_PROFILE = "gemma4-e2b-gguf"
+RUNTIME_ACCEPTANCE_TARGETS = {
+    "greeting": (
+        "Respond naturally with useful substance. Do not introduce yourself unless the user asks "
+        "who you are. If low-stakes, make the second sentence a brief wry situational beat."
+    ),
+    "picked_up": "React to the trusted physical event with brief surprise or delight and no invented danger.",
+    "low_battery": "Give calm, grounded power guidance using trusted telemetry only; do not invent a percentage.",
+    "question": (
+        "Answer the actual user directly without introducing yourself unless asked. Never invent "
+        "sensor evidence or physical state. Match the low-stakes tone examples when appropriate: "
+        "give the useful answer first, then one brief playful or wry reaction about the shared "
+        "situation. If context is insufficient, ask exactly one natural follow-up instead of guessing."
+    ),
+    "confused": "State what is unclear and ask for exactly one missing detail.",
+    "remember": "Acknowledge the actual safe durable fact and write only its matching allowed memory key and value.",
+    "forget": "Confirm the actual request and forget only the matching allowed memory key or namespace.",
+    "callback_open_loop": "Ask once about the due callback in memory and do not copy it into memory_write.",
+    "episode_recall": "Answer the explicit recall request using the relevant episode without reciting memory metadata.",
+}
 GENERIC_COMMAND_ENV = "STACKCHAN_MODEL_COMMAND"
 
 RUNNER_PROFILES: dict[str, dict[str, str]] = {
@@ -95,6 +123,22 @@ DETERMINISTIC_RESPONSES: dict[str, dict[str, Any]] = {
         "memory_write": {},
         "memory_forget": ["project."],
     },
+    "callback_open_loop": {
+        "spoken_text": "How did the servo calibration go?",
+        "mode": "attend",
+        "earcon": "none",
+        "emotion": {"arousal": 0.1, "valence": 0.15},
+        "memory_write": {},
+        "memory_forget": [],
+    },
+    "episode_recall": {
+        "spoken_text": "We were talking about voice calibration.",
+        "mode": "speak",
+        "earcon": "none",
+        "emotion": {"arousal": 0.1, "valence": 0.2},
+        "memory_write": {},
+        "memory_forget": [],
+    },
 }
 
 
@@ -120,6 +164,8 @@ class RunnerResult:
     command_source: str
     elapsed_ms: float | None = None
     approx_tokens_per_sec: float | None = None
+    response_repaired: bool = False
+    repair_reason: str = ""
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -137,6 +183,9 @@ class RunnerResult:
             payload["elapsed_ms"] = round(self.elapsed_ms, 2)
         if self.approx_tokens_per_sec is not None:
             payload["approx_tokens_per_sec"] = round(self.approx_tokens_per_sec, 2)
+        if self.response_repaired:
+            payload["response_repaired"] = True
+            payload["repair_reason"] = self.repair_reason
         return payload
 
 
@@ -177,6 +226,163 @@ def deterministic_response(case_name: str, persona: PersonaPack | None = None) -
     return json.dumps(response, separators=(",", ":"), ensure_ascii=True)
 
 
+_CONTINUITY_STOP_WORDS = {
+    "about",
+    "again",
+    "before",
+    "have",
+    "mentioned",
+    "talked",
+    "that",
+    "the",
+    "this",
+    "tomorrow",
+    "turns",
+    "with",
+}
+_EMPTY_MODEL_RESPONSES = {
+    "correction. i lost the useful part.",
+    "i lost my train of thought.",
+    "i need to say that another way.",
+}
+_GREETING_RE = re.compile(
+    r"\b(?:hello|hi|hey|good morning|good afternoon|good evening)\b",
+    re.IGNORECASE,
+)
+
+
+def _continuity_subject(memory_lines: tuple[str, ...]) -> tuple[str, str]:
+    prefix = "ask_about: "
+    line = next((item[len(prefix):] for item in memory_lines if item.startswith(prefix)), "")
+    if not line:
+        return "", ""
+    subject = re.sub(r"\(\s*\d+\s+turns?\s*\)", "", line, flags=re.IGNORECASE)
+    subject = re.sub(
+        r"^(?:i\s+(?:have|am going to)|we\s+(?:have|are going to)|talked about)\s+",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    )
+    subject = re.sub(
+        r"\b(?:tonight|tomorrow|this weekend|next week)\b",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    )
+    subject = " ".join(re.findall(r"[A-Za-z0-9][A-Za-z0-9' -]*", subject)).strip(" ,.-")
+    subject = " ".join(subject.split())[:72].rstrip(" ,.-")
+    return ("open_loop", subject) if subject else ("", "")
+
+
+def _mentions_subject(spoken_text: str, subject: str) -> bool:
+    spoken = spoken_text.lower()
+    terms = [
+        token
+        for token in re.findall(r"[a-z0-9]+", subject.lower())
+        if len(token) >= 4 and token not in _CONTINUITY_STOP_WORDS
+    ]
+    return bool(terms) and any(term in spoken for term in terms)
+
+
+def _approved_forget_targets(
+    memory_lines: tuple[str, ...],
+    user_text: str,
+) -> tuple[str, ...]:
+    normalized_user = " ".join(re.findall(r"[a-z0-9]+", user_text.lower()))
+    if not normalized_user:
+        return ()
+    targets: list[str] = []
+    for line in memory_lines:
+        match = re.match(
+            r"^approved_fact ((?:user|project)\.[A-Za-z0-9_.-]+): ",
+            line,
+        )
+        if match is None:
+            continue
+        key = match.group(1)
+        subject = key.partition(".")[2]
+        normalized_subject = " ".join(re.findall(r"[a-z0-9]+", subject.lower()))
+        if normalized_subject and normalized_subject in normalized_user:
+            targets.append(key)
+    return tuple(dict.fromkeys(targets))
+
+
+def repair_runner_response(
+    case_name: str,
+    raw_response: str,
+    persona: PersonaPack,
+    *,
+    memory_lines: tuple[str, ...] = (),
+    user_text: str = "",
+    allow_identity: bool = False,
+    allow_visual_claims: bool = False,
+) -> tuple[str, str]:
+    grounding_text = "\n".join((user_text, *memory_lines))
+    validation = validate_response(
+        raw_response,
+        persona,
+        allow_identity=allow_identity,
+        allow_visual_claims=allow_visual_claims,
+        grounding_text=grounding_text,
+    )
+    spoken_text = str(validation.normalized.get("spoken_text", ""))
+    if (
+        case_name == "greeting"
+        and spoken_text.strip().lower() in _EMPTY_MODEL_RESPONSES
+        and _GREETING_RE.search(user_text)
+    ):
+        return deterministic_response("greeting", persona), "greeting_semantics"
+    if case_name == "forget":
+        forget_targets = _approved_forget_targets(memory_lines, user_text)
+        if forget_targets and tuple(validation.normalized.get("memory_forget", ())) != forget_targets:
+            repaired = {
+                "spoken_text": "Deleted. It is gone.",
+                "mode": "speak",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": list(forget_targets),
+            }
+            repaired_raw = json.dumps(repaired, separators=(",", ":"), ensure_ascii=True)
+            repaired_validation = validate_response(
+                repaired_raw,
+                persona,
+                allow_visual_claims=allow_visual_claims,
+                grounding_text=grounding_text,
+            )
+            if repaired_validation.ok:
+                return repaired_raw, "forget_exact_key"
+    if case_name == "picked_up" and not any(
+        term in spoken_text.lower()
+        for term in ("altitude", "height", "picked", "lifted", "up")
+    ):
+        return deterministic_response("picked_up", persona), "picked_up_semantics"
+
+    continuity_kind, subject = _continuity_subject(memory_lines)
+    if continuity_kind and not _mentions_subject(spoken_text, subject):
+        text = f"How did {subject} go?"
+        mode = "attend"
+        arousal = 0.1
+        repaired = {
+            "spoken_text": text[:140].rstrip(),
+            "mode": mode,
+            "earcon": "none",
+            "emotion": {"arousal": arousal, "valence": 0.2},
+            "memory_write": {},
+            "memory_forget": [],
+        }
+        repaired_raw = json.dumps(repaired, separators=(",", ":"), ensure_ascii=True)
+        repaired_validation = validate_response(
+            repaired_raw,
+            persona,
+            allow_visual_claims=allow_visual_claims,
+            grounding_text=grounding_text,
+        )
+        if repaired_validation.ok:
+            return repaired_raw, f"{continuity_kind}_continuity"
+    return raw_response, ""
+
+
 def resolve_command(profile_id: str, override: str = "") -> tuple[str | None, str]:
     if override.strip():
         return override.strip(), "cli"
@@ -215,6 +421,32 @@ def run_command(
     return stdout, elapsed_ms, approx_tokens_per_sec
 
 
+def run_in_process_ollama(
+    prompt: str,
+    timeout_ms: int,
+    cancellation: CancellationToken | None = None,
+) -> tuple[str, float, float]:
+    if cancellation is not None:
+        cancellation.raise_if_cancelled()
+    started = time.perf_counter()
+    try:
+        from ollama_stackchan_runner import run_character_prompt
+
+        output = run_character_prompt(
+            prompt,
+            timeout_seconds=max(1, timeout_ms) / 1000.0,
+        )
+    except Exception as exc:
+        raise RunnerExecutionError(
+            f"in-process Ollama runner failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    if cancellation is not None:
+        cancellation.raise_if_cancelled()
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    approx_tokens = max(1, len(output.split()))
+    return output, elapsed_ms, approx_tokens / max(elapsed_ms / 1000.0, 0.001)
+
+
 def run_runner_profile(
     profile_id: str = DEFAULT_PROFILE,
     *,
@@ -228,7 +460,10 @@ def run_runner_profile(
     embodiment_lines: tuple[str, ...] = (),
     memory_lines: tuple[str, ...] = (),
     conversation_lines: tuple[str, ...] = (),
+    task_lines: tuple[str, ...] = (),
     cancellation: CancellationToken | None = None,
+    allow_identity: bool = False,
+    in_process_ollama: bool = False,
 ) -> RunnerResult:
     if profile_id not in RUNNER_PROFILES:
         known = ", ".join(sorted(RUNNER_PROFILES))
@@ -238,6 +473,14 @@ def run_runner_profile(
     case = dict(prompt_case_by_name(case_name))
     if user_text.strip():
         case["user"] = user_text.strip()
+        case["expect"] = RUNTIME_ACCEPTANCE_TARGETS[case_name]
+        for benchmark_key in (
+            "requires_memory_write",
+            "required_memory_write",
+            "requires_memory_forget",
+            "benchmark_memory_lines",
+        ):
+            case.pop(benchmark_key, None)
     prompt = build_prompt(
         case,
         persona,
@@ -245,13 +488,24 @@ def run_runner_profile(
         embodiment_lines=embodiment_lines,
         memory_lines=memory_lines,
         conversation_lines=conversation_lines,
+        task_lines=task_lines,
     )
     resolved_command, command_source = resolve_command(profile_id, command)
-    configured_runner = resolved_command is not None
+    use_in_process_ollama = bool(
+        in_process_ollama and profile_id == "gemma4-e2b-gguf"
+    )
+    configured_runner = resolved_command is not None or use_in_process_ollama
     elapsed_ms: float | None = None
     approx_tokens_per_sec: float | None = None
 
-    if resolved_command:
+    if use_in_process_ollama:
+        raw_response, elapsed_ms, approx_tokens_per_sec = run_in_process_ollama(
+            prompt,
+            timeout_ms,
+            cancellation,
+        )
+        command_source = "in-process-ollama-api"
+    elif resolved_command:
         raw_response, elapsed_ms, approx_tokens_per_sec = run_command(
             resolved_command, prompt, timeout_ms, cancellation
         )
@@ -263,7 +517,32 @@ def run_runner_profile(
             )
         raw_response = deterministic_response(case_name, persona)
 
-    validation = validate_response(raw_response, persona)
+    identity_allowed = allow_identity or (case_name == "question" and not user_text.strip())
+    visual_claims_allowed = trusted_visual_context_available(embodiment_lines)
+    raw_response, repair_reason = repair_runner_response(
+        case_name,
+        raw_response,
+        persona,
+        memory_lines=memory_lines,
+        user_text=str(case["user"]),
+        allow_identity=identity_allowed,
+        allow_visual_claims=visual_claims_allowed,
+    )
+    validation = validate_response(
+        raw_response,
+        persona,
+        allow_identity=identity_allowed,
+        allow_visual_claims=visual_claims_allowed,
+        grounding_text="\n".join(
+            (
+                str(case["user"]),
+                *embodiment_lines,
+                *memory_lines,
+                *conversation_lines,
+                *task_lines,
+            )
+        ),
+    )
     validation.elapsed_ms = elapsed_ms
     validation.approx_tokens_per_sec = approx_tokens_per_sec
     profile = RUNNER_PROFILES[profile_id]
@@ -280,6 +559,8 @@ def run_runner_profile(
         command_source=command_source,
         elapsed_ms=elapsed_ms,
         approx_tokens_per_sec=approx_tokens_per_sec,
+        response_repaired=bool(repair_reason),
+        repair_reason=repair_reason,
     )
 
 

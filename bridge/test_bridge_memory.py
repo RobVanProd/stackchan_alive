@@ -14,6 +14,7 @@ from bridge_memory import (
     MAX_RECENT_CONTEXT,
     MEMORY_SCHEMA,
     MEMORY_SCHEMA_VERSION,
+    explicit_forget_keys,
 )
 from reference_bridge import BridgeMemory, load_bridge_memory, save_bridge_memory
 
@@ -161,13 +162,77 @@ class BridgeMemoryStoreTests(unittest.TestCase):
         self.assertEqual("", memory.fact_value("user.thing"))
         self.assertEqual([], memory.to_dict()["durable_facts"])
 
+    def test_incidental_weather_place_is_session_only_and_not_serialized(self):
+        memory = BridgeMemory().remember_weather_location(
+            "West Berlin",
+            now="2026-08-01T00:00:00Z",
+        )
+        self.assertEqual("", memory.weather_location(now="2026-08-02T00:00:00Z"))
+        saved = memory.to_dict()
+        self.assertFalse(any("weather" in record["key"] for record in saved["durable_facts"]))
+        self.assertFalse(any("weather" in record["key"] for record in saved["recent_context"]))
+
+    def test_explicit_weather_default_supersedes_recent_place_and_is_forgettable(self):
+        memory = BridgeMemory().remember_weather_location("Boston")
+        memory = memory.remember_user_text(
+            "Always use West Berlin as my default weather place."
+        )
+        self.assertEqual("West Berlin", memory.weather_location())
+        saved = memory.to_dict()
+        self.assertTrue(
+            any(
+                record["key"] == "user.weather_default_location"
+                and record["value"] == "West Berlin"
+                for record in saved["durable_facts"]
+            )
+        )
+        self.assertFalse(
+            any(
+                record["key"] == "user.weather_recent_location"
+                for record in saved["recent_context"]
+            )
+        )
+        forgotten = memory.remember_user_text("Forget my weather location.")
+        self.assertEqual("", forgotten.weather_location())
+
+    def test_weather_default_requires_explicit_host_owned_approval(self):
+        declarative = BridgeMemory().remember_user_text("My weather location is Paris")
+        generic = BridgeMemory().remember_user_text(
+            "Remember that my weather default location is Paris"
+        )
+        model = BridgeMemory().apply_character_memory(
+            {
+                "memory_write": {
+                    "user.weather_default_location": "Paris",
+                    "user.weather_recent_location": "Boston",
+                },
+                "memory_forget": [],
+            }
+        )
+        self.assertEqual("", declarative.weather_location())
+        self.assertEqual("", generic.weather_location())
+        self.assertEqual("", model.weather_location())
+
+    def test_weather_place_rejects_precise_or_inferred_locations(self):
+        for value in (
+            "123 Main Street",
+            "52.52 13.40",
+            "my home",
+            "current location",
+        ):
+            with self.subTest(value=value):
+                memory = BridgeMemory().remember_weather_location(value)
+                self.assertEqual("", memory.weather_location())
+
     def test_explicit_forget_is_transcript_owned_and_immediate(self):
         memory = BridgeMemory().remember_user_text("My name is Rob.")
         memory = memory.remember_user_text("Remember that my favorite color is teal.")
+        memory = memory.remember_user_text("Remember that my favorite snack is popcorn.")
         memory = memory.remember_user_text("Remember the project codename is Johnny Alive.")
 
         memory = memory.remember_user_text("Please forget my favorite color.")
         self.assertEqual("", memory.fact_value("user.favorite_color"))
+        self.assertEqual("popcorn", memory.fact_value("user.favorite_snack"))
         self.assertEqual("Rob", memory.preferred_name)
         self.assertEqual("Johnny Alive", memory.fact_value("project.codename"))
 
@@ -177,6 +242,23 @@ class BridgeMemoryStoreTests(unittest.TestCase):
 
         memory = memory.remember_user_text("Forget everything.")
         self.assertEqual(BridgeMemory(), memory)
+
+    def test_multi_subject_forget_deletes_exact_user_and_project_keys(self):
+        memory = BridgeMemory().remember_user_text("My name is Rob.")
+        memory = memory.remember_user_text("Remember that my favorite color is teal.")
+        memory = memory.remember_user_text("Remember the project bracket color is blue.")
+        memory = memory.remember_user_text("Remember the project codename is Johnny Alive.")
+
+        self.assertEqual(
+            ("user.name", "user.bracket_color", "project.bracket_color"),
+            explicit_forget_keys("Forget my name and the bracket color."),
+        )
+        memory = memory.remember_user_text("Forget my name and the bracket color.")
+
+        self.assertEqual("", memory.preferred_name)
+        self.assertEqual("", memory.fact_value("project.bracket_color"))
+        self.assertEqual("teal", memory.fact_value("user.favorite_color"))
+        self.assertEqual("Johnny Alive", memory.fact_value("project.codename"))
 
     def test_wake_addressed_memory_commands_remain_transcript_owned(self):
         memory = BridgeMemory().remember_user_text(
@@ -397,12 +479,13 @@ class BridgeMemoryStoreTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, encoded)
 
-    def test_forget_removes_matching_namespaces_and_wins_over_writes(self):
+    def test_character_forget_removes_only_the_exact_key_and_wins_over_its_write(self):
         memory = BridgeMemory().remember_user_text("My name is Rob.").apply_character_memory(
             {
                 "memory_write": {
                     "user.name": "Rob",
                     "project.note": "servo bracket",
+                    "project.codename": "Johnny Alive",
                     "robot.status": "low battery",
                 },
                 "memory_forget": ["project.note"],
@@ -410,9 +493,10 @@ class BridgeMemoryStoreTests(unittest.TestCase):
         )
 
         self.assertEqual("Rob", memory.preferred_name)
-        self.assertEqual((), memory.recent_topics)
+        self.assertEqual(("Johnny Alive",), memory.recent_topics)
         self.assertEqual((), memory.physical_context)
-        self.assertFalse(any(item["key"].startswith("project.") for item in memory.to_dict()["durable_facts"]))
+        self.assertEqual("", memory.fact_value("project.note"))
+        self.assertEqual("Johnny Alive", memory.fact_value("project.codename"))
         self.assertEqual(BridgeMemory(), memory.apply_character_memory({"memory_forget": ["*"]}))
 
     def test_save_uses_atomic_replace_and_leaves_valid_json(self):

@@ -45,7 +45,7 @@ Working on real hardware:
 | Step | Current result | Remaining work |
 |---|---|---|
 | 1. Stackchan notices a visitor before they speak. | Partial. Camera presence and face boxes exist. Post-release `main` can read raw LTR-553 proximity/light telemetry, but presence behavior is deliberately disabled. | Measure the physical sensor, set hysteretic thresholds, and qualify the bounded reflex without making it a boot dependency. |
-| 2. The visitor greets it and has a conversation. | Pass for wake-gated turns on the reference robot. Post-release source includes an opt-in reply-window command, voice-activity-ended follow-up capture, four-turn session-only context, and concurrent host cancellation of Gemma/TTS. | Qualify that exact image on hardware, then add onboard over-speaker detection and echo rejection. |
+| 2. The visitor greets it and has a conversation. | Pass for wake-gated turns on the reference robot. Post-release source includes an opt-in reply-window command, voice-activity-ended follow-up capture, bounded 24-turn session-only context, and concurrent host cancellation of Gemma/TTS. | Qualify that exact image on hardware, then add onboard over-speaker detection and echo rejection. |
 | 3. Stackchan moves naturally while listening and replying. | Pass for coordinated face, RGB, mouth, and guarded servos. | Tighten active-speaker orientation and perceived-latency choreography. |
 | 4. The visitor picks it up and Stackchan knows. | Pass through real IMU pickup/orientation events with forensic accounting. Post-release source also shapes character energy from validated battery/charge state without power authority. | Physically qualify the exact energy-aware image across charging and battery thresholds. |
 | 5. Stackchan notices departure, searches, and sighs. | Implemented in post-release source as a bounded hold, two-sided search, procedural visual/body sigh, settle, and immediate reacquisition cancel path. | Qualify the exact image with real camera loss/reacquisition and tune timing from observed behavior. |
@@ -74,7 +74,7 @@ Working on real hardware:
    - Done in post-release source: authoritative speaker-drain evidence produces a bounded firmware
      reply-window command; parser limits, wrap-safe scheduling, expiry, and bridge-loss cancellation
      are covered by native and host tests.
-   - Done in post-release source: completed turns enter a four-turn, non-persistent session ring
+   - Done in post-release source: completed turns enter a bounded 24-turn, non-persistent session ring
      only after authoritative playback completion; reply capture ends after sustained speech and
      trailing silence, with the old 4.8-second maximum as fallback.
    - Done in post-release source: the LAN reader remains responsive during Gemma/TTS; explicit

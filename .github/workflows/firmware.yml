@@ -718,6 +718,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Verify Windows bridge launch contracts
+        shell: pwsh
+        run: |
+          ./tools/test_local_research_runtime_contract.ps1
+          ./tools/test_start_pc_brain_directml_contract.ps1
+          ./tools/test_stackchan_dashboard_launcher_contract.ps1
+
       - name: Install PlatformIO
         run: python -m pip install --upgrade pip platformio
 

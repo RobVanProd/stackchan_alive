@@ -1,6 +1,7 @@
 import unittest
 
 from bridge.conversation_session import ConversationConfig, ConversationPhase, ConversationSession
+from conversation_harness import ConversationTurnPlan, ToolTaskState
 
 
 class ConversationSessionTests(unittest.TestCase):
@@ -8,6 +9,49 @@ class ConversationSessionTests(unittest.TestCase):
         self.session = ConversationSession(
             ConversationConfig(reply_window_ms=1_000, acoustic_tail_ms=200, cooldown_ms=100, max_turns=2)
         )
+
+    def test_production_defaults_keep_a_patient_bounded_session(self) -> None:
+        session = ConversationSession()
+        self.assertEqual(10_000, session.current_reply_window_ms())
+        self.assertEqual(24, session.config.max_turns)
+        self.assertEqual(24, session.config.max_context_turns)
+        self.assertEqual(160, session.config.max_context_chars)
+
+        session.wake(0)
+        now = 0
+        for turn in range(1, 6):
+            session.utterance_committed(now + 10, f"turn {turn}")
+            self.assertEqual(10_000, session.current_reply_window_ms())
+            session.response_started(now + 20)
+            session.playback_completed(now + 30)
+            now += 300
+            self.assertEqual("reply_window_open", session.tick(now).reason)
+
+    def test_production_session_keeps_all_played_turns_until_close(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(reply_window_ms=1_000, acoustic_tail_ms=0, cooldown_ms=0)
+        )
+        session.wake(0)
+
+        for index in range(10):
+            now = index * 100
+            session.utterance_committed(now + 10, f"subject detail {index}")
+            session.response_started(now + 20)
+            session.stage_turn(f"subject detail {index}", f"answer detail {index}")
+            session.playback_completed(now + 30)
+            session.tick(now + 30)
+
+        lines = session.context_lines()
+        self.assertEqual(20, len(lines))
+        self.assertIn("subject detail 0", lines[0])
+        self.assertIn("answer detail 9", lines[-1])
+
+        session.cancel(1_100, "test_close")
+        self.assertEqual((), session.context_lines())
+        closed = session.take_closed_turns()
+        self.assertEqual(10, len(closed))
+        self.assertEqual(("subject detail 0", "answer detail 0"), closed[0])
+        self.assertEqual((), session.take_closed_turns())
 
     def complete_response(self, start_ms: int = 100) -> None:
         self.session.utterance_committed(start_ms, "Tell me something")
@@ -111,6 +155,56 @@ class ConversationSessionTests(unittest.TestCase):
         session.bridge_lost()
         self.assertEqual((), session.context_lines())
 
+    def test_unplayed_staged_turn_is_not_archived_on_close(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(reply_window_ms=1_000, acoustic_tail_ms=0, cooldown_ms=0)
+        )
+        session.wake(0)
+        session.utterance_committed(10, "unfinished question")
+        session.response_started(20)
+        session.stage_turn("unfinished question", "response never completed")
+
+        session.bridge_lost()
+
+        self.assertEqual((), session.take_closed_turns())
+
+    def test_task_state_is_owned_by_session_and_commits_only_after_playback(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(reply_window_ms=1_000, acoustic_tail_ms=0)
+        )
+        plan = ConversationTurnPlan(
+            request={
+                "name": "web_search",
+                "arguments": {"query": "current weather in West Berlin"},
+            },
+            operation="repair",
+            next_state=ToolTaskState(
+                "weather",
+                "current_conditions",
+                (("location", "West Berlin"), ("time", "current")),
+                "current weather in West Berlin",
+                2,
+            ),
+        )
+        session.wake(0)
+        session.utterance_committed(10, "No, West Berlin")
+        session.response_started(20)
+        session.stage_turn(
+            "No, West Berlin",
+            "West Berlin is clear.",
+            task_plan=plan,
+            research_succeeded=True,
+        )
+        self.assertIsNone(session.harness.active)
+        session.playback_completed(30)
+        committed, succeeded = session.take_committed_task()
+        self.assertEqual(plan, committed)
+        self.assertTrue(succeeded)
+        self.assertEqual("West Berlin", session.harness.active.slot("location"))
+
+        session.bridge_lost()
+        self.assertIsNone(session.harness.active)
+
     def test_turn_failure_and_cancel_close_through_cooldown(self) -> None:
         self.session.wake(0)
         self.session.utterance_committed(10, "Question")
@@ -133,9 +227,68 @@ class ConversationSessionTests(unittest.TestCase):
         self.assertEqual(850, snapshot["conversation_reply_window_remaining_ms"])
         self.assertFalse(any("motion" in key for key in snapshot))
 
+    def test_followup_window_shortens_after_later_turns(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(
+                reply_window_ms=8_000,
+                reply_window_min_ms=4_000,
+                reply_window_step_ms=1_000,
+                acoustic_tail_ms=0,
+            )
+        )
+        session.wake(0)
+        self.assertEqual(8_000, session.current_reply_window_ms())
+
+        for turn in range(1, 7):
+            session.utterance_committed(turn * 100, f"turn {turn}")
+            session.response_started(turn * 100 + 10)
+            session.playback_completed(turn * 100 + 20)
+            expected = max(4_000, 8_000 - (turn - 1) * 1_000)
+            self.assertEqual(expected, session.current_reply_window_ms())
+            self.assertEqual(expected, session.snapshot(turn * 100 + 20)["conversation_reply_window_ms"])
+            session.tick(turn * 100 + 20)
+
+    def test_started_capture_gets_bounded_time_to_finish_after_short_window(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(
+                reply_window_ms=2_000,
+                reply_window_min_ms=1_000,
+                reply_window_step_ms=1_000,
+                acoustic_tail_ms=0,
+            )
+        )
+        session.wake(0)
+        session.utterance_committed(10, "first")
+        session.response_started(20)
+        session.playback_completed(30)
+        session.tick(30)
+        session.utterance_committed(40, "second")
+        session.response_started(50)
+        session.playback_completed(60)
+        session.tick(60)
+
+        started = session.utterance_started(900)
+        self.assertEqual("listening", started.reason)
+        self.assertEqual("capture_in_progress", session.tick(1_060).reason)
+        snapshot = session.snapshot(1_100)
+        self.assertEqual(0, snapshot["conversation_reply_window_remaining_ms"])
+        self.assertEqual(1_800, snapshot["conversation_capture_commit_remaining_ms"])
+
+        committed = session.utterance_committed(2_000, "third")
+        self.assertEqual(("close_capture", "begin_generation"), committed.actions)
+        self.assertEqual(ConversationPhase.THINKING, session.phase)
+
     def test_invalid_config_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             ConversationConfig(reply_window_ms=0)
+        with self.assertRaises(ValueError):
+            ConversationConfig(reply_window_ms=30_001)
+        with self.assertRaises(ValueError):
+            ConversationConfig(reply_window_ms=4_000, reply_window_min_ms=5_000)
+        with self.assertRaises(ValueError):
+            ConversationConfig(reply_window_step_ms=-1)
+        with self.assertRaises(ValueError):
+            ConversationConfig(acoustic_tail_ms=2_001)
         with self.assertRaises(ValueError):
             ConversationConfig(max_turns=0)
         with self.assertRaises(ValueError):

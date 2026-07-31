@@ -1,0 +1,15 @@
+services:
+  searxng:
+    image: docker.io/searxng/searxng:2026.7.24-4f64d9501
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SEARXNG_BASE_URL: http://127.0.0.1:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET before starting}
+    volumes:
+      - ./settings.yml:/etc/searxng/settings.yml:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

@@ -153,16 +153,23 @@ python bridge/lan_service.py --host 127.0.0.1 --port 8765 --stt-command "python 
 ```
 
 For the PC brain, prefer the repo-local whisper.cpp adapter. Install the local binary/model
-once, then use the adapter behind the same bridge contract:
+once. Production should keep `whisper-server` resident on loopback so each turn avoids Python
+and model startup; the one-shot adapter remains useful for diagnosis:
 
 ```powershell
 .\tools\setup_whisper_cpp.cmd
+.\tools\start_whisper_server.ps1 -Json
 python bridge/whisper_cpp_stt.py --sample-rate 16000 --json < utterance.s16le
-python bridge/lan_service.py --host 127.0.0.1 --port 8765 --stt-command "python bridge\whisper_cpp_stt.py"
+python bridge/lan_service.py --host 127.0.0.1 --port 8765 --stt-server-url http://127.0.0.1:5061
 ```
 
 Windows System.Speech remains available as a fallback adapter at `bridge/windows_speech_stt.py`,
 but it should not be treated as the production listener.
+
+The persistent adapter builds the WAV request in memory, rejects non-loopback endpoints and
+redirects, and does not persist microphone audio. A real robot capture measured about
+`0.51-0.59 s` through the in-process client versus about `1.2-1.7 s` through the prior per-turn
+CLI path.
 
 The command receives raw signed 16-bit mono PCM on stdin and these environment variables:
 `STACKCHAN_AUDIO_SAMPLE_RATE`, `STACKCHAN_AUDIO_FORMAT=s16le_mono`, and
@@ -238,7 +245,9 @@ The service accepts `hello`, `endpoint_hello`, `claim_brain`, `release_brain`,
 `diagnostics_request`, `capability_update`, `utterance_start`, `utterance_end`, `heartbeat`,
 and `cancel` JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It
 tracks trusted PC/Android endpoints, one active brain owner, safe settings writes, bounded
-upload telemetry, and clears raw audio at `utterance_end` or `cancel`. On a transcript-backed
+upload telemetry, and clears raw audio at `utterance_end` or `cancel`. The socket thread freezes
+the PCM snapshot before generation starts, verifies declared byte/chunk totals, and logs any
+binary frame received after the end marker as an audio-protocol event. On a transcript-backed
 or STT-backed turn, it validates Character
 Lock JSON, applies host memory, and streams `thinking`, `response_start`, optional audio
 stream chunks, `audio` mouth frames, and `response_end` frames back to the client.
@@ -257,6 +266,10 @@ measured turn has first audio under three seconds, TTS rendering faster than rea
 truncation. These are host/bridge timings; robot playback-completion evidence remains a separate
 wire/device gate.
 
+Normal production launch passes `--redact-turn-text` and does not configure
+`--audio-evidence-dir`. Transcript text, response text, and microphone WAV files are available
+only through an explicit private evidence run.
+
 Conversation v2 host-state rehearsal is opt-in and requires confirmable audio downlink:
 
 ```powershell
@@ -266,12 +279,44 @@ python bridge\lan_service.py --conversation-v2 --tts-command "python bridge\rvc_
 The opt-in session accepts one wake-gated first turn, validates matching firmware
 `playback_complete`, then sends a bounded `conversation_reply_window` command so firmware reuses
 the proven cue, RGB, microphone-pause, and wake-gated uplink path without another wake phrase.
+The follow-up lease remains ten seconds throughout the session. Completed turns do not make the
+listener progressively less patient. The bridge rejects values outside the firmware's exact
+acoustic-tail and reply-window bounds instead of silently correcting them. Sessions remain bounded
+to 24 user turns by default.
 Reply-window capture uses a deterministic local endpoint with sustained-speech and trailing-silence
-hysteresis; no-speech or ambiguous input retains the 4.8-second maximum fallback. Initial v1
-capture remains fixed-length. Exit phrases, turn limits, bridge loss, cancellation, TTS failure,
-and model failure close through a typed cooldown. Concurrent in-flight generation/playback
-cancellation is still pending; leave Conversation v2 off for normal v1 operation until exact-image
-hardware qualification and that natural barge-in gate pass.
+hysteresis. The accepted firmware currently ends a reply after 550 ms of trailing silence and
+always stops by 4.8 seconds. Those device-owned endpoint values can truncate a thoughtful pause or
+long sentence even though the host lease remains open; changing them requires a separately
+qualified firmware candidate. Initial v1 capture remains fixed-length. Exit phrases, turn limits,
+bridge loss, cancellation, TTS failure, and model failure close through a typed cooldown.
+Host/companion cancellation is implemented; physical over-speaker barge-in and exact-image
+hardware qualification remain promotion gates.
+Use [`docs/BRIDGE_AI_QUALIFICATION.md`](../docs/BRIDGE_AI_QUALIFICATION.md) for the passive,
+exact-image evidence workflow.
+
+Host initiative and room context are also explicit, default-off features:
+
+```powershell
+$env:STACKCHAN_OLLAMA_VISION_MODEL = "your-local-vision-model"
+.\tools\start_pc_brain.ps1 -Background -EnableAudioDownlink -StreamTtsPhrases `
+  -EnableConversationV2 -EnableInitiative -EnableRoomObservation `
+  -RoomObservationIntervalSeconds 300 `
+  -CameraPairingCodeFile "$env:USERPROFILE\.stackchan\camera-pairing-code.txt" `
+  -RobotHost 192.168.1.238 -EnableDashboard
+```
+
+The initiative policy requires a fresh person-presence observation, waits at least ten minutes
+between unprompted lines, suppresses at night and during busy/safety states, and backs off for six
+hours after two ignored openers. It uses the normal Character Lock and TTS path without opening a
+conversation microphone lease. Room observation sends one authenticated grayscale frame at a
+bounded 2-30 minute interval to the loopback-only Ollama adapter, retains only allowlisted typed
+scene facts, and never writes a frame to disk. A missing camera, pairing file, or vision model
+leaves ordinary conversation available.
+
+Deictic visual questions such as `What do you see?` request one fresh observation before the
+answer is generated, then pass only the typed `ambient_room` summary through Character Lock.
+Deictic colour questions do not invoke the model: the current robot endpoint is grayscale, so the
+bridge reports that it cannot determine the colour instead of guessing.
 
 Run the optional local camera detector only with the isolated camera diagnostic firmware:
 

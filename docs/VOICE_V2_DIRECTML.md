@@ -1,15 +1,50 @@
 # Voice V2 DirectML Runtime
 
-Status: host, wire, firmware, physical speaker, and speech-mouth validation passed. DirectML is
+Status: the established host, wire, physical speaker, and speech-mouth gates passed. DirectML is
 the preferred Windows production runtime; the older warm ROCm worker is retained only as a
-rollback until the final combined soak passes.
+rollback. The Conversation v2 candidate adds resident STT, exact upload ordering, and stricter
+under-three-second qualification, so it requires its own exact-image physical evidence.
 
 The Voice V2 path keeps voice conversion on the Windows host, uses the official RVC runtime
 with `torch-directml`, and streams completed phrases to the robot instead of waiting for the
-entire response to be rendered. Production uses the DirectML worker on port `5059`, the bridge
-on `8765`, and a bounded clear local speech fallback if the worker is unavailable. The fallback
+entire response to be rendered. Production uses the DirectML worker on port `5059`, a resident
+loopback whisper.cpp server on `5061`, the bridge on `8765`, and a bounded clear local speech
+fallback if the worker is unavailable. The fallback
 is intentionally intelligible rather than voice-matched and is exposed in TTS telemetry; strict
 validation can set `STACKCHAN_VOICE_REQUIRE_DIRECTML=1` to reject fallback.
+
+Production STT uses the full English `small.en` model, the Radeon RX 7800 XT through a pinned
+whisper.cpp Vulkan build, 12 decoder threads, and a compact Stackchan vocabulary prompt. The
+official BLAS build remains the CPU rollback. Do not substitute a distilled model: the measured
+distilled candidates lost domain accuracy, while the warmed Vulkan path preserved the full
+model's exact output and latency. Install the preferred profile once with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\setup_whisper_cpp.ps1 `
+  -Backend vulkan -Model small.en -Json
+```
+
+The Vulkan setup pins whisper.cpp `v1.9.1` at commit
+`f049fff95a089aa9969deb009cdd4892b3e74916`, uses a short build path on the install drive to avoid
+Windows path-length failures in generated shaders, and records source, tool, executable, SDK,
+and model provenance. The DirectML launcher requires the canonical full `ggml-small.en.bin`
+SHA-256, restarts the loopback STT worker during a planned bridge restart, proves the actual
+backend from the server log, and performs a deterministic tracked-audio warmup before declaring
+STT ready. Warmup evidence records only status, timing, and the sample hash; it does not preserve
+the transcription. A merely healthy server whose executable, model, backend, thread count, or
+prompt does not match is rejected.
+
+The bridge continuously checks the resident STT endpoint. Two failed probes trigger a bounded
+restart of the same pinned executable, model, backend, thread count, prompt, and warmup contract.
+While recovery is in progress, the affected turn may use the exact local `whisper-cli` and model
+as a slow failover instead of silently dropping the utterance. The loopback dashboard reports
+STT health, recovery state, and aggregate restart counters. Formal qualification requires the
+service to be healthy and supervised before the run, with no restart or restart-failure delta
+during the evidence window.
+
+Both DirectML and ROCm worker `/health` responses report the requested device, the adapter name
+actually exposed by the runtime, an availability flag, uptime, and conversion counters. The full
+system soak fails if worker uptime or the conversion count regresses between health samples.
 
 Start or repair the production host path with:
 
@@ -17,14 +52,16 @@ Start or repair the production host path with:
 .\tools\start_pc_brain_directml.ps1 -RepairMemory -Json
 ```
 
-Local web research remains opt-in. After a loopback-only SearXNG service has passed the gates in
-`docs\LOCAL_RESEARCH_TOOLING.md`, add `-EnableResearch -SearxngUrl
-http://127.0.0.1:8080`. The launcher otherwise keeps research disabled, which is the currently
-qualified release configuration.
+Local web research remains opt-in. The pinned loopback-only SearXNG service has passed the live
+gates in `docs\LOCAL_RESEARCH_TOOLING.md`; add `-EnableResearch -SearxngUrl
+http://127.0.0.1:8080` to include it in a supervised candidate. The launcher otherwise keeps
+research intentionally disabled for offline operation.
 
 The wrapper stops only a verified Stackchan bridge listener, backs up and sanitizes persistent
-memory, starts and health-checks DirectML, enables phrase streaming and speaker downlink, waits
-for the robot socket and `/debug`, and preserves a runtime evidence packet. It does not flash,
+memory, starts and health-checks DirectML and the loopback STT server, enables phrase streaming
+and speaker downlink, starts bridge-owned STT supervision, waits for the robot socket and
+`/debug`, and preserves a runtime evidence
+packet. Normal startup redacts turn text and writes no microphone WAVs. It does not flash,
 reboot, enable motion, or format storage.
 
 ## Performance Gate
@@ -32,7 +69,7 @@ reboot, enable motion, or format storage.
 The Windows candidate gate is:
 
 - first converted audio after response text in less than `3.0 s`
-- complete wake-to-first-audio conversation latency in less than `5.0 s`
+- complete warm wake-to-first-audio conversation latency in less than `3.0 s`
 - median conversion realtime factor below `1.0`
 - exact output accounting with zero truncated phrases
 - preserve the full retrieval index (`index_rate=0.62`) and accepted `pm` pitch method
@@ -50,6 +87,7 @@ Measured on the Ryzen 7 5700 / Radeon RX 7800 XT host:
 | Complete TTS + RVC client, 15 words | `1.18 s` |
 | Two-phrase streaming rehearsal, first PCM | `1.02 s` |
 | Two-phrase streaming rehearsal, complete | `2.14 s` |
+| Resident Vulkan `small.en`, 12 robot-voice samples under loaded host | `0.674 s` p50 / `0.697 s` p95, `12/12` exact |
 | Paced WebSocket transport, first binary audio | `1.22 s` |
 | Paced WebSocket transport, complete | `4.80 s` for `5.40 s` audio (`RTF 0.889`) |
 | Physical warm-API turns, worst first audio | `3.49 s` conversation / `1.05 s` post-text |
@@ -60,6 +98,13 @@ The passing fixed-corpus report is
 comparison is preserved at
 `output\voice-lab\directml-rvc-full-index-20260710\benchmark.json`; it missed the median RTF
 gate because the official DirectML RMVPE path reloaded its pitch model for each conversion.
+
+Phrase streaming applies the longer 250 ms drain only to the short PCM chunk immediately before
+`audio_stream_end`. Intermediate phrase tails use normal chunk pacing; treating each phrase tail
+as the whole-stream boundary creates an audible gap and is covered by the bridge tests. Per-chunk
+mouth-control frames are sent without the general 40 ms text-frame delay, so the production 70 ms
+PCM cadence retains 58 ms of nominal headroom inside each 128 ms 16 kHz chunk. Supervised Bridge AI
+qualification rejects a turn whose configured cadence has less than 25 ms of headroom.
 
 ## Setup And Benchmark
 

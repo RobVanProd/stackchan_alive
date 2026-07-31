@@ -1,0 +1,26 @@
+{
+  "query": "Stackchan open source robot",
+  "number_of_results": 2,
+  "results": [
+    {
+      "title": "Stackchan project",
+      "url": "https://example.com/stackchan",
+      "content": "A small open source companion robot.",
+      "engine": "duckduckgo",
+      "engines": ["duckduckgo"],
+      "score": 1.0
+    },
+    {
+      "title": "Stackchan notes",
+      "url": "https://example.org/notes",
+      "content": "Project notes and build information.",
+      "engine": "wikipedia",
+      "engines": ["wikipedia"],
+      "score": 0.8
+    }
+  ],
+  "answers": [],
+  "corrections": [],
+  "infoboxes": [],
+  "suggestions": []
+}

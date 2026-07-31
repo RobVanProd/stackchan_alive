@@ -249,6 +249,7 @@ def main() -> int:
     parser.add_argument("--interval-seconds", type=float, default=1.0)
     parser.add_argument("--duration-seconds", type=float, default=0.0)
     parser.add_argument("--model-path", default=str(YUNET_MODEL_PATH))
+    parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     if args.interval_seconds < 0.5:
@@ -260,6 +261,20 @@ def main() -> int:
         else validate_pairing_code(args.pairing_code)
     )
     service = CameraVisionService(args.robot_url, pairing_code, OpenCvYuNetDetector(args.model_path))
+    if args.preflight:
+        print(
+            json.dumps(
+                {
+                    "schema": "stackchan.local-vision-preflight.v1",
+                    "ready": True,
+                    "robot_url": service.robot_url,
+                    "model_sha256": YUNET_MODEL_SHA256,
+                    "raw_frame_persistence": False,
+                },
+                separators=(",", ":"),
+            )
+        )
+        return 0
     started = time.monotonic()
     exit_code = 0
     try:

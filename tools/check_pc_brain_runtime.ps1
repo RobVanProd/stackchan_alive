@@ -2,8 +2,10 @@ param(
   [int]$Port = 8765,
   [string]$ExpectedHostName = "0.0.0.0",
   [string]$ExpectedRunnerCommand = "bridge\ollama_stackchan_runner.py",
+  [bool]$ExpectedInProcessOllamaRunner = $false,
   [string]$ExpectedSttCommand = "bridge\whisper_cpp_stt.py",
   [string]$ExpectedTtsCommand = "bridge\selected_voice_tts.py",
+  [bool]$ExpectedInProcessDirectMlTts = $false,
   [string]$ExpectedTtsVoice = "stackchan-rvc-bright-robot",
   [bool]$ExpectedStreamTtsPhrases = $false,
   [int]$ExpectedDownlinkAudioChunkBytes = 4096,
@@ -16,6 +18,7 @@ param(
   [bool]$ExpectedAudioPlaybackEnabled = $false,
   [string]$VoiceWorkerUrl = "",
   [string]$ExpectedVoiceWorkerSchema = "",
+  [switch]$RequireVoiceWorkerSynthesis,
   [string]$LogDir = "output\pc-brain\latest",
   [string]$ReportDir = "",
   [string]$DeviceHost = "",
@@ -148,9 +151,19 @@ if (-not [string]::IsNullOrWhiteSpace($commandLine)) {
   Test-CommandLineContains "runner-profile" $normalizedCommandLine "--runner-profile gemma4-e2b-gguf" "Runner profile is gemma4-e2b-gguf."
   Test-CommandLineFlagAndScript "runner-command" $normalizedCommandLine "--runner-command" $ExpectedRunnerCommand "Runner command is $ExpectedRunnerCommand."
   Test-CommandLineContains "require-runner" $normalizedCommandLine "--require-runner" "Real runner is required."
+  if ($ExpectedInProcessOllamaRunner) {
+    Test-CommandLineContains "in-process-ollama-runner" $normalizedCommandLine "--in-process-ollama-runner" "Ollama runs in the bridge process."
+  } else {
+    Test-CommandLineExcludes "in-process-ollama-runner" $normalizedCommandLine "--in-process-ollama-runner" "Ollama uses the configured command path."
+  }
   Test-CommandLineFlagAndScript "stt-command" $normalizedCommandLine "--stt-command" $ExpectedSttCommand "STT command is $ExpectedSttCommand."
   Test-CommandLineFlagAndScript "tts-command" $normalizedCommandLine "--tts-command" $ExpectedTtsCommand "TTS command is $ExpectedTtsCommand."
   Test-CommandLineContains "tts-voice" $normalizedCommandLine "--tts-voice $ExpectedTtsVoice" "TTS voice is $ExpectedTtsVoice."
+  if ($ExpectedInProcessDirectMlTts) {
+    Test-CommandLineContains "in-process-directml-tts" $normalizedCommandLine "--in-process-directml-tts" "DirectML TTS runs in the bridge process."
+  } else {
+    Test-CommandLineExcludes "in-process-directml-tts" $normalizedCommandLine "--in-process-directml-tts" "TTS uses the configured command path."
+  }
   Test-CommandLineContains "chunk-bytes" $normalizedCommandLine "--downlink-audio-chunk-bytes $ExpectedDownlinkAudioChunkBytes" "Downlink chunk bytes are $ExpectedDownlinkAudioChunkBytes."
   Test-CommandLineContains "binary-delay" $normalizedCommandLine "--downlink-binary-frame-delay-ms $ExpectedDownlinkBinaryFrameDelayMs" "Binary frame delay is $ExpectedDownlinkBinaryFrameDelayMs ms."
   Test-CommandLineContains "text-delay" $normalizedCommandLine "--downlink-text-frame-delay-ms $ExpectedDownlinkTextFrameDelayMs" "Text frame delay is $ExpectedDownlinkTextFrameDelayMs ms."
@@ -180,6 +193,9 @@ if (-not [string]::IsNullOrWhiteSpace($VoiceWorkerUrl)) {
     Add-Check "voice-worker-health" ($(if ([bool]$voiceWorkerHealth.ready) { "pass" } else { "fail" })) "url=$VoiceWorkerUrl ready=$($voiceWorkerHealth.ready)"
     if (-not [string]::IsNullOrWhiteSpace($ExpectedVoiceWorkerSchema)) {
       Add-Check "voice-worker-schema" ($(if ([string]$voiceWorkerHealth.schema -eq $ExpectedVoiceWorkerSchema) { "pass" } else { "fail" })) "schema=$($voiceWorkerHealth.schema) expected=$ExpectedVoiceWorkerSchema"
+    }
+    if ($RequireVoiceWorkerSynthesis) {
+      Add-Check "voice-worker-synthesis" ($(if ([bool]$voiceWorkerHealth.synthesis_ready) { "pass" } else { "fail" })) "synthesis_ready=$($voiceWorkerHealth.synthesis_ready) backend=$($voiceWorkerHealth.base_tts_backend) error=$($voiceWorkerHealth.base_tts_error)"
     }
   } catch {
     Add-Check "voice-worker-health" "fail" "$VoiceWorkerUrl :: $($_.Exception.Message)"

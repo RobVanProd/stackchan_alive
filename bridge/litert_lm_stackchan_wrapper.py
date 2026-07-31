@@ -18,7 +18,7 @@ import sys
 import time
 from dataclasses import dataclass
 
-from character_harness import validate_response
+from character_harness import prompt_grounding_context, validate_response
 
 COMMAND_ENV = "STACKCHAN_LITERT_LM_COMMAND"
 SCHEMA = "stackchan.litert-lm-wrapper.v1"
@@ -95,9 +95,9 @@ def extract_first_json_object(text: str) -> str:
     raise LiteRtWrapperError("LiteRT-LM output did not contain a valid JSON object")
 
 
-def normalize_character_json(raw_output: str) -> str:
+def normalize_character_json(raw_output: str, *, grounding_text: str = "") -> str:
     candidate = extract_first_json_object(raw_output)
-    result = validate_response(candidate)
+    result = validate_response(candidate, grounding_text=grounding_text)
     if not result.ok:
         issues = ", ".join(result.issues)
         raise LiteRtWrapperError(f"LiteRT-LM output failed Character Lock validation: {issues}")
@@ -133,7 +133,10 @@ def run_wrapper(prompt: str, *, command: str = "", timeout_ms: int = 60000) -> L
             f"no LiteRT-LM command configured; set {COMMAND_ENV} or pass --command"
         )
     raw_output, elapsed_ms = run_litert_command(resolved_command, prompt, timeout_ms)
-    response_json = normalize_character_json(raw_output)
+    response_json = normalize_character_json(
+        raw_output,
+        grounding_text=prompt_grounding_context(prompt),
+    )
     return LiteRtWrapperResult(
         response_json=response_json,
         elapsed_ms=elapsed_ms,

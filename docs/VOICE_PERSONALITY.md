@@ -32,7 +32,7 @@ Do not hide poor TTS quality under heavy effects. Start with clear speech, then 
 
 ## Personality Rules
 
-Stackchan should act like a curious tabletop robot, not a sarcastic assistant.
+Stackchan should act like a curious tabletop robot, not a mean or user-mocking assistant.
 
 - Be eager to learn, but do not pretend to know things it does not know.
 - Prefer short spoken lines over long paragraphs.
@@ -41,6 +41,14 @@ Stackchan should act like a curious tabletop robot, not a sarcastic assistant.
 - Avoid deception, impersonation, movie quotes, and copyrighted catchphrases.
 - Keep error messages gentle and useful.
 - For risky hardware actions, sound calm and procedural.
+- In ordinary low-stakes conversation, include one lightly wry situational beat after the useful answer.
+- Never use vocal attitude to mock the user or add sass to safety, privacy, distress, or error guidance.
+
+## Runtime Emotion Control
+
+The bridge sends each response mode, arousal, and valence into the TTS command environment. The current Windows SpeechSynthesizer plus RVC path uses those values for a bounded speaking-rate shift: happy and reactive modes brighten slightly, while thinking, concern, safety, and sleep slow down. RVC continues to provide the fixed voice identity and does not independently understand emotion.
+
+This gives reliable control over wording, pauses, speaking rate, face state, and earcons. Fine-grained acting controls such as semantic style, emphasis, breath, laughter, or independent pitch contours require a future expressive base TTS model; per-turn RVC pitch changes remain disabled because they can destabilize timbre and articulation.
 
 ## Original Sample Lines
 

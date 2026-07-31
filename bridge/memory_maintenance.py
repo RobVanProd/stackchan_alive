@@ -23,12 +23,21 @@ def _sha256(path: Path) -> str:
 
 def _counts(data: object) -> dict[str, int]:
     if not isinstance(data, dict):
-        return {"durable_facts": 0, "recent_context": 0, "recent_topics": 0, "physical_context": 0}
+        return {
+            "durable_facts": 0,
+            "recent_context": 0,
+            "recent_topics": 0,
+            "physical_context": 0,
+            "episodes": 0,
+            "open_loops": 0,
+        }
     return {
         "durable_facts": len(data.get("durable_facts", [])) if isinstance(data.get("durable_facts"), list) else 0,
         "recent_context": len(data.get("recent_context", [])) if isinstance(data.get("recent_context"), list) else 0,
         "recent_topics": len(data.get("recent_topics", [])) if isinstance(data.get("recent_topics"), list) else 0,
         "physical_context": len(data.get("physical_context", [])) if isinstance(data.get("physical_context"), list) else 0,
+        "episodes": len(data.get("episodes", [])) if isinstance(data.get("episodes"), list) else 0,
+        "open_loops": len(data.get("open_loops", [])) if isinstance(data.get("open_loops"), list) else 0,
     }
 
 
@@ -86,13 +95,16 @@ def audit_or_repair(path: Path, *, apply: bool) -> dict[str, object]:
         "after_schema_version": sanitized["schema_version"],
         "preferred_name_retained": bool(sanitized["preferred_name"]),
         "turns_seen": int(sanitized["turns_seen"]),
+        "capture_rejections": int(sanitized["capture_rejections"]),
+        "distill_dropped": int(sanitized["distill_dropped"]),
+        "durable_evictions": int(sanitized["durable_evictions"]),
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--memory-file", type=Path, required=True)
-    parser.add_argument("--apply", action="store_true", help="Back up and atomically write sanitized v3 memory.")
+    parser.add_argument("--apply", action="store_true", help="Back up and atomically write sanitized v4 memory.")
     args = parser.parse_args()
     print(json.dumps(audit_or_repair(args.memory_file, apply=args.apply), indent=2, sort_keys=True))
     return 0

@@ -12,8 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+try:
+    from .whisper_server_stt import WhisperServerError, transcribe_pcm_via_server
+except ImportError:
+    from whisper_server_stt import WhisperServerError, transcribe_pcm_via_server
+
 DEFAULT_STT_TIMEOUT_MS = 20000
 STT_COMMAND_ENV = "STACKCHAN_STT_COMMAND"
+STT_SERVER_URL_ENV = "STACKCHAN_STT_SERVER_URL"
 
 
 class SttConfigurationError(RuntimeError):
@@ -22,6 +28,23 @@ class SttConfigurationError(RuntimeError):
 
 class SttExecutionError(RuntimeError):
     """Raised when the configured STT command fails."""
+
+
+class SttNoTranscriptError(SttExecutionError):
+    """Raised when STT ran successfully enough to determine that no speech was transcribed."""
+
+
+_NO_TRANSCRIPT_MARKERS = (
+    "produced no transcript",
+    "produced an empty transcript",
+    "returned no transcript",
+    "no transcript was produced",
+)
+
+
+def is_no_transcript_error(detail: object) -> bool:
+    normalized = " ".join(str(detail or "").strip().lower().split())
+    return any(marker in normalized for marker in _NO_TRANSCRIPT_MARKERS)
 
 
 @dataclass(frozen=True)
@@ -106,7 +129,10 @@ def run_stt_command(command: str, pcm: bytes, sample_rate: int, timeout_ms: int)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     if completed.returncode != 0:
         stderr = completed.stderr.decode("utf-8", errors="replace").strip()
-        raise SttExecutionError(f"stt command failed with exit {completed.returncode}: {stderr}")
+        detail = f"stt command failed with exit {completed.returncode}: {stderr}"
+        if is_no_transcript_error(stderr):
+            raise SttNoTranscriptError(detail)
+        raise SttExecutionError(detail)
     transcript, metadata = parse_transcript_output(completed.stdout)
     return transcript, elapsed_ms, metadata
 
@@ -116,15 +142,76 @@ def transcribe_pcm(
     sample_rate: int,
     *,
     command: str = "",
+    server_url: str = "",
     timeout_ms: int = DEFAULT_STT_TIMEOUT_MS,
 ) -> SttResult:
+    resolved_server_url = str(server_url or os.environ.get(STT_SERVER_URL_ENV, "")).strip()
+    safe_rate = max(8000, min(48000, int(sample_rate or 16000)))
+    if resolved_server_url:
+        start = time.perf_counter()
+        server_error: WhisperServerError | ValueError | None = None
+        try:
+            server_result = transcribe_pcm_via_server(
+                pcm,
+                safe_rate,
+                server_url=resolved_server_url,
+                timeout_ms=timeout_ms,
+            )
+        except WhisperServerError as exc:
+            if is_no_transcript_error(exc):
+                raise SttNoTranscriptError(str(exc)) from exc
+            server_error = exc
+        except ValueError as exc:
+            server_error = exc
+        else:
+            if not server_result.transcript.strip():
+                raise SttNoTranscriptError("whisper.cpp server produced no transcript")
+            return SttResult(
+                transcript=server_result.transcript,
+                elapsed_ms=(time.perf_counter() - start) * 1000.0,
+                command_source="whisper.cpp-server",
+                sample_rate=safe_rate,
+                audio_bytes=len(pcm),
+                raw_transcript=server_result.raw_transcript,
+                transcript_normalized=server_result.raw_transcript != server_result.transcript,
+            )
+
+        resolved_command, _ = resolve_stt_command(command)
+        if not resolved_command:
+            raise SttExecutionError(str(server_error)) from server_error
+        try:
+            transcript, _, metadata = run_stt_command(
+                resolved_command,
+                pcm,
+                safe_rate,
+                timeout_ms,
+            )
+        except SttNoTranscriptError:
+            raise
+        except SttExecutionError as fallback_error:
+            raise SttExecutionError(
+                f"stt server failed ({server_error}); local fallback failed ({fallback_error})"
+            ) from fallback_error
+        if not transcript:
+            raise SttNoTranscriptError("local STT fallback produced an empty transcript")
+        return SttResult(
+            transcript=transcript,
+            elapsed_ms=(time.perf_counter() - start) * 1000.0,
+            command_source="whisper.cpp-cli-fallback",
+            sample_rate=safe_rate,
+            audio_bytes=len(pcm),
+            raw_transcript=str(metadata.get("raw_transcript", "")),
+            transcript_normalized=bool(metadata.get("transcript_normalized", False)),
+        )
     resolved_command, command_source = resolve_stt_command(command)
     if not resolved_command:
-        raise SttConfigurationError(f"no STT command configured; set {STT_COMMAND_ENV} or pass --stt-command")
-    safe_rate = max(8000, min(48000, int(sample_rate or 16000)))
+        raise SttConfigurationError(
+            f"no STT configured; set {STT_SERVER_URL_ENV}, {STT_COMMAND_ENV}, "
+            "or pass a server URL/command"
+        )
     transcript, elapsed_ms, metadata = run_stt_command(resolved_command, pcm, safe_rate, timeout_ms)
     if not transcript:
-        raise SttExecutionError("stt command produced an empty transcript")
+        raise SttNoTranscriptError("stt command produced an empty transcript")
     return SttResult(
         transcript=transcript,
         elapsed_ms=elapsed_ms,
@@ -141,6 +228,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pcm-file", type=Path, help="Raw s16le mono PCM file. Defaults to stdin.")
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--stt-command", default="", help=f"Override command. Otherwise uses {STT_COMMAND_ENV}.")
+    parser.add_argument(
+        "--stt-server-url",
+        default="",
+        help=f"Use a loopback whisper.cpp server. Otherwise uses {STT_SERVER_URL_ENV}.",
+    )
     parser.add_argument("--timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
     parser.add_argument("--json", action="store_true", help="Print metadata JSON instead of transcript only.")
     return parser
@@ -154,6 +246,7 @@ def main() -> int:
             pcm,
             args.sample_rate,
             command=args.stt_command,
+            server_url=args.stt_server_url,
             timeout_ms=args.timeout_ms,
         )
     except (SttConfigurationError, SttExecutionError, ValueError) as exc:

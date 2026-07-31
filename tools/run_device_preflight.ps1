@@ -8,6 +8,46 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$physicalRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if (
+  $env:OS -eq "Windows_NT" -and
+  -not $env:STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE -and
+  $physicalRepoRoot.Length -gt 60
+) {
+  $shortDrive = @("R:", "Q:", "P:", "O:") |
+    Where-Object { -not (Test-Path $_) } |
+    Select-Object -First 1
+  if (-not $shortDrive) {
+    throw "Device preflight needs a free temporary drive letter (R:, Q:, P:, or O:) for this deeply nested checkout."
+  }
+
+  $driveName = $shortDrive.TrimEnd("\")
+  & subst.exe $driveName $physicalRepoRoot
+  if ($LASTEXITCODE -ne 0) { throw "Could not create temporary preflight path $driveName" }
+
+  $childExit = 1
+  try {
+    $env:STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE = "1"
+    $childArgs = @(
+      "-NoProfile",
+      "-ExecutionPolicy", "Bypass",
+      "-File", "$driveName\tools\run_device_preflight.ps1"
+    )
+    if ($PackageZip) { $childArgs += @("-PackageZip", $PackageZip) }
+    if ($Version) { $childArgs += @("-Version", $Version) }
+    if ($ExpectedCommit) { $childArgs += @("-ExpectedCommit", $ExpectedCommit) }
+    if ($ReportDir) { $childArgs += @("-ReportDir", $ReportDir) }
+    if ($AllowDirty) { $childArgs += "-AllowDirty" }
+    & powershell.exe @childArgs
+    $childExit = $LASTEXITCODE
+  } finally {
+    Remove-Item Env:\STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE -ErrorAction SilentlyContinue
+    Set-Location $env:TEMP
+    & subst.exe $driveName /D | Out-Null
+  }
+  exit $childExit
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
@@ -255,9 +295,12 @@ function Assert-GitHubActionsStatusExporterGate {
   $completeFixtureRoot = Join-Path $fixtureBase "complete-required-workflows"
   $preRunnerFixtureRoot = Join-Path $fixtureBase "pre-runner-allocation"
   $missingFixtureRoot = Join-Path $fixtureBase "missing-required-workflow"
+  $failedCandidateFixtureRoot = Join-Path $fixtureBase "failed-firmware-candidate"
   $completeOutputRoot = Join-Path $fixtureBase "out-complete"
   $preRunnerOutputRoot = Join-Path $fixtureBase "out-pre-runner"
   $missingOutputRoot = Join-Path $fixtureBase "out-missing"
+  $candidateOutputRoot = Join-Path $fixtureBase "out-firmware-candidate"
+  $failedCandidateOutputRoot = Join-Path $fixtureBase "out-failed-firmware-candidate"
   $fixtureCommit = "0123456789abcdef0123456789abcdef01234567"
   $fixtureVersion = "v0.0.0-actions-status-selftest"
 
@@ -472,6 +515,68 @@ function Assert-GitHubActionsStatusExporterGate {
     $missingMarkdown = Get-Content -LiteralPath (Join-Path $missingOutputRoot "GITHUB_ACTIONS_STATUS.md") -Raw
     Assert-TextContains $missingMarkdown "Missing Required Workflows"
     Assert-TextContains $missingMarkdown "Release"
+
+    $candidateResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "export_github_actions_status.ps1"),
+      "-Repo", "RobVanProd/stackchan_alive",
+      "-Version", $fixtureVersion,
+      "-Commit", $fixtureCommit,
+      "-OutputDir", $candidateOutputRoot,
+      "-FixtureRoot", $missingFixtureRoot,
+      "-RequiredWorkflows", "Firmware,Release",
+      "-AcceptFirmwareCandidate"
+    )
+    if ($candidateResult.ExitCode -ne 0) {
+      throw "Actions status exporter rejected an exact-commit successful Firmware candidate:$([Environment]::NewLine)$($candidateResult.Text)"
+    }
+    $candidateStatus = Get-Content -LiteralPath (Join-Path $candidateOutputRoot "github_actions_status.json") -Raw | ConvertFrom-Json
+    if ($candidateStatus.status -ne "missing-required-workflow") {
+      throw "Firmware candidate should retain missing-required-workflow status until the tag-only Release workflow runs."
+    }
+    if ($candidateStatus.firmwareCandidateReady -ne $true) {
+      throw "Successful Firmware fixture should mark firmwareCandidateReady true."
+    }
+    if ($candidateStatus.promotionReady -ne $false) {
+      throw "Firmware candidate must not be promotion ready."
+    }
+    $candidateMarkdown = Get-Content -LiteralPath (Join-Path $candidateOutputRoot "GITHUB_ACTIONS_STATUS.md") -Raw
+    Assert-TextContains $candidateMarkdown "Firmware candidate ready: True"
+    Assert-TextContains $candidateMarkdown "supervised prerelease hardware qualification"
+
+    Write-FixtureJson $failedCandidateFixtureRoot "run_list.json" @(
+      [ordered]@{
+        databaseId = 302
+        name = "Firmware"
+        headSha = $fixtureCommit
+        headBranch = "main"
+        status = "completed"
+        conclusion = "failure"
+        createdAt = "2026-07-02T00:05:00Z"
+        url = "https://example.invalid/runs/302"
+        event = "push"
+        displayTitle = "Firmware"
+      }
+    )
+    Write-FixtureJson $failedCandidateFixtureRoot "jobs_302.json" ([ordered]@{ jobs = @((New-FixtureJob 402 "build" "failure" 7 @([ordered]@{ name = "Build"; conclusion = "failure" }))) })
+    Write-FixtureJson $failedCandidateFixtureRoot "annotations_402.json" @()
+
+    $failedCandidateResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "export_github_actions_status.ps1"),
+      "-Repo", "RobVanProd/stackchan_alive",
+      "-Version", $fixtureVersion,
+      "-Commit", $fixtureCommit,
+      "-OutputDir", $failedCandidateOutputRoot,
+      "-FixtureRoot", $failedCandidateFixtureRoot,
+      "-RequiredWorkflows", "Firmware,Release",
+      "-AcceptFirmwareCandidate"
+    )
+    if ($failedCandidateResult.ExitCode -eq 0) {
+      throw "Actions status exporter accepted a failed Firmware run as a prerelease candidate."
+    }
+    $failedCandidateStatus = Get-Content -LiteralPath (Join-Path $failedCandidateOutputRoot "github_actions_status.json") -Raw | ConvertFrom-Json
+    if ($failedCandidateStatus.firmwareCandidateReady -ne $false) {
+      throw "Failed Firmware fixture should mark firmwareCandidateReady false."
+    }
     $global:LASTEXITCODE = 0
   } finally {
     if (Test-Path -LiteralPath $fixtureBase) {
@@ -861,66 +966,72 @@ function Write-SyntheticVoiceLeadArtifacts {
   $referenceDir = Join-Path $EvidenceRoot "reference_audio"
   New-Item -ItemType Directory -Force -Path $referenceDir | Out-Null
 
-  $sourceWav = Join-Path $repoRoot "docs/media/voice/stackchan_spark_greeting.wav"
+  $sourceWav = Join-Path $repoRoot "docs/media/voice/stackchan_spark_audition_bright_robot_greeting.wav"
   if (-not (Test-Path -LiteralPath $sourceWav)) {
     throw "Synthetic voice fixture missing: $sourceWav"
   }
 
-  $referenceFile = "reference_audio/stackchan_rvc_bright_robot.wav"
+  $referenceFile = "reference_audio/stackchan_voice_reference.wav"
   $referencePath = Join-Path $EvidenceRoot $referenceFile
   Copy-Item -LiteralPath $sourceWav -Destination $referencePath -Force
   $referenceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $referencePath).Hash.ToLowerInvariant()
 
   $lead = [ordered]@{
-    title = "RVC Bright Robot"
-    file = "stackchan_rvc_bright_robot.wav"
+    title = "Stackchan Spark Bright Robot Playback Aid"
+    file = "stackchan_voice_reference.wav"
+    sourcePath = "media/voice/stackchan_spark_audition_bright_robot_greeting.wav"
     referenceFile = $referenceFile
     sha256 = $referenceHash
     transcript = "Hello. I am Stackchan, and I am awake."
-    pitch = "2"
-    index_rate = "0.62"
-    rms_mix_rate = "0.72"
-    protect = "0.28"
+    pitch = "not-applicable"
+    index_rate = "not-applicable"
+    rms_mix_rate = "not-applicable"
+    protect = "not-applicable"
+    evidenceRole = "playback-aid-only"
+    productionVoiceGate = "Live robot speech must exercise the verified DirectML RVC model and be recorded under audio/."
   }
 
   $manifest = [ordered]@{
-    schema = "stackchan.rvc-auditions.selftest.v1"
+    schema = "stackchan.voice-playback-reference.selftest.v1"
     generatedBy = "run_device_preflight.ps1"
-    note = "Synthetic preflight fixture for hardware-evidence verifier gates."
+    compatibilityFilename = "RVC_AUDITIONS.json"
+    note = "Synthetic preflight fixture for the packaged playback-reference gate. This is not an RVC render."
     leadAudition = $lead
     auditions = @($lead)
   }
   $manifest | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $referenceDir "RVC_AUDITIONS.json") -Encoding UTF8
 
   @(
-    "# RVC Auditions",
+    "# Stackchan Voice Playback Reference",
     "",
-    "Synthetic preflight fixture for verifier coverage. This file is intentionally generated by the no-hardware preflight and is not a production voice-source approval.",
+    "Synthetic preflight fixture for verifier coverage. This file is intentionally generated by the no-hardware preflight and is not production voice-source approval.",
     "",
-    "## Lead",
+    "## Playback Aid",
     "",
-    "- Title: RVC Bright Robot",
-    "- Reference WAV: reference_audio/stackchan_rvc_bright_robot.wav",
+    "- Title: Stackchan Spark Bright Robot Playback Aid",
+    "- Source package file: media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
+    "- Reference WAV: reference_audio/stackchan_voice_reference.wav",
     "- SHA256: $referenceHash",
     "- Transcript: Hello. I am Stackchan, and I am awake.",
-    "- Tuning: pitch 2, index 0.62, RMS mix 0.72, protect 0.28",
+    "- Evidence role: playback aid only",
     "",
     "## Notes",
     "",
-    "The real arrival-day packet copies the selected RVC lead audition from the release package. This synthetic copy exists so negative preflight fixtures can pass the voice-reference gate before intentionally failing the media or serial-marker gate.",
-    "It keeps the verifier strict while allowing targeted self-tests."
+    "The real arrival-day packet copies the verified Stackchan Spark playback sample from the release package. Generated RVC audition files are intentionally local-only and are not package inputs.",
+    "This copy exists so negative preflight fixtures can pass the voice-reference gate before intentionally failing the media or serial-marker gate. Live robot speech through the verified DirectML RVC path remains required."
   ) | Set-Content -Path (Join-Path $referenceDir "RVC_AUDITIONS.md") -Encoding UTF8
 
   @(
-    "# RVC Lead Audition Reference",
+    "# Stackchan Voice Playback Reference",
     "",
-    "This packet stages the current lead voice for speaker review. This is not production voice-source approval.",
+    "This packet stages the packaged playback aid for speaker-routing review. It is not an RVC-rendered production output and is not production voice-source approval.",
     "",
-    "- Lead audition: RVC Bright Robot",
-    "- Reference WAV: reference_audio/stackchan_rvc_bright_robot.wav",
+    "- Playback aid: Stackchan Spark Bright Robot Playback Aid",
+    "- Source package file: media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
+    "- Reference WAV: reference_audio/stackchan_voice_reference.wav",
     "- SHA256: $referenceHash",
     "- Transcript: Hello. I am Stackchan, and I am awake.",
-    "- Tuning: pitch 2, index 0.62, RMS mix 0.72, protect 0.28"
+    "- Production voice gate: exercise live robot speech through the verified DirectML RVC model and record the device speaker under audio/."
   ) | Set-Content -Path (Join-Path $EvidenceRoot "RVC_LEAD_AUDITION.md") -Encoding UTF8
 
   return $lead
@@ -1238,7 +1349,7 @@ function Assert-HardwareEvidenceMediaGate {
     "- [x] synthetic gate" | Set-Content -Path (Join-Path $evidenceRoot "CHECKLIST.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "DEVICE_BRINGUP.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "PRODUCTION_READINESS.md") -Encoding UTF8
-    $releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+    $releaseTag = "v0.0.0-media-selftest"
     Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
     $voiceLeadAudition = Write-SyntheticVoiceLeadArtifacts -EvidenceRoot $evidenceRoot
     $voiceGateStatus = Write-SyntheticVoiceGateStatus -EvidenceRoot $evidenceRoot
@@ -1282,14 +1393,14 @@ function Assert-HardwareEvidenceMediaGate {
       "## Speaker Playback",
       "- Start UTC: 2026-07-01T00:50:00Z",
       "- End UTC: 2026-07-01T00:51:00Z",
-      "- Sample played: reference_audio/stackchan_rvc_bright_robot.wav",
-      "- Voice variant: RVC Bright Robot (pitch 2, index 0.62, RMS mix 0.72, protect 0.28)",
+      "- Sample played: reference_audio/stackchan_voice_reference.wav",
+      "- Voice variant: Stackchan Spark Bright Robot Playback Aid (playback aid only)",
       "- Speaker recording file: audio/speaker.wav",
       "- Intelligible through device speaker: yes",
       "- Clipping or distortion observed: no",
       "- Volume adequate at normal listening distance: yes",
       "- Delay or playback dropout observed: no",
-      "- Selected voice direction: synthetic preflight fixture for RVC Bright Robot lead audition"
+      "- Selected voice direction: synthetic preflight fixture; production voice requires live DirectML RVC robot speech"
     ) | Set-Content -Path (Join-Path $evidenceRoot "AUDIO_REVIEW.md") -Encoding UTF8
     Copy-Item -LiteralPath "docs/media/voice/stackchan_spark_greeting.wav" -Destination (Join-Path $audioDir "speaker.wav")
 
@@ -1387,7 +1498,7 @@ function Assert-HardwareEvidenceMediaGate {
         "rvc_voice_base_status.json",
         "reference_audio/RVC_AUDITIONS.md",
         "reference_audio/RVC_AUDITIONS.json",
-        "reference_audio/stackchan_rvc_bright_robot.wav",
+        "reference_audio/stackchan_voice_reference.wav",
         "calibration/calibration.yaml"
       )
       benchStatus = [ordered]@{
@@ -1431,7 +1542,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
     "- [x] synthetic gate" | Set-Content -Path (Join-Path $evidenceRoot "CHECKLIST.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "DEVICE_BRINGUP.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "PRODUCTION_READINESS.md") -Encoding UTF8
-    $releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+    $releaseTag = "v0.0.0-serial-selftest"
     Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
     $voiceLeadAudition = Write-SyntheticVoiceLeadArtifacts -EvidenceRoot $evidenceRoot
     $voiceGateStatus = Write-SyntheticVoiceGateStatus -EvidenceRoot $evidenceRoot
@@ -1475,14 +1586,14 @@ function Assert-HardwareEvidenceSerialMarkerGate {
       "## Speaker Playback",
       "- Start UTC: 2026-07-01T00:50:00Z",
       "- End UTC: 2026-07-01T00:51:00Z",
-      "- Sample played: reference_audio/stackchan_rvc_bright_robot.wav",
-      "- Voice variant: RVC Bright Robot (pitch 2, index 0.62, RMS mix 0.72, protect 0.28)",
+      "- Sample played: reference_audio/stackchan_voice_reference.wav",
+      "- Voice variant: Stackchan Spark Bright Robot Playback Aid (playback aid only)",
       "- Speaker recording file: audio/speaker.wav",
       "- Intelligible through device speaker: yes",
       "- Clipping or distortion observed: no",
       "- Volume adequate at normal listening distance: yes",
       "- Delay or playback dropout observed: no",
-      "- Selected voice direction: synthetic preflight fixture for RVC Bright Robot lead audition"
+      "- Selected voice direction: synthetic preflight fixture; production voice requires live DirectML RVC robot speech"
     ) | Set-Content -Path (Join-Path $evidenceRoot "AUDIO_REVIEW.md") -Encoding UTF8
     Copy-Item -LiteralPath "docs/media/voice/stackchan_spark_greeting.wav" -Destination (Join-Path $audioDir "speaker.wav")
 
@@ -1576,7 +1687,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
         "rvc_voice_base_status.json",
         "reference_audio/RVC_AUDITIONS.md",
         "reference_audio/RVC_AUDITIONS.json",
-        "reference_audio/stackchan_rvc_bright_robot.wav",
+        "reference_audio/stackchan_voice_reference.wav",
         "calibration/calibration.yaml"
       )
       benchStatus = [ordered]@{
@@ -1636,33 +1747,28 @@ function Assert-ArrivalPacketScaffoldGate {
     }
   }
 
-  $startArgs = @(
-    (Join-Path $PSScriptRoot "start_hardware_evidence.ps1"),
-    "-ReleaseTag", $Version,
-    "-PackageZip", $ZipPath,
-    "-Port", "COM_TEST",
-    "-Operator", "preflight",
-    "-DeviceId", "SELFTEST"
-  )
-  if ($AllowDirtyPackage) {
-    $startArgs += "-AllowDirtyPackage"
-  }
-
-  $created = Invoke-ToolText $startArgs
-  if ($created.ExitCode -ne 0) {
+  $startScript = Join-Path $PSScriptRoot "start_hardware_evidence.ps1"
+  try {
+    if ($AllowDirtyPackage) {
+      $createdOutput = & $startScript -ReleaseTag $Version -PackageZip $ZipPath -Port "COM_TEST" -Operator "preflight" -DeviceId "SELFTEST" -AllowDirtyPackage 2>&1
+    } else {
+      $createdOutput = & $startScript -ReleaseTag $Version -PackageZip $ZipPath -Port "COM_TEST" -Operator "preflight" -DeviceId "SELFTEST" 2>&1
+    }
+    $createdText = ($createdOutput | Out-String)
+  } catch {
     Restore-TemporaryPreflightReport
-    throw "Arrival packet scaffold creation failed:$([Environment]::NewLine)$($created.Text)"
+    throw "Arrival packet scaffold creation failed:$([Environment]::NewLine)$($_ | Out-String)"
   }
 
   $evidenceRoot = @(
-    ($created.Text -split "\r?\n") |
+    ($createdText -split "\r?\n") |
       ForEach-Object { $_.Trim() } |
       Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_) }
   ) | Select-Object -Last 1
 
   if ([string]::IsNullOrWhiteSpace($evidenceRoot)) {
     Restore-TemporaryPreflightReport
-    throw "Could not locate generated arrival packet in output:$([Environment]::NewLine)$($created.Text)"
+    throw "Could not locate generated arrival packet in output:$([Environment]::NewLine)$createdText"
   }
 
   $evidenceRoot = (Resolve-Path $evidenceRoot).Path
@@ -1696,7 +1802,7 @@ function Assert-ArrivalPacketScaffoldGate {
       "RUN_CONSUMER_PROMOTION_CHECK.cmd",
       "reference_audio/RVC_AUDITIONS.md",
       "reference_audio/RVC_AUDITIONS.json",
-      "reference_audio/stackchan_rvc_bright_robot.wav"
+      "reference_audio/stackchan_voice_reference.wav"
     )) {
       $path = Join-Path $evidenceRoot ($relativePath -replace "/", "\")
       if (-not (Test-Path -LiteralPath $path)) {
@@ -1711,11 +1817,17 @@ function Assert-ArrivalPacketScaffoldGate {
     if ($null -eq $metadata.voiceLeadAudition) {
       throw "Arrival packet metadata missing voiceLeadAudition"
     }
-    if ([string]$metadata.voiceLeadAudition.title -ne "RVC Bright Robot") {
+    if ([string]$metadata.voiceLeadAudition.title -ne "Stackchan Spark Bright Robot Playback Aid") {
       throw "Arrival packet lead voice mismatch: $($metadata.voiceLeadAudition.title)"
     }
-    if ([string]$metadata.voiceLeadAudition.referenceFile -ne "reference_audio/stackchan_rvc_bright_robot.wav") {
+    if ([string]$metadata.voiceLeadAudition.referenceFile -ne "reference_audio/stackchan_voice_reference.wav") {
       throw "Arrival packet lead reference mismatch: $($metadata.voiceLeadAudition.referenceFile)"
+    }
+    if ([string]$metadata.voiceLeadAudition.sourcePath -ne "media/voice/stackchan_spark_audition_bright_robot_greeting.wav") {
+      throw "Arrival packet lead source mismatch: $($metadata.voiceLeadAudition.sourcePath)"
+    }
+    if ([string]$metadata.voiceLeadAudition.evidenceRole -ne "playback-aid-only") {
+      throw "Arrival packet lead evidence role mismatch: $($metadata.voiceLeadAudition.evidenceRole)"
     }
     if ($null -eq $metadata.simulationBaseline) {
       throw "Arrival packet metadata missing simulationBaseline"
@@ -1739,10 +1851,10 @@ function Assert-ArrivalPacketScaffoldGate {
       throw "Arrival packet simulation baseline role should stay non-evidence: $($metadata.simulationBaseline.evidenceRole)"
     }
     foreach ($field in @(
-      @("pitch", "2"),
-      @("index_rate", "0.62"),
-      @("rms_mix_rate", "0.72"),
-      @("protect", "0.28")
+      @("pitch", "not-applicable"),
+      @("index_rate", "not-applicable"),
+      @("rms_mix_rate", "not-applicable"),
+      @("protect", "not-applicable")
     )) {
       $actual = [string]$metadata.voiceLeadAudition.PSObject.Properties[$field[0]].Value
       if ($actual -ne $field[1]) {
@@ -1750,7 +1862,7 @@ function Assert-ArrivalPacketScaffoldGate {
       }
     }
 
-    $leadPath = Join-Path $evidenceRoot "reference_audio/stackchan_rvc_bright_robot.wav"
+    $leadPath = Join-Path $evidenceRoot "reference_audio/stackchan_voice_reference.wav"
     $leadHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $leadPath).Hash.ToLowerInvariant()
     if ($leadHash -ne [string]$metadata.voiceLeadAudition.sha256) {
       throw "Arrival packet lead reference hash mismatch"
@@ -1776,6 +1888,7 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $nextSteps "Generated source WAVs alone do not count"
     Assert-TextContains $nextSteps "Do not run servo calibration unless the body is clear"
     Assert-TextContains $nextSteps "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json"
+    Assert-TextContains $nextSteps "Production voice-source provenance remains pending"
 
     $ciExceptionTemplate = Get-Content -LiteralPath (Join-Path $evidenceRoot "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json") -Raw | ConvertFrom-Json
     if ($ciExceptionTemplate.schema -ne "stackchan.ci-account-block-exception.v1") {
@@ -1801,11 +1914,12 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $checklist '- [x] `tools/run_device_preflight.ps1` passes.'
     Assert-TextContains $checklist '- [x] `tools/verify_release_package.ps1` passes for the release ZIP.'
     Assert-TextContains $checklist '- [ ] GitHub Actions `Firmware` workflow is green on `main`.'
-    Assert-TextContains $checklist '- [ ] Production voice-source provenance is completed and no longer marked pending.'
+    Assert-TextContains $checklist '- [x] Production RVC model and index hashes match the released files.'
+    Assert-TextContains $checklist '- [ ] Live robot speech through the verified DirectML RVC path is recorded and reviewed on the target speaker.'
 
     $audioReview = Get-Content -LiteralPath (Join-Path $evidenceRoot "AUDIO_REVIEW.md") -Raw
-    Assert-TextContains $audioReview "reference_audio/stackchan_rvc_bright_robot.wav"
-    Assert-TextContains $audioReview "RVC Bright Robot (pitch 2, index 0.62, RMS mix 0.72, protect 0.28)"
+    Assert-TextContains $audioReview "reference_audio/stackchan_voice_reference.wav"
+    Assert-TextContains $audioReview "Stackchan Spark Bright Robot Playback Aid (playback aid only)"
 
     $oldErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
@@ -1821,7 +1935,7 @@ function Assert-ArrivalPacketScaffoldGate {
     }
     Assert-TextContains $progressText "Hardware evidence progress:"
     Assert-TextContains $progressText "Bench status written:"
-    Assert-TextContains $progressText "RVC lead audition reference hash matches metadata"
+    Assert-TextContains $progressText "Voice playback reference hash matches metadata"
     Assert-TextContains $progressText "No real-device speaker recording found under audio/"
     foreach ($relativePath in @("BENCH_STATUS.md", "BENCH_STATUS.json")) {
       $path = Join-Path $evidenceRoot $relativePath
@@ -1871,7 +1985,7 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $rolloutStatus "blocked-or-pending"
     Assert-TextContains $rolloutStatus "Next action:"
     Assert-TextContains $rolloutStatus "Next command:"
-    Assert-TextContains $rolloutStatus "RUN_DISPLAY_ONLY.cmd"
+    Assert-TextContains $rolloutStatus "RUN_SPEECH_MOUTH_DEMO.cmd; RUN_SPEAK_ALL_INTENTS.cmd"
     Assert-TextContains $rolloutStatus "production-voice-source"
     Assert-TextContains $rolloutStatus "strict-hardware-evidence"
     Assert-TextContains $rolloutStatus "voice-gate-status-consistency"
@@ -1880,8 +1994,8 @@ function Assert-ArrivalPacketScaffoldGate {
     if ([string]$rolloutStatusJson.nextOwner -ne "hardware") {
       throw "Arrival packet ROLLOUT_STATUS.json next owner should be hardware, got $($rolloutStatusJson.nextOwner)"
     }
-    if ([string]$rolloutStatusJson.nextCommand -notmatch "RUN_DISPLAY_ONLY\.cmd") {
-      throw "Arrival packet ROLLOUT_STATUS.json next command did not point at display evidence: $($rolloutStatusJson.nextCommand)"
+    if ([string]$rolloutStatusJson.nextCommand -notmatch "RUN_SPEECH_MOUTH_DEMO\.cmd;\s*RUN_SPEAK_ALL_INTENTS\.cmd") {
+      throw "Arrival packet ROLLOUT_STATUS.json next command did not point at the required speech demos: $($rolloutStatusJson.nextCommand)"
     }
     $global:LASTEXITCODE = 0
   } finally {

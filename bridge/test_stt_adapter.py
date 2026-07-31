@@ -12,13 +12,16 @@ if str(BRIDGE_DIR) not in sys.path:
 
 from stt_adapter import (
     STT_COMMAND_ENV,
+    STT_SERVER_URL_ENV,
     SttConfigurationError,
     SttExecutionError,
+    SttNoTranscriptError,
     normalize_transcript_output,
     parse_transcript_output,
     transcribe_pcm,
 )
 from stt_normalization import normalize_stackchan_terms
+from whisper_server_stt import WhisperServerError, WhisperServerResult
 from whisper_cpp_stt import (
     clean_whisper_text,
     read_whisper_transcript,
@@ -34,9 +37,34 @@ from windows_speech_stt import (
 
 class SttAdapterTests(unittest.TestCase):
     def test_unconfigured_stt_raises_clear_error(self):
-        with patch.dict(os.environ, {STT_COMMAND_ENV: ""}, clear=False):
+        with patch.dict(
+            os.environ,
+            {STT_COMMAND_ENV: "", STT_SERVER_URL_ENV: ""},
+            clear=False,
+        ):
             with self.assertRaises(SttConfigurationError):
                 transcribe_pcm(b"\x00\x00", 16000)
+
+    def test_loopback_server_path_avoids_per_turn_stt_subprocess(self):
+        with patch(
+            "stt_adapter.transcribe_pcm_via_server",
+            return_value=WhisperServerResult(
+                transcript="Hello Stackchan",
+                raw_transcript="Hello stack shed",
+            ),
+        ) as server:
+            result = transcribe_pcm(
+                b"\x01\x00\x02\x00",
+                16000,
+                command="must not run",
+                server_url="http://127.0.0.1:5061",
+            )
+
+        server.assert_called_once()
+        self.assertEqual("Hello Stackchan", result.transcript)
+        self.assertEqual("Hello stack shed", result.raw_transcript)
+        self.assertEqual("whisper.cpp-server", result.command_source)
+        self.assertTrue(result.transcript_normalized)
 
     def test_transcript_output_accepts_plain_text_and_json(self):
         self.assertEqual("hello stackchan", normalize_transcript_output(b" hello   stackchan \n"))
@@ -85,14 +113,101 @@ class SttAdapterTests(unittest.TestCase):
         self.assertEqual(4, result.audio_bytes)
         self.assertGreater(result.elapsed_ms, 0.0)
 
-    def test_empty_stt_output_is_an_execution_error(self):
+    def test_empty_stt_output_is_a_no_transcript_outcome(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             script = Path(temp_dir) / "empty_stt.py"
             script.write_text("import sys\nsys.stdin.buffer.read()\n", encoding="utf-8")
             command = f'"{sys.executable}" "{script}"'
 
-            with self.assertRaises(SttExecutionError):
+            with self.assertRaises(SttNoTranscriptError):
                 transcribe_pcm(b"\x01\x00", 16000, command=command)
+
+    def test_command_no_transcript_exit_is_typed_separately(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "no_transcript_stt.py"
+            script.write_text(
+                "import sys\nsys.stdin.buffer.read()\n"
+                "print('whisper.cpp produced no transcript.', file=sys.stderr)\n"
+                "raise SystemExit(2)\n",
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+
+            with self.assertRaises(SttNoTranscriptError):
+                transcribe_pcm(b"\x01\x00", 16000, command=command)
+
+    def test_command_infrastructure_failure_remains_an_execution_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "failed_stt.py"
+            script.write_text(
+                "import sys\nsys.stdin.buffer.read()\n"
+                "print('model file missing', file=sys.stderr)\n"
+                "raise SystemExit(2)\n",
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+
+            with self.assertRaises(SttExecutionError) as raised:
+                transcribe_pcm(b"\x01\x00", 16000, command=command)
+
+        self.assertNotIsInstance(raised.exception, SttNoTranscriptError)
+
+    def test_loopback_server_no_transcript_is_typed_separately(self):
+        with patch(
+            "stt_adapter.transcribe_pcm_via_server",
+            side_effect=WhisperServerError("local whisper.cpp server produced no transcript"),
+        ):
+            with self.assertRaises(SttNoTranscriptError):
+                transcribe_pcm(
+                    b"\x01\x00",
+                    16000,
+                    server_url="http://127.0.0.1:5061",
+                )
+
+    def test_loopback_server_failure_uses_configured_local_fallback(self):
+        with (
+            patch(
+                "stt_adapter.transcribe_pcm_via_server",
+                side_effect=WhisperServerError("connection refused"),
+            ),
+            patch(
+                "stt_adapter.run_stt_command",
+                return_value=(
+                    "Hello Stackchan",
+                    9000.0,
+                    {
+                        "raw_transcript": "Hello stack shed",
+                        "transcript_normalized": True,
+                    },
+                ),
+            ) as fallback,
+        ):
+            result = transcribe_pcm(
+                b"\x01\x00",
+                16000,
+                command="python bridge/whisper_cpp_stt.py",
+                server_url="http://127.0.0.1:5061",
+            )
+
+        fallback.assert_called_once()
+        self.assertEqual("Hello Stackchan", result.transcript)
+        self.assertEqual("whisper.cpp-cli-fallback", result.command_source)
+        self.assertTrue(result.transcript_normalized)
+
+    def test_loopback_server_failure_without_fallback_remains_an_error(self):
+        with (
+            patch.dict(os.environ, {STT_COMMAND_ENV: ""}, clear=False),
+            patch(
+                "stt_adapter.transcribe_pcm_via_server",
+                side_effect=WhisperServerError("connection refused"),
+            ),
+        ):
+            with self.assertRaises(SttExecutionError):
+                transcribe_pcm(
+                    b"\x01\x00",
+                    16000,
+                    server_url="http://127.0.0.1:5061",
+                )
 
     def test_windows_speech_adapter_writes_pcm_wav_contract(self):
         with tempfile.TemporaryDirectory() as temp_dir:

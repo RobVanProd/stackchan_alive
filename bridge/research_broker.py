@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -43,6 +44,29 @@ def utc_timestamp() -> str:
 
 def _clean_text(value: object, limit: int) -> str:
     return " ".join(str(value or "").split())[:limit]
+
+
+def _decode_content(payload: bytes, encoding: str, *, max_bytes: int) -> bytes:
+    normalized = str(encoding or "").strip().lower()
+    if normalized in ("", "identity"):
+        return payload
+    if normalized != "gzip":
+        raise ResearchPolicyError("content_encoding_blocked")
+    try:
+        decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        decoded = decoder.decompress(payload, max_bytes + 1)
+        if decoder.unconsumed_tail or len(decoded) > max_bytes:
+            raise ResearchPolicyError("response_too_large")
+        remaining = max_bytes + 1 - len(decoded)
+        if remaining > 0:
+            decoded += decoder.flush(remaining)
+    except zlib.error as exc:
+        raise ResearchTransportError("content_decode_failed") from exc
+    if not decoder.eof:
+        raise ResearchTransportError("content_decode_failed")
+    if len(decoded) > max_bytes:
+        raise ResearchPolicyError("response_too_large")
+    return decoded
 
 
 def _is_forbidden_ip(value: str) -> bool:
@@ -169,6 +193,12 @@ class ResearchBroker:
         self.audit: list[dict[str, object]] = []
 
     def _record(self, name: str, started: float, **fields: object) -> None:
+        query = fields.pop("query", None)
+        url = fields.pop("url", None)
+        if query is not None:
+            fields["query_chars"] = len(str(query))
+        if url is not None:
+            fields["url_present"] = bool(str(url))
         self.audit.append(
             {
                 "tool": name,
@@ -256,7 +286,11 @@ class ResearchBroker:
         while True:
             request = urllib.request.Request(
                 current,
-                headers={"Accept": "text/html,text/plain,application/xhtml+xml", "User-Agent": "StackchanAlive/1.0"},
+                headers={
+                    "Accept": "text/html,text/plain,application/xhtml+xml",
+                    "Accept-Encoding": "identity",
+                    "User-Agent": "StackchanAlive/1.0",
+                },
             )
             try:
                 response, payload = self._read(request, max_bytes=self.config.max_fetch_bytes)
@@ -289,6 +323,11 @@ class ResearchBroker:
             content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
             if content_type not in ALLOWED_CONTENT_TYPES:
                 raise ResearchPolicyError("content_type_blocked")
+            payload = _decode_content(
+                payload,
+                response.headers.get("Content-Encoding", ""),
+                max_bytes=self.config.max_fetch_bytes,
+            )
             charset = response.headers.get_content_charset() or "utf-8"
             try:
                 decoded = payload.decode(charset, errors="replace")
