@@ -467,6 +467,7 @@ private val PACKAGED_BRAIN_RESOURCES = listOf(
     "bridge/cancellable_process.py",
     "bridge/cancellation.py",
     "bridge/character_harness.py",
+    "bridge/conversation_harness.py",
     "bridge/conversation_latency.py",
     "bridge/conversation_session.py",
     "bridge/dashboard/app.js",

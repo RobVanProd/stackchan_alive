@@ -115,6 +115,7 @@ class DesktopBrainSupervisorTest {
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("bridge_memory.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("cancellable_process.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("cancellation.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("conversation_harness.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("conversation_latency.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("conversation_session.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("dashboard").resolve("app.js")))

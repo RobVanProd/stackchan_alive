@@ -135,6 +135,7 @@ tasks.processResources {
             "cancellable_process.py",
             "cancellation.py",
             "character_harness.py",
+            "conversation_harness.py",
             "conversation_latency.py",
             "conversation_session.py",
             "dashboard_service.py",
