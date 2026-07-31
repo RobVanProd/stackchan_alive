@@ -47,13 +47,19 @@ if ($dashboardListener) {
   throw "Port $DashboardPort is already used by a non-Stackchan dashboard process (PID $($dashboardListener.OwningProcess))."
 }
 
-$bridgeListener = Get-NetTCPConnection -LocalPort $BridgePort -State Listen -ErrorAction SilentlyContinue |
+$bridgeListeners = @(
+  Get-NetTCPConnection -LocalPort $BridgePort -State Listen -ErrorAction SilentlyContinue
+)
+$bridgeListener = $bridgeListeners |
+  Where-Object {
+    $candidate = Get-CimInstance Win32_Process `
+      -Filter "ProcessId=$($_.OwningProcess)" -ErrorAction SilentlyContinue
+    $null -ne $candidate -and
+      [string]$candidate.CommandLine -match "bridge[\\/]lan_service\.py"
+  } |
   Select-Object -First 1
 if ($bridgeListener) {
   $bridgeProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$($bridgeListener.OwningProcess)" -ErrorAction SilentlyContinue
-  if ($null -eq $bridgeProcess -or [string]$bridgeProcess.CommandLine -notmatch "bridge[\\/]lan_service\.py") {
-    throw "Port $BridgePort is occupied by a non-Stackchan process; refusing to attach the dashboard."
-  }
   $bridgeCommandLine = [string]$bridgeProcess.CommandLine
   $arguments = @(
     "bridge\dashboard_service.py",

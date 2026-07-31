@@ -62,16 +62,35 @@ function Stop-ExistingBridge {
   foreach ($listener in $listeners) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)" -ErrorAction SilentlyContinue
     if ($null -eq $process -or [string]$process.CommandLine -notmatch "bridge[\\/]lan_service\.py") {
-      throw "Refusing to stop non-Stackchan listener PID $($listener.OwningProcess) on port $BridgePort."
+      Write-Host "Preserving non-Stackchan listener PID $($listener.OwningProcess) on port $BridgePort."
+      continue
     }
     Stop-Process -Id $listener.OwningProcess -Force
   }
   $deadline = (Get-Date).AddSeconds(10)
-  while ((Get-Date) -lt $deadline -and
-      (Get-NetTCPConnection -LocalPort $BridgePort -State Listen -ErrorAction SilentlyContinue)) {
+  while ((Get-Date) -lt $deadline) {
+    $stackchanListeners = @(
+      Get-NetTCPConnection -LocalPort $BridgePort -State Listen -ErrorAction SilentlyContinue |
+        Where-Object {
+          $candidate = Get-CimInstance Win32_Process `
+            -Filter "ProcessId=$($_.OwningProcess)" -ErrorAction SilentlyContinue
+          $null -ne $candidate -and
+            [string]$candidate.CommandLine -match "bridge[\\/]lan_service\.py"
+        }
+    )
+    if ($stackchanListeners.Count -eq 0) { break }
     Start-Sleep -Milliseconds 250
   }
-  if (Get-NetTCPConnection -LocalPort $BridgePort -State Listen -ErrorAction SilentlyContinue) {
+  $remainingStackchanListeners = @(
+    Get-NetTCPConnection -LocalPort $BridgePort -State Listen -ErrorAction SilentlyContinue |
+      Where-Object {
+        $candidate = Get-CimInstance Win32_Process `
+          -Filter "ProcessId=$($_.OwningProcess)" -ErrorAction SilentlyContinue
+        $null -ne $candidate -and
+          [string]$candidate.CommandLine -match "bridge[\\/]lan_service\.py"
+      }
+  )
+  if ($remainingStackchanListeners.Count -gt 0) {
     throw "Bridge port $BridgePort did not become free."
   }
 }

@@ -102,7 +102,14 @@ if (-not [string]::IsNullOrWhiteSpace($AudioEvidenceDir)) {
 if ($StopExisting) {
   $Connections = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
   foreach ($Connection in $Connections) {
-    Stop-Process -Id $Connection.OwningProcess -Force -ErrorAction SilentlyContinue
+    $ExistingProcess = Get-CimInstance Win32_Process `
+      -Filter "ProcessId=$($Connection.OwningProcess)" -ErrorAction SilentlyContinue
+    if ($null -ne $ExistingProcess -and
+        [string]$ExistingProcess.CommandLine -match "bridge[\\/]lan_service\.py") {
+      Stop-Process -Id $Connection.OwningProcess -Force -ErrorAction SilentlyContinue
+    } else {
+      Write-Host "Preserving non-Stackchan listener PID $($Connection.OwningProcess) on port $Port."
+    }
   }
 }
 

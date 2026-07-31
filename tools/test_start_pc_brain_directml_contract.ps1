@@ -19,7 +19,7 @@ if ($parseErrors.Count -ne 0) {
 
 foreach ($required in @(
   "Stop-ExistingBridge",
-  "Refusing to stop non-Stackchan listener",
+  "Preserving non-Stackchan listener",
   "BridgeStartupReady",
   "Invoke-EncodedChildPowerShell",
   "RedirectStandardOutput",

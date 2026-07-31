@@ -20,6 +20,7 @@ foreach ($required in @(
   "stackchan.bridge-dashboard.v1",
   "Get-NetTCPConnection -LocalPort `$DashboardPort",
   "Get-NetTCPConnection -LocalPort `$BridgePort",
+  "`$bridgeListeners",
   "bridge[\\/]lan_service\.py",
   "bridge\dashboard_service.py",
   "-WindowStyle Hidden",
@@ -42,6 +43,7 @@ foreach ($required in @(
 $baseText = Get-Content -LiteralPath $baseLauncher -Raw
 foreach ($required in @(
   "[switch]`$EnableDashboard",
+  "Preserving non-Stackchan listener",
   "DashboardHost must be loopback-only.",
   '"--dashboard"',
   '"--robot-host", $RobotHost'

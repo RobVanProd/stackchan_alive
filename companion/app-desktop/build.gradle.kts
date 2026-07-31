@@ -150,6 +150,7 @@ tasks.processResources {
             "room_context.py",
             "stt_adapter.py",
             "stt_normalization.py",
+            "stt_supervisor.py",
             "tts_adapter.py",
             "utterance_text.py",
             "whisper_server_stt.py",

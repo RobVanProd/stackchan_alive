@@ -129,6 +129,7 @@ class DesktopBrainSupervisorTest {
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("robot_embodiment.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("room_context.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("stt_normalization.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("stt_supervisor.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("utterance_text.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("whisper_server_stt.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("personas").resolve("spark").resolve("pack.yaml")))
