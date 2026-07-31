@@ -149,6 +149,7 @@ def transcribe_pcm(
     safe_rate = max(8000, min(48000, int(sample_rate or 16000)))
     if resolved_server_url:
         start = time.perf_counter()
+        server_error: WhisperServerError | ValueError | None = None
         try:
             server_result = transcribe_pcm_via_server(
                 pcm,
@@ -159,19 +160,48 @@ def transcribe_pcm(
         except WhisperServerError as exc:
             if is_no_transcript_error(exc):
                 raise SttNoTranscriptError(str(exc)) from exc
-            raise SttExecutionError(str(exc)) from exc
+            server_error = exc
         except ValueError as exc:
-            raise SttExecutionError(str(exc)) from exc
-        if not server_result.transcript.strip():
-            raise SttNoTranscriptError("whisper.cpp server produced no transcript")
+            server_error = exc
+        else:
+            if not server_result.transcript.strip():
+                raise SttNoTranscriptError("whisper.cpp server produced no transcript")
+            return SttResult(
+                transcript=server_result.transcript,
+                elapsed_ms=(time.perf_counter() - start) * 1000.0,
+                command_source="whisper.cpp-server",
+                sample_rate=safe_rate,
+                audio_bytes=len(pcm),
+                raw_transcript=server_result.raw_transcript,
+                transcript_normalized=server_result.raw_transcript != server_result.transcript,
+            )
+
+        resolved_command, _ = resolve_stt_command(command)
+        if not resolved_command:
+            raise SttExecutionError(str(server_error)) from server_error
+        try:
+            transcript, _, metadata = run_stt_command(
+                resolved_command,
+                pcm,
+                safe_rate,
+                timeout_ms,
+            )
+        except SttNoTranscriptError:
+            raise
+        except SttExecutionError as fallback_error:
+            raise SttExecutionError(
+                f"stt server failed ({server_error}); local fallback failed ({fallback_error})"
+            ) from fallback_error
+        if not transcript:
+            raise SttNoTranscriptError("local STT fallback produced an empty transcript")
         return SttResult(
-            transcript=server_result.transcript,
+            transcript=transcript,
             elapsed_ms=(time.perf_counter() - start) * 1000.0,
-            command_source="whisper.cpp-server",
+            command_source="whisper.cpp-cli-fallback",
             sample_rate=safe_rate,
             audio_bytes=len(pcm),
-            raw_transcript=server_result.raw_transcript,
-            transcript_normalized=server_result.raw_transcript != server_result.transcript,
+            raw_transcript=str(metadata.get("raw_transcript", "")),
+            transcript_normalized=bool(metadata.get("transcript_normalized", False)),
         )
     resolved_command, command_source = resolve_stt_command(command)
     if not resolved_command:

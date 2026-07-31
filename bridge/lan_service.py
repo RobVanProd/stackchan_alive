@@ -51,6 +51,7 @@ from stt_adapter import (
     SttNoTranscriptError,
     transcribe_pcm,
 )
+from stt_supervisor import SttServerSupervisor, SttSupervisorConfig
 from tts_adapter import (
     DEFAULT_TTS_TIMEOUT_MS,
     DEFAULT_TTS_VOICE,
@@ -722,6 +723,8 @@ class LanBridgeConfig:
     persona_id: str = DEFAULT_PERSONA_ID
     stt_command: str = ""
     stt_server_url: str = ""
+    stt_restart_command: str = ""
+    stt_health_interval_s: float = 2.0
     stt_timeout_ms: int = DEFAULT_STT_TIMEOUT_MS
     require_audio_wake_phrase: bool = False
     tts_command: str = ""
@@ -788,6 +791,12 @@ class LanBridgeConfig:
             command=self.room_vision_command,
             timeout_ms=self.room_vision_timeout_ms,
         )
+        if self.stt_server_url:
+            SttSupervisorConfig(
+                server_url=self.stt_server_url,
+                restart_command=self.stt_restart_command,
+                health_interval_seconds=self.stt_health_interval_s,
+            )
 
 
 @dataclass(frozen=True)
@@ -3463,6 +3472,19 @@ def serve(config: LanBridgeConfig) -> None:
             min_interval_ms=config.initiative_min_interval_ms,
         )
     )
+    stt_supervisor = (
+        SttServerSupervisor(
+            SttSupervisorConfig(
+                server_url=config.stt_server_url,
+                restart_command=config.stt_restart_command,
+                health_interval_seconds=config.stt_health_interval_s,
+            )
+        )
+        if config.stt_server_url
+        else None
+    )
+    if stt_supervisor is not None:
+        stt_supervisor.start()
     frame_source = None
     model_observer = None
     room_configuration_error = ""
@@ -3523,9 +3545,11 @@ def serve(config: LanBridgeConfig) -> None:
                 tts_voice=config.tts_voice,
                 research_enabled=config.research_enabled,
                 conversation_v2_enabled=config.conversation_v2_enabled,
+                stt_server_url=config.stt_server_url,
             ),
             initiative_policy=initiative_policy,
             room_context=room_context,
+            stt_supervisor=stt_supervisor,
         )
         dashboard_server, dashboard_thread = start_dashboard_server(dashboard_runtime)
     try:
@@ -3563,6 +3587,8 @@ def serve(config: LanBridgeConfig) -> None:
                     break
     finally:
         room_context.stop()
+        if stt_supervisor is not None:
+            stt_supervisor.stop()
         if dashboard_runtime is not None:
             dashboard_runtime.set_bridge_listening(False)
         if dashboard_server is not None and dashboard_thread is not None:
@@ -3583,6 +3609,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--persona", default=DEFAULT_PERSONA_ID, help="Validated persona pack id.")
     parser.add_argument("--stt-command", default="")
     parser.add_argument("--stt-server-url", default="")
+    parser.add_argument("--stt-restart-command", default="")
+    parser.add_argument("--stt-health-interval-s", type=float, default=2.0)
     parser.add_argument("--stt-timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
     parser.add_argument("--require-audio-wake-phrase", action="store_true")
     parser.add_argument("--tts-command", default="")
@@ -3673,6 +3701,8 @@ def main() -> int:
         persona_id=args.persona,
         stt_command=args.stt_command,
         stt_server_url=args.stt_server_url,
+        stt_restart_command=args.stt_restart_command,
+        stt_health_interval_s=args.stt_health_interval_s,
         stt_timeout_ms=args.stt_timeout_ms,
         require_audio_wake_phrase=args.require_audio_wake_phrase,
         tts_command=args.tts_command,

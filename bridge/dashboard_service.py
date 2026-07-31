@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from initiative_policy import InitiativePolicy
     from room_context import RoomContextRuntime
+    from stt_supervisor import SttServerSupervisor
 
 
 DEFAULT_DASHBOARD_HOST = "127.0.0.1"
@@ -126,6 +127,7 @@ class DashboardConfig:
     tts_voice: str = ""
     research_enabled: bool = False
     conversation_v2_enabled: bool = False
+    stt_server_url: str = ""
 
 
 class DashboardRuntime:
@@ -137,10 +139,12 @@ class DashboardRuntime:
         *,
         initiative_policy: "InitiativePolicy | None" = None,
         room_context: "RoomContextRuntime | None" = None,
+        stt_supervisor: "SttServerSupervisor | None" = None,
     ):
         self.config = config
         self.initiative_policy = initiative_policy
         self.room_context = room_context
+        self.stt_supervisor = stt_supervisor
         self._lock = threading.RLock()
         self._started_at = time.monotonic()
         self._bridge_listening = False
@@ -394,6 +398,30 @@ class DashboardRuntime:
                     "lastError": "",
                 }
             )
+            speech_recognition = (
+                self.stt_supervisor.status()
+                if self.stt_supervisor is not None
+                else {
+                    "configured": bool(self.config.stt_server_url),
+                    "healthy": None,
+                    "supervised": False,
+                    "recovering": False,
+                    "checks": 0,
+                    "failures": 0,
+                    "consecutiveFailures": 0,
+                    "restarts": 0,
+                    "restartFailures": 0,
+                    "lastCheckAt": "",
+                    "lastHealthyAt": "",
+                    "lastRestartAt": "",
+                    "lastError": "",
+                }
+            )
+            speech_ready = (
+                speech_recognition["healthy"] is True
+                if speech_recognition["configured"]
+                else True
+            )
             return {
                 "schema": "stackchan.bridge-dashboard.v1",
                 "generatedAt": _utc_now(),
@@ -407,6 +435,10 @@ class DashboardRuntime:
                     "ttsVoice": self.config.tts_voice,
                     "researchEnabled": self.config.research_enabled,
                     "conversationV2Enabled": self.config.conversation_v2_enabled,
+                    "operational": bool(
+                        self._bridge_listening and robot_connected and speech_ready
+                    ),
+                    "speechReady": speech_ready,
                     "networkState": debug.get("network_state", "unknown"),
                     "bridgeState": debug.get("bridge_state", "unknown"),
                 },
@@ -447,6 +479,9 @@ class DashboardRuntime:
                 "behavior": {
                     "initiative": initiative,
                     "roomObservation": room_observation,
+                },
+                "services": {
+                    "speechRecognition": speech_recognition,
                 },
                 "lastAction": dict(self._last_action),
                 "events": list(reversed(self._events[-8:])),

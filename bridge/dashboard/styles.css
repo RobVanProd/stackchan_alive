@@ -78,6 +78,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
 .connection-chip.online { color: var(--mint); border-color: #275d50; }
 .connection-chip.online .status-dot { background: var(--mint); box-shadow: 0 0 10px rgba(99, 223, 176, .6); }
+.connection-chip.degraded { color: var(--amber); border-color: #655326; }
+.connection-chip.degraded .status-dot { background: var(--amber); }
 .connection-chip.offline { color: var(--danger); border-color: #63323a; }
 .connection-chip.offline .status-dot { background: var(--danger); }
 

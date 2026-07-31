@@ -6,6 +6,8 @@ param(
   [switch]$InProcessOllamaRunner,
   [string]$SttCommand = "python bridge\whisper_cpp_stt.py",
   [string]$SttServerUrl = "",
+  [string]$SttRestartCommand = "",
+  [double]$SttHealthIntervalSeconds = 2.0,
   [string]$TtsCommand = "python bridge\selected_voice_tts.py",
   [switch]$InProcessDirectMlTts,
   [string]$TtsVoice = "stackchan-rvc-bright-robot",
@@ -155,6 +157,10 @@ if ($EnablePrivateTurnEvidence) {
 
 if (-not [string]::IsNullOrWhiteSpace($SttServerUrl)) {
   $ArgsList += @("--stt-server-url", $SttServerUrl)
+  $ArgsList += @("--stt-health-interval-s", "$SttHealthIntervalSeconds")
+  if (-not [string]::IsNullOrWhiteSpace($SttRestartCommand)) {
+    $ArgsList += @("--stt-restart-command", $SttRestartCommand)
+  }
 }
 
 if ($StreamTtsPhrases) {
@@ -280,6 +286,8 @@ if ($Background) {
     conversationMaxTurns = if ($EnableConversationV2) { $ConversationMaxTurns } else { 0 }
     conversationMaxContextTurns = if ($EnableConversationV2) { $ConversationMaxContextTurns } else { 0 }
     episodeDistillationEnabled = [bool]$EnableEpisodeDistillation
+    sttServerUrl = $SttServerUrl
+    sttSupervised = -not [string]::IsNullOrWhiteSpace($SttRestartCommand)
   } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $RuntimeManifestFile -Encoding UTF8
   Write-Host "Stackchan PC brain started."
   Write-Host "PID: $($Process.Id)"

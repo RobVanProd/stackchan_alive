@@ -70,6 +70,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\start_pc_brain_dir
 Normal startup uses the resident STT endpoint, redacts transcript and response text in the turn
 log, and does not persist microphone WAV files. Private audio evidence requires a separate,
 explicit validation flow and is not admissible for this privacy qualification.
+The dashboard must report the STT service configured, healthy, supervised, and not recovering.
+Its restart and restart-failure counters must not advance during the qualification window.
 
 ## Open An Evidence Session
 

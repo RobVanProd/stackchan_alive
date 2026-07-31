@@ -450,6 +450,48 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
                 f"errors={json.dumps(vision_error_deltas, sort_keys=True)}"
             ),
         )
+        speech = _nested(before_dashboard, "services", "speechRecognition")
+        add(
+            "stt-supervision-ready",
+            "pass"
+            if isinstance(speech, dict)
+            and speech.get("configured") is True
+            and speech.get("healthy") is True
+            and speech.get("supervised") is True
+            and speech.get("recovering") is False
+            else "fail",
+            (
+                f"configured={speech.get('configured') if isinstance(speech, dict) else None} "
+                f"healthy={speech.get('healthy') if isinstance(speech, dict) else None} "
+                f"supervised={speech.get('supervised') if isinstance(speech, dict) else None} "
+                f"recovering={speech.get('recovering') if isinstance(speech, dict) else None}"
+            ),
+        )
+
+    if before_dashboard is not None and after_dashboard is not None:
+        before_speech = _nested(before_dashboard, "services", "speechRecognition")
+        after_speech = _nested(after_dashboard, "services", "speechRecognition")
+        speech_stable = (
+            isinstance(before_speech, dict)
+            and isinstance(after_speech, dict)
+            and before_speech.get("healthy") is True
+            and after_speech.get("healthy") is True
+            and after_speech.get("recovering") is False
+            and _integer(after_speech.get("restarts")) == _integer(before_speech.get("restarts"))
+            and _integer(after_speech.get("restartFailures"))
+            == _integer(before_speech.get("restartFailures"))
+        )
+        add(
+            "stt-service-stable",
+            "pass" if speech_stable else "fail",
+            (
+                f"restarts={_integer(before_speech.get('restarts')) if isinstance(before_speech, dict) else None}"
+                f"->{_integer(after_speech.get('restarts')) if isinstance(after_speech, dict) else None} "
+                f"restartFailures="
+                f"{_integer(before_speech.get('restartFailures')) if isinstance(before_speech, dict) else None}"
+                f"->{_integer(after_speech.get('restartFailures')) if isinstance(after_speech, dict) else None}"
+            ),
+        )
         remote_stops = _delta(
             before_debug,
             after_debug,

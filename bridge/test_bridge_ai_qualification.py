@@ -100,6 +100,16 @@ class BridgeAiQualificationTests(unittest.TestCase):
         }
         before_dashboard = {
             "bridge": {"conversationV2Enabled": True},
+            "services": {
+                "speechRecognition": {
+                    "configured": True,
+                    "healthy": True,
+                    "supervised": True,
+                    "recovering": False,
+                    "restarts": 0,
+                    "restartFailures": 0,
+                }
+            },
             "behavior": {
                 "initiative": {"available": True, "enabled": True},
                 "roomObservation": {
@@ -110,6 +120,16 @@ class BridgeAiQualificationTests(unittest.TestCase):
             },
         }
         after_dashboard = {
+            "services": {
+                "speechRecognition": {
+                    "configured": True,
+                    "healthy": True,
+                    "supervised": True,
+                    "recovering": False,
+                    "restarts": 0,
+                    "restartFailures": 0,
+                }
+            },
             "behavior": {
                 "initiative": {
                     "ignoredOpeners": 2,

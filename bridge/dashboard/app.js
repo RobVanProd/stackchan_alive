@@ -85,16 +85,41 @@ function render(payload) {
   const bridge = payload.bridge || {};
   const robot = payload.robot || {};
   const behavior = payload.behavior || {};
+  const services = payload.services || {};
+  const speech = services.speechRecognition || {};
   const initiative = behavior.initiative || {};
   const room = behavior.roomObservation || {};
   const connected = robot.connected === true;
+  const speechReady = speech.configured !== true || speech.healthy === true;
+  const operational = connected && speechReady;
   const chip = $("connectionChip");
-  chip.className = `connection-chip ${connected ? "online" : "offline"}`;
-  $("connectionLabel").textContent = connected ? "ROBOT CONNECTED" : "ROBOT OFFLINE";
-  $("bridgeState").textContent = bridge.bridgeState === "ready" || connected ? "Ready" : bridge.listening ? "Listening" : "External";
+  chip.className = `connection-chip ${operational ? "online" : connected ? "degraded" : "offline"}`;
+  $("connectionLabel").textContent = operational
+    ? "BRIDGE READY"
+    : connected
+      ? speech.recovering
+        ? "SPEECH RECOVERING"
+        : "SPEECH OFFLINE"
+      : "ROBOT OFFLINE";
+  $("bridgeState").textContent = operational
+    ? "Ready"
+    : connected
+      ? "Degraded"
+      : bridge.listening
+        ? "Listening"
+        : "External";
   $("robotHost").textContent = robot.host || "Not connected";
   $("runnerProfile").textContent = bridge.runnerProfile || "Unknown";
   $("researchState").textContent = bridge.researchEnabled ? "Natural web tools on" : "Off";
+  $("speechState").textContent = speech.configured !== true
+    ? "Not configured"
+    : speech.recovering
+      ? "Restarting"
+      : speech.healthy === true
+        ? speech.restarts > 0
+          ? `Ready / ${speech.restarts} recovered`
+          : "Ready"
+        : "Unavailable";
   $("voiceName").textContent = bridge.ttsVoice || "Local voice";
   $("uptime").textContent = formatDuration(bridge.uptimeSeconds);
   $("robotMode").textContent = connected ? String(robot.mode || "ONLINE").toUpperCase() : "AWAITING ROBOT";

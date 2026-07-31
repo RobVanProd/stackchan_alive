@@ -164,6 +164,51 @@ class SttAdapterTests(unittest.TestCase):
                     server_url="http://127.0.0.1:5061",
                 )
 
+    def test_loopback_server_failure_uses_configured_local_fallback(self):
+        with (
+            patch(
+                "stt_adapter.transcribe_pcm_via_server",
+                side_effect=WhisperServerError("connection refused"),
+            ),
+            patch(
+                "stt_adapter.run_stt_command",
+                return_value=(
+                    "Hello Stackchan",
+                    9000.0,
+                    {
+                        "raw_transcript": "Hello stack shed",
+                        "transcript_normalized": True,
+                    },
+                ),
+            ) as fallback,
+        ):
+            result = transcribe_pcm(
+                b"\x01\x00",
+                16000,
+                command="python bridge/whisper_cpp_stt.py",
+                server_url="http://127.0.0.1:5061",
+            )
+
+        fallback.assert_called_once()
+        self.assertEqual("Hello Stackchan", result.transcript)
+        self.assertEqual("whisper.cpp-cli-fallback", result.command_source)
+        self.assertTrue(result.transcript_normalized)
+
+    def test_loopback_server_failure_without_fallback_remains_an_error(self):
+        with (
+            patch.dict(os.environ, {STT_COMMAND_ENV: ""}, clear=False),
+            patch(
+                "stt_adapter.transcribe_pcm_via_server",
+                side_effect=WhisperServerError("connection refused"),
+            ),
+        ):
+            with self.assertRaises(SttExecutionError):
+                transcribe_pcm(
+                    b"\x01\x00",
+                    16000,
+                    server_url="http://127.0.0.1:5061",
+                )
+
     def test_windows_speech_adapter_writes_pcm_wav_contract(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             wav_path = Path(temp_dir) / "utterance.wav"

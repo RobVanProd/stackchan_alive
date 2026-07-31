@@ -58,6 +58,38 @@ class DashboardRuntimeTests(unittest.TestCase):
         self.assertTrue(bridge["researchEnabled"])
         self.assertTrue(bridge["conversationV2Enabled"])
 
+    def test_speech_dependency_controls_operational_readiness(self) -> None:
+        class FakeSupervisor:
+            def status(self):
+                return {
+                    "configured": True,
+                    "healthy": False,
+                    "supervised": True,
+                    "recovering": True,
+                    "checks": 4,
+                    "failures": 2,
+                    "consecutiveFailures": 2,
+                    "restarts": 0,
+                    "restartFailures": 0,
+                    "lastCheckAt": "2026-07-30T00:00:00+00:00",
+                    "lastHealthyAt": "",
+                    "lastRestartAt": "",
+                    "lastError": "health probe failed",
+                }
+
+        runtime = DashboardRuntime(
+            DashboardConfig(stt_server_url="http://127.0.0.1:5061"),
+            stt_supervisor=FakeSupervisor(),
+        )
+        runtime.set_bridge_listening(True)
+        runtime.note_client_connected("192.168.1.238", 50123)
+
+        status = runtime.status()
+
+        self.assertFalse(status["bridge"]["operational"])
+        self.assertFalse(status["bridge"]["speechReady"])
+        self.assertTrue(status["services"]["speechRecognition"]["recovering"])
+
     def test_heartbeat_status_is_allowlisted(self) -> None:
         self.runtime.note_client_connected("192.168.1.238", 50123)
         self.runtime.note_heartbeat(

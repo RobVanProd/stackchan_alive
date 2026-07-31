@@ -34,6 +34,14 @@ STT ready. Warmup evidence records only status, timing, and the sample hash; it 
 the transcription. A merely healthy server whose executable, model, backend, thread count, or
 prompt does not match is rejected.
 
+The bridge continuously checks the resident STT endpoint. Two failed probes trigger a bounded
+restart of the same pinned executable, model, backend, thread count, prompt, and warmup contract.
+While recovery is in progress, the affected turn may use the exact local `whisper-cli` and model
+as a slow failover instead of silently dropping the utterance. The loopback dashboard reports
+STT health, recovery state, and aggregate restart counters. Formal qualification requires the
+service to be healthy and supervised before the run, with no restart or restart-failure delta
+during the evidence window.
+
 Both DirectML and ROCm worker `/health` responses report the requested device, the adapter name
 actually exposed by the runtime, an availability flag, uptime, and conversion counters. The full
 system soak fails if worker uptime or the conversion count regresses between health samples.
@@ -51,7 +59,8 @@ research intentionally disabled for offline operation.
 
 The wrapper stops only a verified Stackchan bridge listener, backs up and sanitizes persistent
 memory, starts and health-checks DirectML and the loopback STT server, enables phrase streaming
-and speaker downlink, waits for the robot socket and `/debug`, and preserves a runtime evidence
+and speaker downlink, starts bridge-owned STT supervision, waits for the robot socket and
+`/debug`, and preserves a runtime evidence
 packet. Normal startup redacts turn text and writes no microphone WAVs. It does not flash,
 reboot, enable motion, or format storage.
 

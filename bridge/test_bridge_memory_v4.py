@@ -155,15 +155,16 @@ class BridgeMemoryV4Tests(unittest.TestCase):
         self.assertEqual(1, len(loaded["open_loops"]))
         self.assertEqual("expired", loaded["open_loops"][0]["status"])
 
-        memory = BridgeMemory()
-        for index in range(MAX_OPEN_LOOPS + 2):
-            code = f"task{chr(97 + index // 26)}{chr(97 + index % 26)}"
-            memory = memory.add_open_loop(
-                f"I have {code} tomorrow",
-                due_at="2026-07-16T12:00:00Z",
-                now=f"2026-07-{index + 1:02d}T12:00:00Z",
-            )
-        self.assertEqual(MAX_OPEN_LOOPS, memory.open_loop_count)
+        with patch.object(bridge_memory, "_utc_now", return_value=NOW):
+            memory = BridgeMemory()
+            for index in range(MAX_OPEN_LOOPS + 2):
+                code = f"task{chr(97 + index // 26)}{chr(97 + index % 26)}"
+                memory = memory.add_open_loop(
+                    f"I have {code} tomorrow",
+                    due_at="2026-07-16T12:00:00Z",
+                    now=f"2026-07-{index + 1:02d}T12:00:00Z",
+                )
+            self.assertEqual(MAX_OPEN_LOOPS, memory.open_loop_count)
 
     def test_new_record_types_apply_denylist_on_create_and_load(self):
         memory = BridgeMemory().add_episode("Talked about a doctor appointment", now=NOW)

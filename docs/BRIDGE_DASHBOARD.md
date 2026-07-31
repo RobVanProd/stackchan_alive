@@ -4,6 +4,11 @@ The PC bridge can serve a local browser dashboard at `http://127.0.0.1:8766/`. I
 bridge and robot link state, a square Stackchan face, bounded robot telemetry, recent dashboard
 events, and verified motion stop/resume controls.
 
+The connection badge represents operational bridge readiness, not only the robot socket. If the
+resident speech recognizer fails, the badge changes to **SPEECH RECOVERING** or **SPEECH
+OFFLINE** while the robot can remain connected. The Bridge panel shows the recognizer's cached
+health and aggregate successful-recovery count without exposing audio or transcripts.
+
 The integrated dashboard also has an **Awareness** view. It exposes independent initiative and
 room-observation switches, the bounded room-observation interval, aggregate freshness, and
 degraded-state reporting. A standalone dashboard attached to an older bridge can display robot
@@ -76,6 +81,8 @@ dashboard never converts transport success into a motion-success claim.
   secrets, Wi-Fi credentials, microphone audio, or camera frames.
 - Browser status updates read in-memory state. The firmware `/debug` endpoint is contacted only
   for a manual refresh or motion verification, not every few seconds.
+- Speech-recognition health is cached by the bridge supervisor. Dashboard polling never performs
+  model inference and never starts a recovery itself.
 - Room observation accepts only 2-30 minute intervals. Frames remain in memory for one local
   model request and are never included in dashboard status, logs, prompts, or durable memory.
 - Initiative requires fresh presence, preserves the wake gate for microphone entry, and never

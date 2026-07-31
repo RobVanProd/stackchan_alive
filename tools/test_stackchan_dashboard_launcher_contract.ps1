@@ -81,6 +81,8 @@ foreach ($required in @(
   "docs/BRIDGE_DASHBOARD.md",
   "docs/store-assets/desktop/stackchan-alive.ico",
   "dashboard_service.py",
+  "stt_supervisor.py",
+  "test_stt_supervisor.py",
   "test_dashboard_service.py",
   "bridge/dashboard",
   "tools/start_stackchan_dashboard.ps1",

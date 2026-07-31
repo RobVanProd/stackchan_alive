@@ -167,6 +167,11 @@ if (-not $SttModelPath -or -not (Test-Path -LiteralPath $SttModelPath -PathType 
 }
 $SttExecutablePath = (Resolve-Path $SttExecutablePath).Path
 $SttModelPath = (Resolve-Path $SttModelPath).Path
+$SttCliPath = Join-Path (Split-Path -Parent $SttExecutablePath) "whisper-cli.exe"
+if (-not (Test-Path -LiteralPath $SttCliPath -PathType Leaf)) {
+  throw "Production STT recovery requires whisper-cli.exe beside whisper-server.exe."
+}
+$SttCliPath = (Resolve-Path $SttCliPath).Path
 $ExpectedSmallEnSha256 = "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d"
 $ActualSttModelSha256 = (Get-FileHash -LiteralPath $SttModelPath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ((Split-Path -Leaf $SttModelPath) -ne "ggml-small.en.bin" -or
@@ -194,6 +199,14 @@ $escapedSttModel = $SttModelPath.Replace("'", "''")
 $escapedSttPrompt = $SttInitialPrompt.Replace("'", "''")
 $escapedSttWarmupWav = $ResolvedSttWarmupWavPath.Replace("'", "''")
 $sttStarter = (Resolve-Path (Join-Path $PSScriptRoot "start_whisper_server.ps1")).Path.Replace("'", "''")
+$sttRecoveryOutput = (Join-Path $RepoRoot "output\pc-brain\whisper-server").Replace("'", "''")
+$sttRestartScript = "`$ProgressPreference = 'SilentlyContinue'; & '$sttStarter' " +
+  "-Port $SttServerPort -Threads $SttThreads -ExecutablePath '$escapedSttExecutable' " +
+  "-ModelPath '$escapedSttModel' -InitialPrompt '$escapedSttPrompt' " +
+  "-Backend '$ResolvedSttBackend' -WarmupWavPath '$escapedSttWarmupWav' " +
+  "-OutputDir '$sttRecoveryOutput' -StopExisting -Json | Out-Null"
+$sttRestartEncoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($sttRestartScript))
+$SttRestartCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand $sttRestartEncoded"
 $sttScript = "`$ProgressPreference = 'SilentlyContinue'; & '$sttStarter' " +
   "-Port $SttServerPort -Threads $SttThreads -ExecutablePath '$escapedSttExecutable' " +
   "-ModelPath '$escapedSttModel' -InitialPrompt '$escapedSttPrompt' " +
@@ -267,11 +280,18 @@ $env:STACKCHAN_RVC_DIRECTML_WORKER_URL = $WorkerUrl
 $bridgeStarter = (Resolve-Path (Join-Path $PSScriptRoot "start_pc_brain.ps1")).Path.Replace("'", "''")
 $escapedMemoryFile = $MemoryFile.Replace("'", "''")
 $escapedSearxngUrl = $SearxngUrl.Replace("'", "''")
-$bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'SilentlyContinue'; `$env:STACKCHAN_RVC_DIRECTML_WORKER_URL = '$WorkerUrl'; " +
+$escapedSttCli = $SttCliPath.Replace("'", "''")
+$escapedSttRestartCommand = $SttRestartCommand.Replace("'", "''")
+$bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'SilentlyContinue'; " +
+  "`$env:STACKCHAN_RVC_DIRECTML_WORKER_URL = '$WorkerUrl'; " +
+  "`$env:STACKCHAN_WHISPER_CPP_EXE = '$escapedSttCli'; " +
+  "`$env:STACKCHAN_WHISPER_MODEL = '$escapedSttModel'; " +
+  "`$env:STACKCHAN_WHISPER_THREADS = '$SttThreads'; " +
   "& '$bridgeStarter' -Background -EnableAudioDownlink -StreamTtsPhrases " +
   "-InProcessOllamaRunner -InProcessDirectMlTts " +
   "-Port $BridgePort -MemoryFile '$escapedMemoryFile' " +
-  "-SttServerUrl '$SttServerUrl' " +
+  "-SttServerUrl '$SttServerUrl' -SttRestartCommand '$escapedSttRestartCommand' " +
+  "-SttHealthIntervalSeconds 2 " +
   "-EnableDashboard -DashboardHost '127.0.0.1' -DashboardPort $DashboardPort -RobotHost '$escapedDeviceHost' " +
   "-TtsCommand 'python bridge\rvc_production_tts_client.py' " +
   "-TtsVoice 'stackchan-rvc-directml-v2' " +
@@ -466,6 +486,9 @@ $Result = [ordered]@{
   sttServerReady = [string]$SttHealth.status -eq "ok"
   sttExecutable = [string]$SttStart.executable
   sttExecutableSha256 = [string]$SttStart.executableSha256
+  sttFallbackExecutable = $SttCliPath
+  sttFallbackExecutableSha256 = (Get-FileHash -LiteralPath $SttCliPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  sttSupervised = $true
   sttModel = [string]$SttStart.model
   sttModelSha256 = [string]$SttStart.modelSha256
   sttThreads = [int]$SttStart.threads

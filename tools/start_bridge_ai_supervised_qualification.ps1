@@ -213,6 +213,10 @@ if (-not [bool]$Dashboard.bridge.conversationV2Enabled) { $Issues += "dashboard_
 if (-not [bool]$Dashboard.behavior.initiative.enabled) { $Issues += "dashboard_initiative_disabled" }
 if (-not [bool]$Dashboard.behavior.roomObservation.enabled) { $Issues += "dashboard_room_observation_disabled" }
 if (-not [bool]$Dashboard.behavior.roomObservation.configured) { $Issues += "room_observation_not_configured" }
+if (-not [bool]$Dashboard.services.speechRecognition.configured) { $Issues += "stt_service_not_configured" }
+if (-not [bool]$Dashboard.services.speechRecognition.healthy) { $Issues += "stt_service_not_healthy" }
+if (-not [bool]$Dashboard.services.speechRecognition.supervised) { $Issues += "stt_service_not_supervised" }
+if ([bool]$Dashboard.services.speechRecognition.recovering) { $Issues += "stt_service_recovering" }
 if ($Debug.network_state -ne "connected" -or $Debug.bridge_state -ne "ready") { $Issues += "robot_bridge_not_ready" }
 if ([bool]$Debug.motion_enabled -or [bool]$Debug.servo_rail_enabled -or [bool]$Debug.servo_torque_enabled) {
   $Issues += "robot_motion_not_off"
