@@ -41,8 +41,9 @@ The isolated camera diagnostic is a documented host-side exception within the sa
 trust boundary. It serves one 160x120 grayscale frame at a time only to a paired private-LAN
 client, the worker keeps the frame in memory for one OpenCV detection step, and it returns at
 most four normalized face boxes. It does not store frames, forward them to the LLM or a cloud
-service, or perform identity recognition. The endpoints are compiled out of production
-firmware. See `LOCAL_VISION.md`.
+service, or perform identity recognition. `stackchan_release_full` compiles the camera/host-vision
+transport in, but the endpoints remain unusable until the owner provisions pairing. Display-only
+and servo-calibration images compile it out. See `LOCAL_VISION.md`.
 
 If a future bridge feature needs remote analysis, it must be implemented as an explicit host-side bridge feature with user configuration, release documentation, and evidence showing when data leaves the device.
 
@@ -106,7 +107,8 @@ Release and hardware evidence should prove the privacy boundary, not just descri
 - Timeout recovery that clears `bridge_active` and returns the face to local behavior.
 - Voice-source status showing the exact public production RVC hashes while raw microphone recordings and generated conversation audio remain local.
 - Camera evidence showing paired requests, zero authentication failures, no frame persistence,
-  bounded face-box output, and camera/host-vision endpoints absent from the production image.
+  bounded face-box output, and owner pairing required for the production image's compiled camera/
+  host-vision endpoints.
 - Conversation evidence showing declared upload totals equal received totals, no
   `stackchan.audio-protocol-event.v1` late-frame records, and no writer text/binary drops.
 

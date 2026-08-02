@@ -2,12 +2,14 @@
 
 Status timestamp: 2026-07-13 15:53 America/New_York
 
-## Current Lead: Power-Coordinated Full-Online Accepted Lead
+## Last Owner-Accepted Physical Lead — Historical Evidence; Current Installation Unknown
 
-This supersedes the older recovery-only status below. The current physical lead is the
-full-online CoreS3 firmware with smooth face, bot-local wake, Whisper STT uplink,
-Gemma 4 PC brain, warm PC-side RVC voice conversion, M5 speaker downlink, and servo
-support compiled with motion disabled at boot.
+This section records the latest owner-accepted physical lead as of 2026-07-13. A fresh device
+snapshot did not establish the currently installed firmware during the 2026-08-02 repository audit.
+The latest documented accepted image is clean source
+`ce66f8a0fadfadbc07eb59124522267ba66ee70a`, firmware SHA-256
+`69d3db27f2d7197799fdc08ff3c1dc4d6e3011724fe29899367dc016e48ebfa8`, described below. Its evidence
+does not transfer to a later binary, current `main`, or the current installation.
 
 ### Launch Candidate And Owner-Accepted Release Evidence (2026-07-12)
 
@@ -242,6 +244,12 @@ support compiled with motion disabled at boot.
   the soak evidence contract passes, and the real `stackchan_release_full` embedded build succeeds
   at `54.4%` RAM and `42.4%` flash. This source candidate is built but not flashed or physically
   accepted yet.
+
+## Historical Timeline Boundary
+
+Everything below this boundary is a dated July 11-and-earlier snapshot. Words such as “current,”
+“live,” “installed,” “next,” and recorded process IDs describe only that session; they are not the
+2026-08-02 repository or installation state.
 
 ### Final Integration Checkpoint (2026-07-11)
 
@@ -598,7 +606,7 @@ Open before calling the full system final:
 - The servo soak is not complete until `summary.json` reports `status="pass"`, `issues=[]`, `motionSampleRatio >= 0.95`, `rvcWorkerReadySamples == rvcWorkerPolls`, max display frame time stays at or below `50000` us, no motion session timeout is observed, no sustained debug dropout is observed, and `tools\check_full_system_soak_evidence.ps1 -SummaryJsonPath <summary.json> -RequireReady -Json` reports `full-system-soak-ready`.
 - Keep the archived lead zips as restore points: pre-ROCm CPU RVC, warm-ROCm RVC, and the flashed motion timing candidate.
 
-## Current Live Configuration
+## Historical Live Configuration Snapshot (2026-07-08 to 2026-07-11)
 
 - Robot IP: `192.168.1.238`
 - PC bridge host: `192.168.1.240`
@@ -669,7 +677,7 @@ Do not jump directly from this baseline to motor-enabled full-online firmware. T
 - Servo motion auto-stopped after the guarded session timeout; follow-up status reported `motion_enabled=0`.
 - Post-motion display telemetry returned to a smooth baseline around `frame_ms_avg=25.7 ms`, `frame_ms_max=28.0-28.4 ms`, and `slow_frames=0`.
 
-## Current Evidence
+## Historical Evidence Index (2026-07-07 to 2026-07-11)
 
 - Power-cycle/reconnect note: `output/hardware-evidence/first-live-bridge/POWER_CYCLE_RECONNECT_20260707.md`
 - Full-online preflight: `output/pc-brain/full-online-preflight-latest/FULL_ONLINE_PREFLIGHT.md`
@@ -690,7 +698,7 @@ Do not jump directly from this baseline to motor-enabled full-online firmware. T
 - Hardened VBUS-guard 20-minute full-system servo validation: `output\pc-brain\full-system-soak-vbus-guard-hardened-servo-20min-20260709-121456\summary.json`
 - Current lead reproducibility report: `output\current-lead\current-lead-reproducibility-latest\CURRENT_LEAD_REPRODUCIBILITY.md`
 
-## Still Open
+## Open Items At The Historical Checkpoint
 
 - Do not treat `Hey Stackchan` as validated on the current live robot yet; the successful session validated guarded servo motion and face stability, not a live robot-mic/STT turn.
 - The first bot-local wake probe listened for `Hi Stack Chan`, not `Hey Stackchan`.

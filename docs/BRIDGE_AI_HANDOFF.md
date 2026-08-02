@@ -19,9 +19,10 @@ actuator, power, pairing, or OTA authority**, and nothing below changes that.
 Most of what follows needs **no firmware change**. Where firmware work is genuinely required it is
 called out.
 
-This bridge candidate does not modify firmware. The working image from `main` is an immutable
-qualification dependency; firmware findings are reported to its owner instead of being patched in
-this branch.
+Historical branch constraint: the original bridge candidate did not modify firmware and treated
+its then-current image as an immutable qualification dependency. That statement describes that
+workstream, not current `main`; present work follows `AGENTS.md` and the exact-image gate for any
+firmware change.
 
 ## How To Read The Robot's State
 
@@ -61,11 +62,15 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
 - Conversation v2 now emits a constant 10-second reply lease and allows 24 user turns by default.
   Completed turns no longer make the listener progressively less patient. The unchanged main
   firmware rejects out-of-range values rather than silently clamping them. The feature remains
-  explicit and still needs exact-image hardware qualification before promotion.
-- `bridge/initiative_policy.py` implements the ten-minute hard floor, fresh-person requirement,
+  explicit and still needs exact-image hardware qualification before promotion. The host's
+  10-second capture commitment is currently shorter than the firmware's 12-second endpoint ceiling
+  and can reject a valid long utterance; this is an open source-level blocker.
+- `bridge/initiative_policy.py` implements the ten-minute hard floor, intended fresh-person requirement,
   circadian suppression, busy/safety gates, curiosity decay, and two-ignored-opener backoff.
   Initiative generation uses the normal Character Lock and TTS path but never opens a microphone
-  or motion lease.
+  or motion lease. Current camera FaceLost/heartbeat freshness can nevertheless produce a false-
+  current presence bit, and stale room state can remain available to relationship projection; do
+  not treat the fresh-person gate as qualified until those source defects are fixed.
 - `bridge/room_context.py` implements low-rate in-memory capture, typed privacy filtering, scene
   diffs, prompt-safe ambient context, and clean degradation. `bridge/ollama_room_vision.py`
   converts PGM to PNG in memory and permits only a loopback Ollama vision endpoint.
@@ -82,10 +87,11 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   top result; gzip is decoded under the existing response-size cap, citations remain bounded, and
   fetched text cannot write memory or gain robot authority. A live 2026-07-26 query returned the
   Python 3.13.0 release date with Python.org citations in 3.9 seconds.
-- A visual question now requests one fresh privacy-filtered room observation before generation.
+- In the dated 2026-07-26 bridge probe, a visual question requested one fresh privacy-filtered room observation before generation.
   The final Character Lock pass retains only claims backed by the trusted `ambient_room` block.
   A live 2026-07-26 robot-camera probe observed one person and produced a grounded door, shelf,
-  and bright-lighting answer in 2.6 seconds. The authenticated endpoint is grayscale, so deictic
+  and bright-lighting answer in 2.6 seconds. This is historical probe evidence, not current-main or
+  current-installation qualification. The authenticated endpoint is grayscale, so deictic
   colour questions receive an explicit grayscale limitation instead of a guess. Colour sensing
   requires a separate firmware/camera endpoint candidate and is not part of this bridge PR.
 - The host freezes PCM on the socket thread at `utterance_end`, verifies declared byte/chunk
@@ -99,8 +105,10 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   an explicit visual question can still request one foreground observation.
 - `bridge/bridge_ai_qualification.py` and the passive start/complete wrappers enforce the exact
   physical gates in [BRIDGE_AI_QUALIFICATION.md](BRIDGE_AI_QUALIFICATION.md).
-- All new behavior is default-off at the command line. Use the explicit launch switches during
-  supervised qualification; do not infer hardware readiness from source tests.
+- All new behavior is default-off in raw command-line defaults, but
+  `tools/start_stackchan_dashboard.ps1` enables Conversation v2 and initiative. That launcher choice
+  is not promotion evidence. Use explicit supervised qualification and do not infer hardware
+  readiness from source tests.
 
 ## Fault-Fix Candidate Update (2026-07-25)
 
@@ -276,20 +284,23 @@ promotion still requires exact-image physical evidence with zero new uplink erro
 
 # Part 3: Speaking on his own, and curiosity
 
-## Unprompted speech needs no firmware change
+## Unprompted speech source exists but remains unpromoted
 
 Firmware does **not** gate `response_start` on a preceding user turn
 (`src/io/BridgeClient.cpp:135`). It transitions to `Responding` and renders whatever it is given.
 So the bridge can speak at any moment by sending the ordinary response sequence. Mouth sync, RGB,
 gesture, and the `intent` mapping all work already.
 
-What is missing is an **initiative policy** on the host deciding when it is worth speaking. This is
-the part that makes it charming or unbearable, so treat the rate limit as the feature:
+The host now has an **initiative policy**, but it is an event/curiosity threshold rather than the
+reason-ranked agenda specified by the current aliveness mandate. It also has open power/thermal
+heartbeat, in-flight revalidation, presence, persistence, and semantic safety defects. Keep it
+unpromoted and treat the rate limit as only one required restraint:
 
 - A hard floor between unprompted utterances. Start at 10+ minutes and tune down carefully.
 - Never interrupt an active session, `THINKING`, `SPEAKING`, or a safety state.
 - **Never speak while he is asleep.** See Part 4 — `mode=7` and the sleep telemetry tell you.
-- Never speak into an empty room. Require a present person, which needs F3 fixed.
+- Never speak into an empty or unknown room. The current false/stale presence paths must be fixed
+  before presence can authorize initiative.
 - Suppress at night using the persona's circadian hours (`personas/<id>/behavior.yaml`).
 - Back off hard on non-response. Two unprompted openers in a row with no reply should buy a long
   silence. A robot that keeps talking at someone ignoring it reads needy, not curious.

@@ -4,6 +4,10 @@ Use this when bringing up a physical Stackchan device from the public `v0.2.0` r
 locally rebuilt or post-release firmware as a new candidate until its applicable evidence gates
 below are complete.
 
+Repository-truth warning (2026-08-02): the currently installed firmware SHA is unknown. Dated
+“installed,” “current,” and “live” notes below are historical evidence and cannot replace discovery,
+exact source/binary identity, or qualification of the image actually under test.
+
 ## 0. Bench Setup
 
 - Clear the work area around the body and servos.
@@ -15,7 +19,7 @@ below are complete.
   camera validation can wait.
 - Know the serial port, for example `COM3`.
 
-Current exact-image release note (2026-07-12): the installed private paired firmware is source
+Historical exact-image release record (2026-07-12): the installed-at-that-checkpoint private paired firmware is source
 commit `a7532f61cc7e5161ce5e65d05675c37bd7941e7c`, SHA-256
 `c43e5ac1cf1718f61d5da35a37720a7c3e24ce9cd28dd6586521f50175708ea7`. Its formal one-hour
 actuator acceptance passed `76/76` after `3601 s` with `706/706` good polls, no IMU
@@ -59,8 +63,8 @@ capture `223997 us`, and zero hard-floor, PMIC protective, IMU exhaustion/failur
 response-write, or authentication events. Motion, rail, torque, and motion power authority were
 verified off after completion. The saved formal checker result is
 `output\pc-brain\single-owner-runtime-servo-8hr-20260713-0750\checker.json` and passed `77/77`.
-Use this exact SHA and evidence sequence as the current private paired hardware candidate; never
-transfer its evidence to a different binary.
+This is the latest documented owner-accepted private paired candidate as of 2026-07-13. Never
+transfer its evidence to a different binary or assume it is currently installed.
 
 External touch, pickup, putdown, tilt, and shake events are intended IMU feature evidence. For an
 interaction-aware soak, pass `-AllowExternalImuEvents` through the warm-soak wrapper and formal
@@ -86,11 +90,12 @@ wake check is required, capture one correctly timed wake phrase,
 and compare the on-device probability with the host-model result before changing cutoff, gain, or
 microphone channel. Keep motion off during this check.
 
-Routine continuation does **not** require another flash: the current camera candidate is already
-installed and OTA-confirmed. The earlier `wake-zero-init-verified` and
-`camera-stereo-speaker-follow` images are historical diagnostic checkpoints, not the current lead.
-If recovery is genuinely required, use the exact current private rollback archive recorded in
-`docs\FIRST_DEPLOY_STATUS.md`; never rebuild a private recovery image from an unreviewed worktree.
+In the 2026-07-11 lab session, routine continuation did **not** require another flash because that
+camera candidate was already installed and OTA-confirmed. The earlier `wake-zero-init-verified` and
+`camera-stereo-speaker-follow` images were diagnostic checkpoints, not that session's lead. For a
+new recovery, first establish the installed image and select the exact matching private rollback
+archive recorded in `docs\FIRST_DEPLOY_STATUS.md`; never rebuild a private recovery image from an
+unreviewed worktree.
 The guarded archived-app flasher verifies its manifest, byte count, and SHA256 while preserving
 NVS/Wi-Fi. Motion remains disabled at boot.
 

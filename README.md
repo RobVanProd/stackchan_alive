@@ -14,8 +14,10 @@ no face sprite sheets or character-image assets in the runtime.
 
 ## Project Status
 
-Status as of July 13, 2026: **public v0.2 release candidate, physically validated on the
-reference Stackchan**.
+Status as of August 2, 2026: a private paired candidate built from source `ce66f8a0` has historical
+owner-accepted exact-image physical evidence on the reference Stackchan. Public v0.2, current
+`main`, and the currently installed live image do not inherit that evidence; the installed SHA is
+presently unknown.
 
 What is working in the repository now:
 
@@ -37,12 +39,13 @@ What is working in the repository now:
   guides, native and host tests, exact-binary soak evidence, private recovery archives, and
   secret-free public packaging checks.
 - PC and Android companion contracts for local brain ownership, endpoint handoff, settings, and
-  trusted-endpoint removal. Continuous two-way conversation remains an explicitly post-release
-  v2 feature.
+  trusted-endpoint removal. Conversation v2 exists in source and the dashboard launcher enables it,
+  but it remains unpromoted and physically unqualified.
 
 Release notes:
 
-- The corrected exact paired candidate completed the full all-feature actuator soak for `28807 s`
+- That private corrected exact paired candidate completed the full all-feature actuator soak for
+  `28807 s`
   with `5643/5643` successful polls and a `77/77` formal checker result. Motion, servo rail,
   torque, and motion power authority were verified off after its bounded final stop.
 - The public build and release package contain no Wi-Fi credentials, OTA token, or camera pairing
@@ -52,13 +55,13 @@ Release notes:
   under `media/voice/rvc/` through Git LFS.
 - Release artifacts are generated and checksum-verified from the published commit.
 
-Start with [AGENTS.md](AGENTS.md) when using a coding agent. The authoritative current evidence is
+Start with [AGENTS.md](AGENTS.md) when using a coding agent. The authoritative evidence history is
 in [docs/FIRST_DEPLOY_STATUS.md](docs/FIRST_DEPLOY_STATUS.md), the exact hardware workflow is in
 [docs/ARRIVAL_DAY_RUNBOOK.md](docs/ARRIVAL_DAY_RUNBOOK.md), and promotion gates are in
 [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md). See
 [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
-[docs/CONVERSATION_V2_ROADMAP.md](docs/CONVERSATION_V2_ROADMAP.md) for the deliberately
-post-release natural-conversation plan. Passive visitor-sensor measurement is documented in
+[docs/CONVERSATION_V2_ROADMAP.md](docs/CONVERSATION_V2_ROADMAP.md) for the unpromoted
+natural-conversation plan. Passive visitor-sensor measurement is documented in
 [docs/LTR553_CALIBRATION.md](docs/LTR553_CALIBRATION.md), and authenticated updates plus the
 stable/beta manifest contract are in [docs/LAN_OTA.md](docs/LAN_OTA.md).
 

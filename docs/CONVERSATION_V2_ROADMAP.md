@@ -3,9 +3,10 @@
 > Working on this now? [BRIDGE_AI_HANDOFF.md](BRIDGE_AI_HANDOFF.md) is the actionable task list
 > built on this architecture, and it covers unprompted speech, curiosity, and room vision too.
 
-Continuous two-way conversation is a post-release feature. The v1 release remains wake-gated:
-the user says the wake phrase, Stackchan captures one bounded utterance, replies, and returns to
-idle. This document records the next architecture without expanding the current release gate.
+Continuous two-way conversation remains outside the v1 promotion evidence. Raw
+`bridge/lan_service.py` keeps it flag-gated, but `tools/start_stackchan_dashboard.ps1` currently
+enables Conversation v2 and initiative for the production-style dashboard launch. That source
+runtime is unpromoted: the v1 evidence remains one wake, one bounded utterance, one reply, then idle.
 
 ## Reusable Pattern
 
@@ -99,11 +100,12 @@ firmware to its normal local face and wake behavior.
   `BridgeMemory`, turn telemetry exposes only its count, and all text is erased when the lease
   closes. Each side of a turn is capped at 160 characters so the complete default lease remains
   inside the local model context budget.
-- Reply-window firmware capture now uses a deterministic local endpoint detector. It requires
-  sustained speech, waits through a 550 ms trailing pause, never closes before 600 ms, and keeps
-  the prior 4.8-second maximum as its no-speech or ambiguous fallback. Initial wake-gated v1
-  capture remains unchanged. Native tests and the public full build pass; real-room threshold
-  evidence is still required before promotion.
+- Initial and reply-window firmware capture now use the deterministic local endpoint detector. It
+  requires at least 150 ms of speech, waits through a 550 ms trailing pause, and never closes before
+  600 ms. The endpoint ceiling is 12 seconds, dedicated capture ceiling 13 seconds, and wake-gate
+  privacy guard 15 seconds. The host capture commitment remains 10 seconds, so a valid long device
+  utterance can be rejected; this is an open blocker. Native tests and the public full build pass,
+  but real-room and exact-image evidence are still required before promotion.
 - The LAN bridge now keeps its socket reader responsive while one serialized turn worker owns
   Gemma and TTS. `cancel` or a companion-originated `utterance_start` cancels the active token,
   terminates the model/RVC process tree, drops a pending unsent audio tail, and prevents cancelled

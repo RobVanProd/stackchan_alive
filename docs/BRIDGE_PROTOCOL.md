@@ -203,7 +203,9 @@ downlink sink.
 - `playback_complete`: firmware-confirmed speaker drain for one response sequence. The device
   sends this only after the audio stream is complete, M5Speaker is idle, and the wake microphone
   pause has been released. It is evidence for Conversation v2; v1 acknowledges it without opening
-  capture.
+  capture. This is a success-only acknowledgement: current speaker start/chunk/finish failure paths
+  can omit it, and the host currently has no bounded `SPEAKING` timeout. That terminal contract is
+  an open blocker, not successful-playback evidence.
 - `heartbeat`: bounded runtime and embodiment facts. Post-release source adds allowlisted
   `energy_state` values `unknown`, `ready`, `charging`, `low`, and `critical`. The host accepts
   only those literal values before adding the state to Gemma's short-lived embodiment context;
@@ -233,10 +235,12 @@ Example:
   bounded to 1000-30000 ms. Firmware retries while audio/wake is temporarily busy, expires at the
   deadline, and cancels on bridge loss. The frame carries no actuator or power authority. In
   `stackchan_voice_v2` and the derived full release source, an accepted reply-window capture uses
-  a local voice-activity endpoint: at least 150 ms of speech must be observed, capture remains open
-  for at least 600 ms, and 550 ms of trailing silence ends the utterance. Ambiguous or absent
-  speech falls back to the existing 4.8-second maximum. Initial wake-gated v1 capture remains
-  fixed-length.
+  a local voice-activity endpoint for both initial and follow-up capture: at least 150 ms of speech
+  must be observed, capture remains open for at least 600 ms, and 550 ms of trailing silence ends
+  the utterance. The endpoint ceiling is 12 seconds, the dedicated capture ceiling is 13 seconds,
+  and the wake-gate privacy guard is 15 seconds. The current host capture commitment is only 10
+  seconds and can reject a valid later device end; that mismatch must be fixed and source/physical
+  qualified before promotion.
 - `endpoint_hello_result`: endpoint trust/capability registration result.
 - `owner_status`: active brain owner, owner kind, health state, trusted endpoint count, owner lease,
   and cumulative expiration/promotion counters. Only trusted endpoints advertising `brain_owner`
