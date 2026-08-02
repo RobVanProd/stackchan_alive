@@ -7,6 +7,7 @@ import argparse
 import base64
 import copy
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -118,6 +119,24 @@ DEFAULT_TTS_PHRASE_MAX_CHARS = 96
 DEFAULT_BRAIN_OWNER_LEASE_MS = 15_000
 MAX_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 MAX_TRUSTED_ENDPOINTS = 8
+BRIDGE_WEBSOCKET_PATH = "/bridge"
+MAX_BRIDGE_DEVICE_ID_CHARS = 64
+MAX_WEBSOCKET_KEY_CHARS = 128
+MAX_WEBSOCKET_KEY_DECODED_BYTES = 96
+_BRIDGE_DEVICE_ID_RE = re.compile(
+    rf"[A-Za-z0-9._-]{{1,{MAX_BRIDGE_DEVICE_ID_CHARS}}}\Z"
+)
+_SECURITY_CRITICAL_UPGRADE_HEADERS = frozenset(
+    {
+        "upgrade",
+        "connection",
+        "sec-websocket-key",
+        "sec-websocket-version",
+        "x-stackchan-protocol",
+        "x-stackchan-device",
+        "origin",
+    }
+)
 REPLY_PCM_CHUNK_MS = 50
 REPLY_PCM_MINIMUM_SPEECH_MS = 150
 REPLY_PCM_INITIAL_NOISE_FLOOR = 0.015
@@ -825,6 +844,8 @@ class LanBridgeConfig:
             )
         if not 0.0 <= float(self.stt_min_confidence) <= 1.0:
             raise ValueError("stt_min_confidence must be between zero and one")
+        if not bridge_bind_is_loopback(self.host) and not self.robot_host.strip():
+            raise ValueError("robot_host is required when the bridge bind is not loopback")
 
 
 @dataclass(frozen=True)
@@ -913,27 +934,127 @@ def websocket_accept_value(client_key: str) -> str:
     return base64.b64encode(digest).decode("ascii")
 
 
-def parse_http_headers(request: bytes) -> dict[str, str]:
-    text = request.decode("iso-8859-1")
-    lines = text.split("\r\n")
-    if not lines or not lines[0].startswith("GET "):
-        raise WebSocketProtocolError("websocket handshake must start with GET")
+@dataclass(frozen=True)
+class WebSocketAdmission:
+    client_key: str
+    device_id: str
+
+
+def bridge_bind_is_loopback(host: str) -> bool:
+    candidate = str(host).strip()
+    if candidate.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(candidate).is_loopback
+    except ValueError:
+        return False
+
+
+def normalize_peer_address(value: object) -> str:
+    candidate = str(value).strip()
+    if not candidate or "%" in candidate:
+        return ""
+    try:
+        address = ipaddress.ip_address(candidate)
+    except ValueError:
+        return ""
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    elif isinstance(address, ipaddress.IPv6Address) and address.is_link_local:
+        return ""
+    return str(address)
+
+
+def resolve_robot_peer_addresses(config: LanBridgeConfig) -> frozenset[str] | None:
+    if bridge_bind_is_loopback(config.host):
+        return None
+    try:
+        resolved = socket.getaddrinfo(config.robot_host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError(f"robot_host could not be resolved: {config.robot_host}") from exc
+    addresses = frozenset(
+        normalized
+        for normalized in (normalize_peer_address(item[4][0]) for item in resolved)
+        if normalized
+    )
+    if not addresses:
+        raise ValueError(f"robot_host resolved to no usable addresses: {config.robot_host}")
+    return addresses
+
+
+def peer_address_allowed(peer_address: object, allowed_addresses: frozenset[str]) -> bool:
+    normalized = normalize_peer_address(peer_address)
+    return bool(normalized and normalized in allowed_addresses)
+
+
+def _parse_http_upgrade(request: bytes) -> tuple[str, dict[str, str]]:
+    try:
+        text = request.decode("iso-8859-1")
+    except UnicodeDecodeError as exc:  # pragma: no cover - iso-8859-1 decodes all bytes
+        raise WebSocketProtocolError("websocket handshake is not decodable") from exc
+    header_text = text.split("\r\n\r\n", 1)[0]
+    lines = header_text.split("\r\n")
+    request_line = lines[0] if lines else ""
     headers: dict[str, str] = {}
+    seen: set[str] = set()
     for line in lines[1:]:
-        if not line or ":" not in line:
+        if not line:
             continue
+        if ":" not in line:
+            raise WebSocketProtocolError("malformed WebSocket upgrade header")
         key, value = line.split(":", 1)
-        headers[key.strip().lower()] = value.strip()
+        normalized_key = key.strip().lower()
+        if not normalized_key:
+            raise WebSocketProtocolError("malformed WebSocket upgrade header")
+        if normalized_key in seen and normalized_key in _SECURITY_CRITICAL_UPGRADE_HEADERS:
+            raise WebSocketProtocolError(f"duplicate WebSocket upgrade header: {normalized_key}")
+        seen.add(normalized_key)
+        headers[normalized_key] = value.strip()
+    return request_line, headers
+
+
+def parse_http_headers(request: bytes) -> dict[str, str]:
+    _request_line, headers = _parse_http_upgrade(request)
     return headers
 
 
-def build_handshake_response(request: bytes) -> bytes:
-    headers = parse_http_headers(request)
+def validate_websocket_upgrade(request: bytes) -> WebSocketAdmission:
+    request_line, headers = _parse_http_upgrade(request)
+    if request_line != f"GET {BRIDGE_WEBSOCKET_PATH} HTTP/1.1":
+        raise WebSocketProtocolError("websocket request target must be GET /bridge HTTP/1.1")
     upgrade = headers.get("upgrade", "").lower()
-    connection = headers.get("connection", "").lower()
+    connection_tokens = {
+        token.strip().lower()
+        for token in headers.get("connection", "").split(",")
+        if token.strip()
+    }
     client_key = headers.get("sec-websocket-key", "")
-    if upgrade != "websocket" or "upgrade" not in connection or not client_key:
+    version = headers.get("sec-websocket-version", "")
+    protocol = headers.get("x-stackchan-protocol", "")
+    device_id = headers.get("x-stackchan-device", "")
+    if "origin" in headers:
+        raise WebSocketProtocolError("browser Origin is not admitted")
+    if upgrade != "websocket" or "upgrade" not in connection_tokens or not client_key:
         raise WebSocketProtocolError("missing WebSocket upgrade headers")
+    if len(client_key) > MAX_WEBSOCKET_KEY_CHARS:
+        raise WebSocketProtocolError("invalid Sec-WebSocket-Key")
+    try:
+        decoded_key = base64.b64decode(client_key.encode("ascii"), validate=True)
+    except (UnicodeEncodeError, ValueError) as exc:
+        raise WebSocketProtocolError("invalid Sec-WebSocket-Key") from exc
+    if not decoded_key or len(decoded_key) > MAX_WEBSOCKET_KEY_DECODED_BYTES:
+        raise WebSocketProtocolError("invalid Sec-WebSocket-Key")
+    if version != "13":
+        raise WebSocketProtocolError("unsupported WebSocket version")
+    if protocol != PROTOCOL:
+        raise WebSocketProtocolError("Stackchan bridge protocol mismatch")
+    if not _BRIDGE_DEVICE_ID_RE.fullmatch(device_id):
+        raise WebSocketProtocolError("Stackchan device header is missing or invalid")
+    return WebSocketAdmission(client_key=client_key, device_id=device_id)
+
+
+def _handshake_response(admission: WebSocketAdmission) -> bytes:
+    client_key = admission.client_key
     accept = websocket_accept_value(client_key)
     response = (
         "HTTP/1.1 101 Switching Protocols\r\n"
@@ -943,6 +1064,10 @@ def build_handshake_response(request: bytes) -> bytes:
         "\r\n"
     )
     return response.encode("ascii")
+
+
+def build_handshake_response(request: bytes) -> bytes:
+    return _handshake_response(validate_websocket_upgrade(request))
 
 
 def recv_exact(conn: socket.socket, count: int) -> bytes:
@@ -1340,6 +1465,7 @@ class LanBridgeSession:
         initiative_policy: InitiativePolicy | None = None,
         room_context: RoomContextRuntime | None = None,
         dashboard_runtime: DashboardRuntime | None = None,
+        transport_admitted: bool = True,
     ):
         self.config = config
         self.memory = memory if memory is not None else BridgeMemory()
@@ -1367,6 +1493,7 @@ class LanBridgeSession:
         self.initiative_policy = initiative_policy
         self.room_context = room_context
         self.dashboard_runtime = dashboard_runtime
+        self.transport_admitted = bool(transport_admitted)
         self.conversation: ConversationSession | None = None
         self.conversation_response_seq = 0
         self.playback_response_seq = 0
@@ -2033,6 +2160,8 @@ class LanBridgeSession:
             return [error_frame("message_not_object")]
 
         message_type = str(message.get("type", "")).strip().lower()
+        if not self.transport_admitted:
+            return [error_frame("admission_required")]
         if message_type == "hello":
             self.session = str(message.get("session") or message.get("device_id") or self.session)[:48]
             return [
@@ -2207,6 +2336,9 @@ class LanBridgeSession:
     def _owner_gate(self, message: dict[str, Any]) -> dict[str, object] | None:
         endpoint_id = normalize_endpoint_id(message.get("endpoint_id") or self.endpoint_id)
         if not endpoint_id:
+            self.control_state.reconcile_owner()
+            if self.control_state.active_brain_owner:
+                return error_frame("endpoint_id_required")
             return None
         self.control_state.touch_endpoint(endpoint_id)
         self.control_state.reconcile_owner()
@@ -2403,6 +2535,8 @@ class LanBridgeSession:
         return self.audio.finalize()
 
     def handle_binary(self, payload: bytes) -> list[dict[str, object]]:
+        if not self.transport_admitted:
+            return [error_frame("admission_required")]
         self.control_state.touch_endpoint(self.endpoint_id)
         self.control_state.reconcile_owner()
         if self.endpoint_id and self.control_state.active_brain_owner and self.endpoint_id != self.control_state.active_brain_owner:
@@ -3577,7 +3711,11 @@ def handle_connection(
     dashboard_runtime: DashboardRuntime | None = None,
     initiative_policy: InitiativePolicy | None = None,
     room_context: RoomContextRuntime | None = None,
+    on_admitted: Callable[[WebSocketAdmission], None] | None = None,
 ) -> BridgeMemory:
+    request = read_http_request(conn)
+    print(f"[bridge-lan] handshake_bytes={len(request)}", flush=True)
+    admission = validate_websocket_upgrade(request)
     session = LanBridgeSession(
         config,
         memory,
@@ -3585,16 +3723,17 @@ def handle_connection(
         initiative_policy=initiative_policy,
         room_context=room_context,
         dashboard_runtime=dashboard_runtime,
+        transport_admitted=True,
     )
-    request = read_http_request(conn)
-    print(f"[bridge-lan] handshake_bytes={len(request)}", flush=True)
-    conn.sendall(build_handshake_response(request))
+    conn.sendall(_handshake_response(admission))
     configure_client_socket(
         conn,
         config.client_idle_timeout_s,
         low_latency=config.stream_tts_phrases,
     )
     print("[bridge-lan] handshake_accepted=1", flush=True)
+    if on_admitted is not None:
+        on_admitted(admission)
     conn.sendall(encode_ws_text(frame_to_text({"type": "hello", "protocol": PROTOCOL, "session": session.session})))
     print("[bridge-lan] session_hello=1", flush=True)
 
@@ -3993,6 +4132,7 @@ def handle_connection(
 
 
 def serve(config: LanBridgeConfig) -> None:
+    allowed_robot_peers = resolve_robot_peer_addresses(config)
     memory = load_bridge_memory(config.memory_file) if config.memory_file else BridgeMemory()
     control_state = BridgeControlState()
     initiative_policy = InitiativePolicy(
@@ -4090,8 +4230,23 @@ def serve(config: LanBridgeConfig) -> None:
             while True:
                 conn, address = server.accept()
                 print(f"[bridge-lan] client={address[0]}:{address[1]}", flush=True)
-                if dashboard_runtime is not None:
-                    dashboard_runtime.note_client_connected(address[0], address[1])
+                if allowed_robot_peers is not None and not peer_address_allowed(
+                    address[0], allowed_robot_peers
+                ):
+                    print(
+                        f"[bridge-lan] peer_rejected={address[0]}:{address[1]}",
+                        flush=True,
+                    )
+                    conn.close()
+                    continue
+                admitted = False
+
+                def note_admitted(_admission: WebSocketAdmission) -> None:
+                    nonlocal admitted
+                    admitted = True
+                    if dashboard_runtime is not None:
+                        dashboard_runtime.note_client_connected(address[0], address[1])
+
                 try:
                     with conn:
                         conn.settimeout(5.0)
@@ -4104,15 +4259,16 @@ def serve(config: LanBridgeConfig) -> None:
                                 dashboard_runtime,
                                 initiative_policy,
                                 room_context,
+                                note_admitted,
                             )
                         except WebSocketProtocolError as exc:
                             print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"{exc}\"", flush=True)
                         except OSError as exc:
                             print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"socket:{exc}\"", flush=True)
                 finally:
-                    if dashboard_runtime is not None:
+                    if admitted and dashboard_runtime is not None:
                         dashboard_runtime.note_client_disconnected(address[0])
-                if config.once:
+                if config.once and admitted:
                     break
     finally:
         room_context.stop()
@@ -4125,7 +4281,10 @@ def serve(config: LanBridgeConfig) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the local Stackchan P7 LAN WebSocket bridge.")
+    parser = argparse.ArgumentParser(
+        description="Run the local Stackchan P7 LAN WebSocket bridge.",
+        allow_abbrev=False,
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--once", action="store_true", help="Handle one client and exit.")

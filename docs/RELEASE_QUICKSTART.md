@@ -426,16 +426,22 @@ Repeat on all three desktop operating systems. A CI runner report and an extract
 are deliberately rejected by the final desktop v1 gate. Installed-launch evidence also does not
 replace the human desktop review.
 
-For PC Brain Mode lab bring-up, start the local brain bridge and selected voice TTS path:
+For PC Brain Mode lab bring-up, first use the loopback default for a synthetic host-only probe:
 
 ```powershell
 .\tools\start_pc_brain.cmd -Background -StopExisting
 .\tools\run_pc_brain_probe.cmd --url ws://127.0.0.1:8765/bridge
 ```
 
-Point the robot at `ws://<pc-lan-ip>:8765/bridge` with `tools\flash_wifi_bridge.cmd` or the
-runtime `wifi set ... url "ws://<pc-lan-ip>:8765/bridge"` command, then collect deployment
-evidence:
+That loopback process cannot accept the robot. Deliberately restart it with the robot peer frozen
+before pointing the robot at `ws://<pc-lan-ip>:8765/bridge` with `tools\flash_wifi_bridge.cmd` or
+the runtime `wifi set ... url "ws://<pc-lan-ip>:8765/bridge"` command:
+
+```powershell
+.\tools\start_pc_brain.cmd -HostName 0.0.0.0 -RobotHost <robot-lan-ip> -Background -StopExisting
+```
+
+Then collect deployment evidence:
 
 ```powershell
 .\tools\collect_pc_brain_deploy_evidence.cmd -DeviceHost <robot-lan-ip> -SourceCommit <git-commit> -RunTests

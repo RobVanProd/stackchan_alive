@@ -94,8 +94,9 @@ The base launcher also supports explicit dashboard options:
 
 ```powershell
 .\tools\start_pc_brain.ps1 -Background -EnableDashboard `
+  -HostName 0.0.0.0 -RobotHost 192.168.1.238 `
   -DashboardHost 127.0.0.1 -DashboardPort 8766 `
-  -RobotHost 192.168.1.238 -EnableAudioDownlink
+  -EnableAudioDownlink
 ```
 
 For a supervised qualification that starts semantic room observation immediately:
@@ -103,9 +104,10 @@ For a supervised qualification that starts semantic room observation immediately
 ```powershell
 $env:STACKCHAN_OLLAMA_VISION_MODEL = "your-local-vision-model"
 .\tools\start_pc_brain.ps1 -Background -EnableDashboard -EnableAudioDownlink `
+  -HostName 0.0.0.0 -RobotHost 192.168.1.238 `
   -EnableConversationV2 -EnableInitiative -EnableRoomObservation `
   -CameraPairingCodeFile "$env:USERPROFILE\.stackchan\camera-pairing-code.txt" `
-  -RobotHost 192.168.1.238
+  -RoomObservationIntervalSeconds 300
 ```
 
 The dashboard runs inside that bridge process and receives robot heartbeat summaries directly.

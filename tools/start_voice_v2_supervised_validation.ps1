@@ -10,6 +10,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($DeviceHost)) {
+  throw "DeviceHost is required before supervised validation."
+}
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
 if ([string]::IsNullOrWhiteSpace($PythonExe)) {
@@ -95,6 +98,7 @@ try {
   $env:STACKCHAN_RVC_DIRECTML_WORKER_URL = "http://127.0.0.1:5059"
   $TtsCommand = "$PythonExe bridge\rvc_directml_tts_client.py"
   & (Join-Path $PSScriptRoot "start_pc_brain.ps1") `
+    -HostName "0.0.0.0" -RobotHost $DeviceHost `
     -StopExisting -Background -EnableAudioDownlink -StreamTtsPhrases `
     -InProcessOllamaRunner -InProcessDirectMlTts `
     -TtsCommand $TtsCommand -TtsVoice "stackchan-rvc-directml-v2" `

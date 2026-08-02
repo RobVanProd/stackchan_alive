@@ -42,17 +42,27 @@ foreach ($required in @(
 
 $baseText = Get-Content -LiteralPath $baseLauncher -Raw
 foreach ($required in @(
+  '[string]$HostName = "127.0.0.1"',
   "[switch]`$EnableDashboard",
   "Preserving non-Stackchan listener",
   "DashboardHost must be loopback-only.",
+  "RobotHost is required when HostName is not loopback.",
   '"--dashboard"',
   '"--robot-host", $RobotHost'
 )) {
   if (-not $baseText.Contains($required)) { throw "Base bridge launcher missing dashboard token: $required" }
 }
+if ($baseText -notmatch '(?s)if \(\$EnableDashboard\).*?\r?\n\}\r?\n\r?\nif \(-not \[string\]::IsNullOrWhiteSpace\(\$RobotHost\)\)') {
+  throw "RobotHost must be forwarded independently of dashboard enablement."
+}
+$peerGuardIndex = $baseText.IndexOf("RobotHost is required when HostName is not loopback.")
+$stopExistingIndex = $baseText.IndexOf('if ($StopExisting)')
+if ($peerGuardIndex -lt 0 -or $stopExistingIndex -lt 0 -or $peerGuardIndex -gt $stopExistingIndex) {
+  throw "Non-loopback peer configuration must fail before an existing listener can be stopped."
+}
 
 $directmlText = Get-Content -LiteralPath $directmlLauncher -Raw
-foreach ($required in @("-EnableDashboard", "-DashboardPort `$DashboardPort", "dashboardUrl =")) {
+foreach ($required in @("-HostName '0.0.0.0'", "-EnableDashboard", "-DashboardPort `$DashboardPort", "dashboardUrl =")) {
   if (-not $directmlText.Contains($required)) { throw "DirectML launcher missing dashboard token: $required" }
 }
 

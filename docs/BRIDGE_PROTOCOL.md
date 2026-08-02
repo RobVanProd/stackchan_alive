@@ -116,6 +116,23 @@ binary PCM frames after `utterance_start`, runs the same local runner/validator/
 `utterance_end`, and streams normalized bridge JSON text frames back to the client. Audio-only
 turns can use a configured local STT command:
 
+Host admission is fail-closed at the HTTP upgrade. The request line must be exactly
+`GET /bridge HTTP/1.1`; WebSocket upgrade/key/version-13 fields, the exact
+`X-Stackchan-Protocol: stackchan.bridge.v1` header, and one bounded nonblank
+`X-Stackchan-Device` value must be present. Security-critical duplicate headers and every
+browser `Origin` header are rejected before `101` or message dispatch. The general launcher binds
+loopback by default. A non-loopback bind requires a configured robot host; its addresses are
+resolved once at startup and the accepted TCP peer must match that frozen set before the request is
+read. The transmitted WebSocket key must be bounded ASCII Base64 with a nonempty bounded decoded
+value; it is a protocol field, not a secret or identity. Scoped and link-local IPv6 peers are not
+admitted by this IPv4-bound containment slice. Invalid attempts do not consume single-admitted-
+connection test mode. These existing headers and the configured peer are containment signals, not
+secrets or cryptographic device identity.
+Firmware sends no client application `hello`; after successful upgrade the host preserves the
+existing immediate server `hello`. `X-Stackchan-Device` is not a brain-owner endpoint ID, and a
+blank endpoint remains valid for current firmware turns only while no explicit brain owner is
+active.
+
 The Android companion uses the same `stackchan.bridge.v1` family. The target architecture is
 multi-endpoint: a PC bridge and an Android bridge may both be trusted, but only one endpoint
 is the active brain owner allowed to receive wake-gated audio and dynamic response ownership.

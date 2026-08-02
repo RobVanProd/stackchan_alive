@@ -24,7 +24,8 @@ Ledger timestamp: 2026-08-02 America/New_York
   secret, or disturb live services.
 - **Result:** Complete. AUDIT-01 independently recomputed topology and found four documentation
   gaps; all four are now incorporated in `BRANCH_LEDGER.md`.
-- **Commit:** Uncommitted.
+- **Commit:** `0e3467e79766ed1cafeef4837c162c8a50bb29e1` (`docs: establish aliveness
+  control baseline`).
 - **Decision:** Accept as repository truth. No branch/reference cleanup is authorized in this
   workstream.
 
@@ -47,7 +48,8 @@ Ledger timestamp: 2026-08-02 America/New_York
   weakening a gate.
 - **Result:** Complete; source baseline is green in the documented build context. Invocation/core
   ambiguity is recorded as a tooling/documentation fault.
-- **Commit:** Uncommitted.
+- **Commit:** `0e3467e79766ed1cafeef4837c162c8a50bb29e1` (`docs: establish aliveness
+  control baseline`).
 - **Decision:** Accept as the source baseline; do not treat the build hash as physical evidence.
 
 ## M0-003 — Ten-Domain Read-Only Audit Wave
@@ -71,7 +73,8 @@ Ledger timestamp: 2026-08-02 America/New_York
   code, call hardware, or weaken a boundary.
 - **Result:** Complete; no audit agent changed files or production behavior. One privacy report was
   reissued as a defensive summary after the first detailed response was blocked by safety filters.
-- **Commit:** None.
+- **Commit:** `0e3467e79766ed1cafeef4837c162c8a50bb29e1` (`docs: establish aliveness
+  control baseline`).
 - **Decision:** Close the read-only wave; preserve durable replay references before preregistration.
 
 ## M0-004 — Salvage Reproducible Firmware Builds
@@ -128,9 +131,10 @@ Ledger timestamp: 2026-08-02 America/New_York
   mismatch, camera compilation, Character Lock earcon/signed-valence, dashboard launch defaults,
   managed desktop Python, and dated vision evidence are reconciled. Launcher, desktop runtime, and
   three evidence/archive contract suites pass.
-- **Commit:** Uncommitted with the Milestone 0 documentation slice.
+- **Commit:** `0e3467e79766ed1cafeef4837c162c8a50bb29e1` (`docs: establish aliveness
+  control baseline`).
 - **Decision:** Accepted by the final independent documentation review; no historical evidence was
-  strengthened or transferred. Commit with the Milestone 0 documentation baseline.
+  strengthened or transferred. Complete.
 
 ## UX-001 — Expire Stale Dashboard Robot Readiness
 
@@ -349,10 +353,19 @@ Ledger timestamp: 2026-08-02 America/New_York
 - **Owner:** One host-transport implementation owner; separate security, privacy, regression, and
   documentation reviewers.
 - **Allowed files:** Freeze to `bridge/lan_service.py`, `bridge/test_lan_service.py`,
+  `bridge/lan_smoke.py` (independently approved after the red phase exposed its direct legacy
+  headerless fixture), `bridge/test_dashboard_service.py` (independently approved after the first
+  broad run exposed the same integrated-server fixture),
   `tools/start_pc_brain.ps1`, `tools/start_pc_brain_directml.ps1`,
+  `tools/restore_voice_v2_production.ps1`, `tools/run_selected_voice_once.ps1`,
+  `tools/start_voice_v2_supervised_validation.ps1`,
+  `tools/start_warm_rocm_full_system_soak.ps1`, `tools/check_pc_brain_runtime.ps1`,
+  `tools/test_pc_brain_runtime_check_contract.ps1`,
   `tools/test_start_pc_brain_directml_contract.ps1`,
-  `tools/test_stackchan_dashboard_launcher_contract.ps1`, and `docs/BRIDGE_PROTOCOL.md`. No
-  firmware file in this slice.
+  `tools/test_stackchan_dashboard_launcher_contract.ps1`, `docs/BRIDGE_PROTOCOL.md`,
+  `docs/RELEASE_QUICKSTART.md`, `docs/ARRIVAL_DAY_RUNBOOK.md`, `docs/BRIDGE_DASHBOARD.md`, and
+  `bridge/README.md`. Each expansion was independently approved after a test/review exposed a
+  directly coupled compatibility gap. No firmware file in this slice.
 - **Frozen systems:** Message schemas after admission, STT/model/TTS, memory semantics, dashboard,
   firmware, robot, pairing values, voice/vision workers, release packaging, and all hardware
   authority.
@@ -370,13 +383,23 @@ Ledger timestamp: 2026-08-02 America/New_York
   private code, changing wire payloads, weakening loopback defaults, or restarting the contained
   live bridge before independent verification. If peer resolution cannot be frozen safely, require
   a configured literal IP instead of widening admission.
-- **Result:** Selected and preregistered by an independent read-only reviewer; implementation has
-  not started. Expected pre-code failures, exact test matrix, file scope, rollback, and uncertainty
-  are frozen above and in `PROJECT_STATE.md`.
-- **Commit:** None.
-- **Decision:** Implement test-first only after the Milestone 0 documentation commit. Treat TCP
-  peer plus spoofable headers as bounded admission hardening, not cryptographic authentication.
-  Firmware HTTP control authorization remains a separate P0 task.
+- **Result:** Implemented test-first in the isolated working tree after the expected-red run.
+  Focused admission, malformed-key recovery, wrong-peer no-dispatch/once recovery, maintained
+  robot-wrapper, and runtime-certification contracts are green. The final staged-tree matrix is
+  green: 559 bridge, 289 native, 115 focused LAN, ten consecutive dashboard-heartbeat race
+  repetitions, five LAN smoke scenarios, silent privacy, secret-free release compile, and three
+  evidence/archive contracts. The self-identifying pre-commit manifest and hashed logs are stored
+  under ignored `output/private/sec-001/final-<tree>/`; the containing Git commit and final handoff
+  provide the durable source identity. A user-authorized isolated live check also
+  completed one real Ollama model turn, and a separate real non-loopback socket rejected a wrong
+  peer without consuming `once`; both alternate-port processes exited/stopped and nothing was
+  deployed to the production listener or robot. Independent security, regression, preregistration,
+  and documentation/authority reviews accept the frozen candidate.
+- **Commit:** The atomic `SEC-001` commit containing this record; its exact SHA is assigned by Git
+  after the record is written and must be read from history/the final handoff.
+- **Decision:** Accepted for the atomic host-side commit. Treat TCP peer plus spoofable headers as
+  bounded admission hardening, not cryptographic authentication. Deployment remains unauthorized;
+  firmware HTTP control authorization remains the separate P0 `SEC-002` task.
 
 ## SEC-002 — Disable Unauthenticated Firmware Mutating Controls
 

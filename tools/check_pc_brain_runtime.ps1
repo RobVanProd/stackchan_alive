@@ -53,6 +53,70 @@ function Normalize-Text {
   return ($Text -replace "\\", "/" -replace "\s+", " ").Trim().ToLowerInvariant()
 }
 
+function Split-WindowsCommandLine {
+  param([string]$CommandLine)
+  if ($null -eq ("Stackchan.RuntimeContract.CommandLine" -as [type])) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+namespace Stackchan.RuntimeContract {
+  public static class CommandLine {
+    [DllImport("shell32.dll", SetLastError = true)]
+    private static extern IntPtr CommandLineToArgvW(
+      [MarshalAs(UnmanagedType.LPWStr)] string commandLine,
+      out int argumentCount
+    );
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LocalFree(IntPtr memory);
+
+    public static string[] Split(string commandLine) {
+      int argumentCount;
+      IntPtr arguments = CommandLineToArgvW(commandLine, out argumentCount);
+      if (arguments == IntPtr.Zero) {
+        throw new Win32Exception(Marshal.GetLastWin32Error());
+      }
+      try {
+        var values = new List<string>(argumentCount);
+        for (int index = 0; index < argumentCount; ++index) {
+          IntPtr value = Marshal.ReadIntPtr(arguments, index * IntPtr.Size);
+          values.Add(Marshal.PtrToStringUni(value) ?? string.Empty);
+        }
+        return values.ToArray();
+      } finally {
+        LocalFree(arguments);
+      }
+    }
+  }
+}
+"@
+  }
+  return @([Stackchan.RuntimeContract.CommandLine]::Split($CommandLine))
+}
+
+function Get-ExactLongArgumentValues {
+  param(
+    [string[]]$Tokens,
+    [string]$Name
+  )
+  $argument = "--" + $Name.TrimStart("-").ToLowerInvariant()
+  $values = @()
+  for ($index = 0; $index -lt $Tokens.Count; ++$index) {
+    $token = Normalize-Text $Tokens[$index]
+    if ($token -eq $argument) {
+      if ($index + 1 -lt $Tokens.Count) {
+        $values += (Normalize-Text $Tokens[$index + 1])
+      }
+    } elseif ($token.StartsWith($argument + "=")) {
+      $values += $token.Substring($argument.Length + 1)
+    }
+  }
+  return @($values)
+}
+
 function Test-CommandLineContains {
   param(
     [string]$Id,
@@ -143,10 +207,35 @@ if ($processes.Count -gt 1) {
 }
 
 $normalizedCommandLine = Normalize-Text $commandLine
+$commandTokens = if ([string]::IsNullOrWhiteSpace($commandLine)) {
+  @()
+} else {
+  @(Split-WindowsCommandLine $commandLine)
+}
+$expectedHostIsLoopback = $ExpectedHostName.Trim().ToLowerInvariant() -in @(
+  "127.0.0.1",
+  "::1",
+  "localhost"
+)
 
 if (-not [string]::IsNullOrWhiteSpace($commandLine)) {
   Test-CommandLineContains "script" $normalizedCommandLine "bridge/lan_service.py" "Uses bridge/lan_service.py."
-  Test-CommandLineContains "host" $normalizedCommandLine "--host $ExpectedHostName" "Host is $ExpectedHostName."
+  $hostValues = @(Get-ExactLongArgumentValues $commandTokens "host")
+  $expectedHostValue = Normalize-Text $ExpectedHostName
+  Add-Check "host" `
+    ($(if ($hostValues.Count -eq 1 -and $hostValues[0] -eq $expectedHostValue) { "pass" } else { "fail" })) `
+    "Exactly one host argument is configured as $ExpectedHostName."
+  if ($expectedHostIsLoopback) {
+    Add-Check "robot-peer" "pass" "A configured robot peer is optional for a loopback-only bridge."
+  } elseif ([string]::IsNullOrWhiteSpace($DeviceHost)) {
+    Add-Check "robot-peer" "fail" "DeviceHost is required to certify a non-loopback bridge."
+  } else {
+    $robotPeerValues = @(Get-ExactLongArgumentValues $commandTokens "robot-host")
+    $expectedRobotPeer = Normalize-Text $DeviceHost
+    Add-Check "robot-peer" `
+      ($(if ($robotPeerValues.Count -eq 1 -and $robotPeerValues[0] -eq $expectedRobotPeer) { "pass" } else { "fail" })) `
+      "Robot peer is restricted to exactly one configured value matching $DeviceHost."
+  }
   Test-CommandLineContains "port" $normalizedCommandLine "--port $Port" "Port is $Port."
   Test-CommandLineContains "runner-profile" $normalizedCommandLine "--runner-profile gemma4-e2b-gguf" "Runner profile is gemma4-e2b-gguf."
   Test-CommandLineFlagAndScript "runner-command" $normalizedCommandLine "--runner-command" $ExpectedRunnerCommand "Runner command is $ExpectedRunnerCommand."
@@ -230,7 +319,9 @@ if ([string]::IsNullOrWhiteSpace($ProcessCommandLine)) {
   Add-Check "port-listener" "pending" "Skipped because -ProcessCommandLine was supplied."
 }
 
-if ([string]::IsNullOrWhiteSpace($DebugUrl) -and -not [string]::IsNullOrWhiteSpace($DeviceHost)) {
+if ([string]::IsNullOrWhiteSpace($DebugUrl) -and
+    [string]::IsNullOrWhiteSpace($ProcessCommandLine) -and
+    -not [string]::IsNullOrWhiteSpace($DeviceHost)) {
   $DebugUrl = "http://$DeviceHost`:8789/debug"
 }
 

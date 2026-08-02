@@ -1,6 +1,7 @@
 import json
 import os
 import base64
+import io
 import math
 import socket
 import sys
@@ -18,6 +19,7 @@ BRIDGE_DIR = Path(__file__).resolve().parent
 if str(BRIDGE_DIR) not in sys.path:
     sys.path.insert(0, str(BRIDGE_DIR))
 
+import lan_service
 from lan_service import (
     BridgeControlState,
     EndpointRecord,
@@ -66,6 +68,36 @@ RUNNER_ENV = {
 }
 
 
+def firmware_upgrade_request(
+    *,
+    port: int = 8765,
+    path: str = "/bridge",
+    protocol: str | None = PROTOCOL,
+    device: str | None = "stackchan",
+    key: str = "c3RhY2tjaGFuLWZpcm13YXJlLWtleQ==",
+    origin: str | None = None,
+    extra_headers: tuple[str, ...] = (),
+) -> bytes:
+    """Return the exact HTTP upgrade shape emitted by current firmware."""
+
+    lines = [
+        f"GET {path} HTTP/1.1",
+        f"Host: 127.0.0.1:{port}",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        f"Sec-WebSocket-Key: {key}",
+        "Sec-WebSocket-Version: 13",
+    ]
+    if protocol is not None:
+        lines.append(f"X-Stackchan-Protocol: {protocol}")
+    if device is not None:
+        lines.append(f"X-Stackchan-Device: {device}")
+    if origin is not None:
+        lines.append(f"Origin: {origin}")
+    lines.extend(extra_headers)
+    return ("\r\n".join(lines) + "\r\n\r\n").encode("ascii")
+
+
 def connect_loopback(port: int, timeout: float = 5.0) -> socket.socket:
     deadline = time.monotonic() + timeout
     while True:
@@ -105,6 +137,8 @@ class LanServiceTests(unittest.TestCase):
             "Connection: Upgrade\r\n"
             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
             "Sec-WebSocket-Version: 13\r\n"
+            f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+            "X-Stackchan-Device: stackchan\r\n"
             "\r\n"
         ).encode("ascii")
 
@@ -112,6 +146,352 @@ class LanServiceTests(unittest.TestCase):
 
         self.assertIn("101 Switching Protocols", response)
         self.assertIn("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", response)
+
+    def test_admission_accepts_exact_firmware_upgrade(self):
+        response = build_handshake_response(firmware_upgrade_request()).decode("ascii")
+
+        self.assertIn("101 Switching Protocols", response)
+
+    def test_admission_rejects_non_bridge_path(self):
+        requests = (
+            firmware_upgrade_request(path="/not-bridge"),
+            firmware_upgrade_request(path="/bridge?browser=1"),
+            firmware_upgrade_request().replace(b" HTTP/1.1\r\n", b" HTTP/1.0\r\n", 1),
+        )
+        for request in requests:
+            with self.subTest(request=request):
+                with self.assertRaises(lan_service.WebSocketProtocolError):
+                    build_handshake_response(request)
+
+    def test_admission_rejects_invalid_or_duplicate_websocket_fields(self):
+        valid = firmware_upgrade_request()
+        requests = (
+            valid.replace(b"Upgrade: websocket\r\n", b"", 1),
+            valid.replace(b"Connection: Upgrade\r\n", b"Connection: keep-alive\r\n", 1),
+            valid.replace(
+                b"Sec-WebSocket-Key: c3RhY2tjaGFuLWZpcm13YXJlLWtleQ==\r\n",
+                b"Sec-WebSocket-Key: \r\n",
+                1,
+            ),
+            valid.replace(
+                b"Sec-WebSocket-Key: c3RhY2tjaGFuLWZpcm13YXJlLWtleQ==\r\n",
+                "Sec-WebSocket-Key: caf\u00e9\r\n".encode("iso-8859-1"),
+                1,
+            ),
+            valid.replace(
+                b"Sec-WebSocket-Key: c3RhY2tjaGFuLWZpcm13YXJlLWtleQ==\r\n",
+                b"Sec-WebSocket-Key: not-base64\r\n",
+                1,
+            ),
+            firmware_upgrade_request(key="QQ==" * 100),
+            valid.replace(b"Sec-WebSocket-Version: 13\r\n", b"Sec-WebSocket-Version: 12\r\n", 1),
+            firmware_upgrade_request(extra_headers=("Upgrade: websocket",)),
+            firmware_upgrade_request(extra_headers=("Connection: Upgrade",)),
+            firmware_upgrade_request(extra_headers=("Sec-WebSocket-Key: duplicate",)),
+            firmware_upgrade_request(extra_headers=("Sec-WebSocket-Version: 13",)),
+        )
+        for request in requests:
+            with self.subTest(request=request):
+                with self.assertRaises(lan_service.WebSocketProtocolError):
+                    build_handshake_response(request)
+
+    def test_admission_rejects_missing_or_wrong_protocol(self):
+        requests = (
+            firmware_upgrade_request(protocol=None),
+            firmware_upgrade_request(protocol="stackchan.bridge.v0"),
+            firmware_upgrade_request(
+                extra_headers=(f"X-Stackchan-Protocol: {PROTOCOL}",)
+            ),
+        )
+        for request in requests:
+            with self.subTest(request=request):
+                with self.assertRaises(lan_service.WebSocketProtocolError):
+                    build_handshake_response(request)
+
+    def test_admission_rejects_blank_or_invalid_device(self):
+        requests = (
+            firmware_upgrade_request(device=None),
+            firmware_upgrade_request(device=""),
+            firmware_upgrade_request(device="bad device"),
+            firmware_upgrade_request(device="x" * 65),
+            firmware_upgrade_request(
+                extra_headers=("X-Stackchan-Device: duplicate",)
+            ),
+        )
+        for request in requests:
+            with self.subTest(request=request):
+                with self.assertRaises(lan_service.WebSocketProtocolError):
+                    build_handshake_response(request)
+
+    def test_admission_rejects_browser_origin(self):
+        with self.assertRaises(lan_service.WebSocketProtocolError):
+            build_handshake_response(
+                firmware_upgrade_request(origin="http://127.0.0.1:8765")
+            )
+
+    def test_non_loopback_config_requires_robot_peer(self):
+        with self.assertRaisesRegex(ValueError, "robot_host"):
+            LanBridgeConfig(host="0.0.0.0")
+
+    def test_cli_rejects_abbreviated_security_arguments(self):
+        parser = lan_service.build_arg_parser()
+
+        with self.assertRaises(SystemExit), patch("sys.stderr", new=io.StringIO()):
+            parser.parse_args(["--robot-ho", "192.0.2.10"])
+
+    def test_admission_rejects_wrong_peer_before_dispatch(self):
+        allowed = frozenset({"192.0.2.10"})
+
+        self.assertTrue(lan_service.peer_address_allowed("192.0.2.10", allowed))
+        self.assertTrue(lan_service.peer_address_allowed("::ffff:192.0.2.10", allowed))
+        self.assertFalse(lan_service.peer_address_allowed("192.0.2.20", allowed))
+        self.assertFalse(lan_service.peer_address_allowed("fe80::1", frozenset({"fe80::1"})))
+        self.assertFalse(
+            lan_service.peer_address_allowed("fe80::1%12", frozenset({"fe80::1"}))
+        )
+
+    def test_wrong_peer_skips_request_dashboard_state_and_once(self):
+        class FakeServer:
+            def __init__(self, accepted):
+                self.accepted = list(accepted)
+                self.accept_calls = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, _exc_type, _exc, _traceback):
+                return False
+
+            def setsockopt(self, *_args):
+                return None
+
+            def accept(self):
+                self.accept_calls += 1
+                return self.accepted.pop(0)
+
+        wrong_conn = Mock(spec=socket.socket)
+        valid_server_conn, valid_client = socket.socketpair()
+        valid_client.settimeout(5.0)
+        fake_server = FakeServer(
+            (
+                (wrong_conn, ("192.0.2.20", 4000)),
+                (valid_server_conn, ("192.0.2.10", 4001)),
+            )
+        )
+        dashboard = Mock()
+        room = Mock()
+        shared_memory = BridgeMemory()
+        shared_control = BridgeControlState()
+        initial_memory = shared_memory.to_dict()
+        initial_control = (
+            dict(shared_control.trusted_endpoints),
+            shared_control.active_brain_owner,
+            shared_control.settings_version,
+            json.dumps(shared_control.settings, sort_keys=True),
+            shared_control.persona_initialized,
+        )
+        state_before_valid: list[tuple[object, ...]] = []
+        errors: list[BaseException] = []
+        actual_handle_connection = lan_service.handle_connection
+
+        def observed_handle_connection(*args, **kwargs):
+            control = args[3]
+            state_before_valid.append(
+                (
+                    args[2].to_dict(),
+                    dict(control.trusted_endpoints),
+                    control.active_brain_owner,
+                    control.settings_version,
+                    json.dumps(control.settings, sort_keys=True),
+                    control.persona_initialized,
+                )
+            )
+            return actual_handle_connection(*args, **kwargs)
+
+        def run_server():
+            try:
+                serve(
+                    LanBridgeConfig(
+                        host="0.0.0.0",
+                        port=8765,
+                        robot_host="robot.example",
+                        once=True,
+                        dashboard_enabled=True,
+                    )
+                )
+            except BaseException as exc:  # pragma: no cover - surfaced by assertion
+                errors.append(exc)
+
+        with (
+            patch("lan_service.resolve_robot_peer_addresses", return_value=frozenset({"192.0.2.10"})),
+            patch("lan_service.load_bridge_memory", return_value=shared_memory),
+            patch("lan_service.BridgeControlState", return_value=shared_control),
+            patch("lan_service.RoomContextRuntime", return_value=room),
+            patch("lan_service.DashboardRuntime", return_value=dashboard),
+            patch("lan_service.start_dashboard_server", return_value=(Mock(), Mock())),
+            patch("lan_service.stop_dashboard_server"),
+            patch("lan_service.socket.create_server", return_value=fake_server),
+            patch("lan_service.read_http_request", wraps=lan_service.read_http_request) as read_request,
+            patch("lan_service.handle_connection", side_effect=observed_handle_connection) as handle,
+        ):
+            server = threading.Thread(target=run_server, daemon=True)
+            server.start()
+            valid_client.sendall(firmware_upgrade_request())
+            response = bytearray()
+            while b"\r\n\r\n" not in response:
+                response.extend(valid_client.recv(1))
+            self.assertIn(b"101 Switching Protocols", response)
+            opcode, payload = read_ws_frame(valid_client)
+            self.assertEqual(0x1, opcode)
+            self.assertEqual("hello", json.loads(payload.decode("utf-8"))["type"])
+            valid_client.sendall(encode_ws_frame(b"", opcode=0x8))
+            server.join(timeout=5.0)
+        valid_client.close()
+
+        self.assertFalse(server.is_alive())
+        self.assertEqual([], errors)
+        self.assertEqual(2, fake_server.accept_calls)
+        wrong_conn.recv.assert_not_called()
+        wrong_conn.close.assert_called_once_with()
+        read_request.assert_called_once()
+        handle.assert_called_once()
+        dashboard.note_client_connected.assert_called_once_with("192.0.2.10", 4001)
+        dashboard.note_client_disconnected.assert_called_once_with("192.0.2.10")
+        self.assertFalse(
+            any("192.0.2.20" in str(call) for call in dashboard.method_calls),
+            dashboard.method_calls,
+        )
+        self.assertEqual(
+            [
+                (
+                    initial_memory,
+                    *initial_control,
+                )
+            ],
+            state_before_valid,
+        )
+
+    def test_robot_peer_resolution_is_frozen_before_accept(self):
+        config = LanBridgeConfig(host="0.0.0.0", robot_host="robot.example")
+        resolved = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.10", 0)),
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::ffff:192.0.2.10", 0, 0, 0)),
+        ]
+
+        with patch("lan_service.socket.getaddrinfo", return_value=resolved) as lookup:
+            allowed = lan_service.resolve_robot_peer_addresses(config)
+
+        lookup.assert_called_once_with("robot.example", None, type=socket.SOCK_STREAM)
+        self.assertEqual(frozenset({"192.0.2.10"}), allowed)
+
+    def test_unadmitted_session_rejects_protected_message(self):
+        session = LanBridgeSession(LanBridgeConfig(), transport_admitted=False)
+
+        text_frames = session.handle_text(json.dumps({"type": "settings_get"}))
+        binary_frames = session.handle_binary(b"synthetic")
+
+        self.assertEqual("admission_required", text_frames[0]["code"])
+        self.assertEqual("admission_required", binary_frames[0]["code"])
+
+    def test_owner_gate_rejects_blank_endpoint_when_owner_exists(self):
+        state = BridgeControlState()
+        state.register_endpoint(
+            {
+                "type": "endpoint_hello",
+                "protocol": PROTOCOL,
+                "endpoint_id": "phone-owner-01",
+                "endpoint_kind": "android",
+                "capabilities": ["brain_owner"],
+            }
+        )
+        state.active_brain_owner = "phone-owner-01"
+        session = LanBridgeSession(LanBridgeConfig(), control_state=state)
+
+        result = session._owner_gate({})
+
+        self.assertIsNotNone(result)
+        self.assertEqual("endpoint_id_required", result["code"])
+
+    def test_loopback_default_allows_firmware_without_configured_peer(self):
+        config = LanBridgeConfig()
+
+        self.assertEqual("127.0.0.1", config.host)
+        self.assertEqual("", config.robot_host)
+        self.assertIn(b"101 Switching Protocols", build_handshake_response(firmware_upgrade_request()))
+
+    def test_invalid_attempt_does_not_consume_once_recovery(self):
+        with socket.create_server(("127.0.0.1", 0)) as probe:
+            port = int(probe.getsockname()[1])
+        errors: list[BaseException] = []
+
+        def run_server():
+            try:
+                serve(LanBridgeConfig(host="127.0.0.1", port=port, once=True))
+            except BaseException as exc:  # pragma: no cover - surfaced by assertion
+                errors.append(exc)
+
+        server = threading.Thread(target=run_server, daemon=True)
+        server.start()
+        valid_request = firmware_upgrade_request(port=port)
+        invalid_requests = (
+            valid_request.replace(
+                b"c3RhY2tjaGFuLWZpcm13YXJlLWtleQ==",
+                "caf\u00e9".encode("iso-8859-1"),
+                1,
+            ),
+            firmware_upgrade_request(port=port, key="not-base64"),
+        )
+        for invalid_request in invalid_requests:
+            with connect_loopback(port) as invalid_client:
+                invalid_client.sendall(invalid_request)
+                try:
+                    invalid_response = invalid_client.recv(4096)
+                except ConnectionResetError:
+                    invalid_response = b""
+            self.assertNotIn(b"101 Switching Protocols", invalid_response)
+
+        with connect_loopback(port) as valid_client:
+            valid_client.sendall(valid_request)
+            response = bytearray()
+            while b"\r\n\r\n" not in response:
+                response.extend(valid_client.recv(1))
+            self.assertIn(b"101 Switching Protocols", response)
+            opcode, payload = read_ws_frame(valid_client)
+            self.assertEqual(0x1, opcode)
+            self.assertEqual("hello", json.loads(payload.decode("utf-8"))["type"])
+            valid_client.sendall(encode_ws_frame(b"", opcode=0x8))
+        server.join(timeout=5.0)
+
+        self.assertFalse(server.is_alive())
+        self.assertEqual([], errors)
+
+    def test_valid_firmware_disconnect_and_reconnect_receives_hello(self):
+        for _attempt in range(2):
+            with socket.create_server(("127.0.0.1", 0)) as probe:
+                port = int(probe.getsockname()[1])
+            errors: list[BaseException] = []
+
+            def run_server():
+                try:
+                    serve(LanBridgeConfig(host="127.0.0.1", port=port, once=True))
+                except BaseException as exc:  # pragma: no cover - surfaced by assertion
+                    errors.append(exc)
+
+            server = threading.Thread(target=run_server, daemon=True)
+            server.start()
+            with connect_loopback(port) as client:
+                client.sendall(firmware_upgrade_request(port=port))
+                response = bytearray()
+                while b"\r\n\r\n" not in response:
+                    response.extend(client.recv(1))
+                self.assertIn(b"101 Switching Protocols", response)
+                opcode, payload = read_ws_frame(client)
+                self.assertEqual(0x1, opcode)
+                self.assertEqual("hello", json.loads(payload.decode("utf-8"))["type"])
+                client.sendall(encode_ws_frame(b"", opcode=0x8))
+            server.join(timeout=5.0)
+            self.assertFalse(server.is_alive())
+            self.assertEqual([], errors)
 
     def test_server_text_frame_encoding_is_unmasked(self):
         self.assertEqual(b"\x81\x02hi", encode_ws_text("hi"))
@@ -141,6 +521,8 @@ class LanServiceTests(unittest.TestCase):
             "Connection: Upgrade\r\n"
             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
             "Sec-WebSocket-Version: 13\r\n"
+            f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+            "X-Stackchan-Device: stackchan\r\n"
             "\r\n"
         ).encode("ascii")
         with connect_loopback(port) as client:
@@ -174,6 +556,8 @@ class LanServiceTests(unittest.TestCase):
             "Connection: Upgrade\r\n"
             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
             "Sec-WebSocket-Version: 13\r\n"
+            f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+            "X-Stackchan-Device: stackchan\r\n"
             "\r\n"
         ).encode("ascii")
         with connect_loopback(port) as client:
@@ -284,6 +668,8 @@ class LanServiceTests(unittest.TestCase):
                 "Connection: Upgrade\r\n"
                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
                 "Sec-WebSocket-Version: 13\r\n"
+                f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+                "X-Stackchan-Device: stackchan\r\n"
                 "\r\n"
             ).encode("ascii")
             with connect_loopback(port) as client:
@@ -388,6 +774,8 @@ class LanServiceTests(unittest.TestCase):
                     "Connection: Upgrade\r\n"
                     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
                     "Sec-WebSocket-Version: 13\r\n"
+                    f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+                    "X-Stackchan-Device: stackchan\r\n"
                     "\r\n"
                 ).encode("ascii")
                 with connect_loopback(port) as client:
@@ -531,6 +919,8 @@ class LanServiceTests(unittest.TestCase):
                     "Connection: Upgrade\r\n"
                     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
                     "Sec-WebSocket-Version: 13\r\n"
+                    f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+                    "X-Stackchan-Device: stackchan\r\n"
                     "\r\n"
                 ).encode("ascii")
                 with connect_loopback(port) as client:
@@ -667,6 +1057,8 @@ class LanServiceTests(unittest.TestCase):
                 "Connection: Upgrade\r\n"
                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
                 "Sec-WebSocket-Version: 13\r\n"
+                f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+                "X-Stackchan-Device: stackchan\r\n"
                 "\r\n"
             ).encode("ascii")
             with connect_loopback(port) as client:
@@ -798,6 +1190,8 @@ class LanServiceTests(unittest.TestCase):
                     "Connection: Upgrade\r\n"
                     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
                     "Sec-WebSocket-Version: 13\r\n"
+                    f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+                    "X-Stackchan-Device: stackchan\r\n"
                     "\r\n"
                 ).encode("ascii")
                 with connect_loopback(port) as client:

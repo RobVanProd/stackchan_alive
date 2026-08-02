@@ -2,6 +2,7 @@ import json
 import socket
 import sys
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -21,6 +22,7 @@ from dashboard_service import (  # noqa: E402
 )
 from initiative_policy import InitiativeConfig, InitiativePolicy  # noqa: E402
 from lan_service import LanBridgeConfig, encode_ws_frame, encode_ws_text, read_ws_frame, serve  # noqa: E402
+from reference_bridge import PROTOCOL  # noqa: E402
 from room_context import RoomContextRuntime, RoomObservationConfig  # noqa: E402
 
 
@@ -409,7 +411,9 @@ class DashboardBridgeIntegrationTests(unittest.TestCase):
             "Upgrade: websocket\r\n"
             "Connection: Upgrade\r\n"
             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
-            "Sec-WebSocket-Version: 13\r\n\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+            "X-Stackchan-Device: stackchan\r\n\r\n"
         ).encode("ascii")
         with socket.create_connection(("127.0.0.1", bridge_port), timeout=3.0) as client:
             client.sendall(request)
@@ -429,8 +433,22 @@ class DashboardBridgeIntegrationTests(unittest.TestCase):
                     )
                 )
             )
-            with urllib.request.urlopen(status_url, timeout=3.0) as response:
-                status = json.load(response)
+            status_deadline = time.monotonic() + 3.0
+            while True:
+                remaining = status_deadline - time.monotonic()
+                if remaining <= 0.0:
+                    break
+                with urllib.request.urlopen(status_url, timeout=min(0.25, remaining)) as response:
+                    status = json.load(response)
+                if (
+                    status["robot"]["mode"] == "Listening"
+                    and status["robot"]["batteryPercent"] == 74
+                ):
+                    break
+                remaining = status_deadline - time.monotonic()
+                if remaining <= 0.0:
+                    break
+                threading.Event().wait(min(0.02, remaining))
             client.sendall(encode_ws_frame(b"", opcode=0x8))
 
         thread.join(timeout=5.0)

@@ -1,5 +1,5 @@
 param(
-  [string]$HostName = "0.0.0.0",
+  [string]$HostName = "127.0.0.1",
   [int]$Port = 8765,
   [string]$Model = "gemma4:e2b-it-qat",
   [string]$RunnerCommand = "python bridge\ollama_stackchan_runner.py",
@@ -67,6 +67,15 @@ if ($LASTEXITCODE -ne 0 -or $SourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
   throw "Could not resolve the PC brain source commit."
 }
 $SourceDirty = @(& git status --porcelain).Count -gt 0
+
+$ParsedBindAddress = $null
+$BindIsLoopback = $HostName -eq "localhost"
+if ([System.Net.IPAddress]::TryParse($HostName, [ref]$ParsedBindAddress)) {
+  $BindIsLoopback = [System.Net.IPAddress]::IsLoopback($ParsedBindAddress)
+}
+if (-not $BindIsLoopback -and [string]::IsNullOrWhiteSpace($RobotHost)) {
+  throw "RobotHost is required when HostName is not loopback."
+}
 
 $OllamaExe = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"
 if (-not (Test-Path -LiteralPath $OllamaExe)) {
@@ -257,9 +266,10 @@ if ($EnableDashboard) {
     "--dashboard-port", "$DashboardPort",
     "--robot-http-port", "$RobotHttpPort"
   )
-  if (-not [string]::IsNullOrWhiteSpace($RobotHost)) {
-    $ArgsList += @("--robot-host", $RobotHost)
-  }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($RobotHost)) {
+  $ArgsList += @("--robot-host", $RobotHost)
 }
 
 if ($AutoTurnText) {

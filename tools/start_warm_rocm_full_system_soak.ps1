@@ -39,6 +39,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($DeviceHost)) {
+  throw "DeviceHost is required before the physical soak wrapper performs any action."
+}
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
@@ -197,6 +200,8 @@ if (-not $SkipBridgeRestart) {
   $env:STACKCHAN_RVC_WORKER_TIMEOUT_SECONDS = "90"
   $env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "2097152"
   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 `
+    -HostName "0.0.0.0" `
+    -RobotHost $DeviceHost `
     -StopExisting `
     -Background `
     -EnableAudioDownlink `

@@ -200,7 +200,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_rvc_worker.ps1
 $env:STACKCHAN_RVC_WORKER_URL = "http://127.0.0.1:5055"
 $env:STACKCHAN_RVC_WORKER_TIMEOUT_SECONDS = "90"
 $env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "65536"
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts_client.py" -TtsVoice "stackchan-rvc-warm-rocm" -DownlinkBinaryFrameDelayMs 80
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -HostName 0.0.0.0 -RobotHost <robot-lan-ip> -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts_client.py" -TtsVoice "stackchan-rvc-warm-rocm" -DownlinkBinaryFrameDelayMs 80
 ```
 
 The physically validated Windows DirectML path is documented in
@@ -299,10 +299,11 @@ Host initiative and room context are also explicit, default-off features:
 ```powershell
 $env:STACKCHAN_OLLAMA_VISION_MODEL = "your-local-vision-model"
 .\tools\start_pc_brain.ps1 -Background -EnableAudioDownlink -StreamTtsPhrases `
+  -HostName 0.0.0.0 -RobotHost <robot-lan-ip> `
   -EnableConversationV2 -EnableInitiative -EnableRoomObservation `
   -RoomObservationIntervalSeconds 300 `
   -CameraPairingCodeFile "$env:USERPROFILE\.stackchan\camera-pairing-code.txt" `
-  -RobotHost 192.168.1.238 -EnableDashboard
+  -EnableDashboard
 ```
 
 The initiative policy requires a fresh person-presence observation, waits at least ten minutes

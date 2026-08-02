@@ -5,17 +5,22 @@ State timestamp: 2026-08-02 America/New_York
 ## Current Objective
 
 Complete Milestone 0 repository/document truth and contain the newly confirmed LAN trust-boundary
-failure before any aliveness feature work. All ten read-only audits are complete. The current work
-is documentation, preregistration, and test-first security repair; no robot behavior change has
-been implemented.
+failure before any aliveness feature work. All ten read-only audits are complete. The atomic commit
+containing this record is the independently expanded, test-first, exact-tree-verified `SEC-001` host
+security repair. It has not been deployed: no production service, firmware, or robot behavior has
+been changed. Two user-authorized alternate-port live checks started and stopped the candidate
+exactly as recorded below.
 
 ## Source Identity
 
 - Repository: `RobVanProd/stackchan_alive`
 - Working branch: `codex/aliveness-repository-truth`
-- Working commit: `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`
+- Pre-commit parent HEAD: `0e3467e79766ed1cafeef4837c162c8a50bb29e1`
 - Fetched `origin/main`: `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`
-- Last source-verified commit: `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`
+- Milestone 0 documentation baseline commit: `0e3467e79766ed1cafeef4837c162c8a50bb29e1`
+- SEC-001 identity: the candidate is the exact tree/commit containing this record. Before commit
+  it is staged against parent `0e3467e7`; after commit its authoritative SHA is the containing Git
+  commit assigned by Git and reported in the handoff.
 - Verification scope: native firmware logic, host bridge tests, silent trusted-facts routing,
   secret-free release compilation through the documented isolated pioarduino core, and three
   release/evidence contract suites.
@@ -81,22 +86,46 @@ characters, and no `Origin`. Security-critical duplicate headers fail closed. A 
 requires `RobotHost`; it is resolved once before accept, and the normalized frozen address set is
 checked before reading or dispatching a request. Invalid attempts close before `101` and do not
 consume `--once`; a later valid firmware connection receives the existing immediate server hello.
-The general launcher becomes loopback-default, while the production DirectML launcher opts into
-`0.0.0.0` only with its already required robot host.
+The general launcher becomes loopback-default. Every maintained robot-facing wrapper opts into
+`0.0.0.0` with an early nonblank `DeviceHost` guard and an explicit frozen robot peer; runtime
+certification requires the same peer argument. Scoped and link-local IPv6 peers fail closed in
+this IPv4-bound slice.
 
 Frozen implementation files are `bridge/lan_service.py`, `bridge/test_lan_service.py`,
+`bridge/lan_smoke.py`, `bridge/test_dashboard_service.py`,
 `tools/start_pc_brain.ps1`, `tools/start_pc_brain_directml.ps1`,
+`tools/restore_voice_v2_production.ps1`, `tools/run_selected_voice_once.ps1`,
+`tools/start_voice_v2_supervised_validation.ps1`,
+`tools/start_warm_rocm_full_system_soak.ps1`, `tools/check_pc_brain_runtime.ps1`,
+`tools/test_pc_brain_runtime_check_contract.ps1`,
 `tools/test_start_pc_brain_directml_contract.ps1`,
-`tools/test_stackchan_dashboard_launcher_contract.ps1`, and `docs/BRIDGE_PROTOCOL.md`. Rollback is
+`tools/test_stackchan_dashboard_launcher_contract.ps1`, `docs/BRIDGE_PROTOCOL.md`,
+`docs/RELEASE_QUICKSTART.md`, `docs/ARRIVAL_DAY_RUNBOOK.md`, `docs/BRIDGE_DASHBOARD.md`, and
+`bridge/README.md`. These scope expansions were independently approved only after focused/broad
+tests and security review exposed directly coupled compatibility gaps. Rollback is
 reversion of the single atomic host-side commit while keeping the non-loopback service stopped.
 Stop on any valid-firmware incompatibility, post-admission output change, need for private data or
 new wire semantics, unfrozen DNS behavior, hardware access, or live-service restart.
 
+The expected-red phase exposed one maintained synthetic-smoke dependency before production code was
+edited: `bridge/lan_smoke.py` emits the legacy headerless request directly into
+`handle_connection`. The independent preregistration reviewer approved adding only that file and
+only to use the current firmware protocol/device headers (and an already available peer address if
+the final seam requires it). A compatibility bypass or permissive flag is forbidden.
+
+The first broad bridge run exposed the same legacy synthetic request in
+`bridge/test_dashboard_service.py`; strict admission rejected it and, correctly, did not consume
+`once`, so the run was terminated while the server awaited a valid client. The same independent
+reviewer approved adding only the current firmware protocol/device headers to that fixture. No
+timeout, `once`, validator, or compatibility bypass is allowed.
+
 Preregistration metric fields:
 
 - **Fixture:** `bridge/test_lan_service.py::firmware_upgrade_request`, version
-  `sec001-firmware-upgrade-v1`, traced byte-for-byte to
-  `src/io/BridgeWebSocketTransport.cpp::buildHandshakeRequest`; only synthetic device IDs.
+  `sec001-firmware-upgrade-v1`, a field-for-field request-shape fixture traced to
+  `src/io/BridgeWebSocketTransport.cpp::buildHandshakeRequest`. It uses the current firmware
+  default key `c3RhY2tjaGFuLWZpcm13YXJlLWtleQ==`; host formatting is synthetic/configuration-
+  dependent, and only synthetic device IDs are used.
 - **Baseline/version:** exact source `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`; the nine named
   rejection tests above are expected to fail for the recorded reasons, while the raw current
   firmware request shape is source-observed.
@@ -175,9 +204,10 @@ a robot freeze, blackout, brownout, thermal event, USB failure, board failure, o
 
 ## Known Faults
 
-1. The production PC bridge launcher exposes a fail-open robot-to-host WebSocket admission boundary
-   on the LAN. Path/protocol/device/peer/origin signals are not enforced, protected message
-   families are accepted before trusted admission, and a blank endpoint ID bypasses owner checks.
+1. The committed `origin/main` baseline and the last observed production host service expose a
+   fail-open robot-to-host WebSocket admission boundary on the LAN. The isolated `SEC-001`
+   candidate repairs those source paths, but it is not deployed on the production listener or
+   robot; the previously exposed listener remains stopped.
 2. Wi-Fi-enabled firmware HTTP mutating controls are not protected by the existing camera pairing
    gate; source shows motion-resume/recovery/reboot-class requests can reach their handlers. This
    was not exercised on hardware. OTA remains separately token-gated.
@@ -203,18 +233,19 @@ a robot freeze, blackout, brownout, thermal event, USB failure, board failure, o
 
 Documentation baseline status: required project-control/longitudinal documents and reconciled
 status claims now exist in the isolated worktree and passed the final independent review. They
-remain uncommitted pending the atomic Milestone 0 documentation commit; this is workflow state, not
-an unresolved runtime fault.
+were committed atomically as `0e3467e79766ed1cafeef4837c162c8a50bb29e1`; this is repository
+control evidence, not physical qualification.
 
 ## Known Regressions
 
-No repository behavior has been changed by this workstream. Operationally, stopping the exposed PC
-bridge intentionally removed LAN brain/dashboard availability; this is a recorded security
-containment, not a hidden regression. Voice/vision workers and robot firmware were not changed. The
-faults above are reproduced current-source defects or contract gaps, not new physical-event or
-hardware-cause attributions. Physical affect, perception, initiative, Conversation v2,
-over-speaker barge-in, echo rejection, and a current exact-image no-motion conversation soak remain
-unqualified rather than failed.
+The isolated candidate now changes host admission, launcher defaults, robot-facing
+wrappers, and runtime certification. It has not been deployed or started on the production
+listener or robot; the isolated alternate-port checks were started and stopped as recorded below.
+The exposed production PC bridge remains intentionally stopped; current deployed firmware
+therefore still has no verified host admission repair, and its exact installed SHA remains unknown.
+This containment is not a hidden regression. Voice/vision workers and robot firmware were not changed. Physical affect,
+perception, initiative, Conversation v2, over-speaker barge-in, echo rejection, and a current
+exact-image no-motion conversation soak remain unqualified rather than failed.
 
 ## Baseline Evidence
 
@@ -230,16 +261,46 @@ unqualified rather than failed.
 - Current-lead archive contract: passed.
 - Branch/PR evidence: `BRANCH_LEDGER.md`.
 
+## SEC-001 Candidate Evidence
+
+The live checks below and the first matrix were observed on 2026-08-02 in the isolated working tree
+based at `0e3467e7`. The final self-identifying staged-tree matrix repeated the applicable gates and
+is stored with hashed logs under ignored `output/private/sec-001/final-<tree>/`. The containing Git
+commit and final handoff provide the durable source identity. None of this evidence identifies or
+qualifies the installed firmware or authorizes a service restart.
+
+- Focused LAN service: 115/115 passed, including actual-firmware-key compatibility,
+  invalid-invalid-valid `once` recovery, and wrong-peer no-dispatch/state-mutation recovery.
+- Full bridge discovery: 559/559 passed after the CLI-abbreviation test was added.
+- Deterministic LAN smoke: five/five scenarios passed with fake local engines.
+- Native firmware logic: 289/289 passed; no firmware source file changed.
+- DirectML launcher, dashboard launcher, and PC-brain runtime-certification contracts: passed.
+- Trusted-facts smoke: ready, 19 routed and 10 passthrough cases, zero model invocations, zero
+  audio played, and no stored fact values printed.
+- Secret-free `stackchan_release_full` compilation: passed in `C:\spio\pioarduino`; the dirty-tree
+  build is 2,803,216 bytes with SHA-256
+  `96D72657097E96522F13972D26116BB370070D33E06930B0DB28A923BD3439E2`. This is compilation
+  evidence only and is not a physical or reproducibility claim.
+- Full-system-soak evidence, current-lead reproducibility v2, and current-lead archive contracts:
+  passed with synthetic fixtures.
+- User-authorized live local-runner check on isolated loopback port `18765`: the candidate accepted
+  the current firmware-shaped handshake, completed endpoint registration/claim, invoked the
+  installed `gemma4:e2b-it-qat` Ollama model, returned the full `thinking` through `response_end`
+  sequence in 2,097.7 ms, and exited cleanly under `once`. Audio downlink was disabled, the prompt
+  was synthetic, and no durable memory file was configured.
+- User-authorized live OS-socket peer check on isolated port `18766`: a real `0.0.0.0` candidate
+  listener frozen to robot peer `192.168.1.238` rejected the actual loopback client before
+  handshake, remained listening under `once`, and was then stopped by exact PID. This proves the
+  local wrong-peer path, not robot reachability or network-attacker resistance. Evidence remains
+  ignored under `output/private/sec-001/`.
+
 ## Exact Next Action
 
-Commit the independently accepted, evidence-preserving Milestone 0 documentation slice. Then
-implement the preregistered smallest fail-closed host admission slice:
-validate the existing firmware path/protocol/device signals at HTTP upgrade, reject browser Origin,
-require and freeze the configured robot peer for non-loopback binds, allow invalid-then-valid
-recovery, and reject protected dispatch on explicitly unadmitted sessions. Firmware sends no
-client-side hello; preserve the immediate server hello and do not reinterpret the device header as
-brain-owner identity. This is admission hardening, not cryptographic authentication; the separate
-firmware mutating-control risk remains contained/unqualified work.
+Use the atomic commit containing this record as the `SEC-001` source identity, without starting the
+production service. Then preregister the smallest `SEC-002` experiment for firmware mutating-control
+authorization and run source-only gates before any device action. `SEC-001` is admission hardening,
+not cryptographic authentication; production restart and every firmware/hardware action remain
+unauthorized until their separate qualification gates are earned.
 
 ## Unauthorized Actions
 
@@ -255,9 +316,9 @@ firmware mutating-control risk remains contained/unqualified work.
 
 ## Rollback Path
 
-Current file changes are Markdown control records on an isolated branch. The exposed host listener
-was stopped; it can be restored by the existing launcher, but must not be restarted until the
-admission repair is verified or the user explicitly accepts the known risk. Before implementation,
-freeze an atomic source/test scope whose revert removes only that experiment. Hardware rollback
-remains the exact private accepted archive and runbook procedure; it is not exercised without the
-required source, build, no-motion, physical, and exact-image gates.
+SEC-001 is one isolated host source/test/operator-document candidate. Before commit, discard only
+that exact staged/working-tree slice if a final gate fails; after commit, rollback is reversion of
+the exact containing commit. Keep the exposed non-loopback listener stopped and never restore the
+fail-open listener as an automatic fallback. Hardware rollback remains the exact private accepted
+archive and runbook procedure; it is not exercised without the required source, build, no-motion,
+physical, and exact-image gates.

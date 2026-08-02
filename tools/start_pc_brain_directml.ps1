@@ -34,6 +34,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($DeviceHost)) {
+  throw "DeviceHost is required before DirectML production startup."
+}
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
 
@@ -308,7 +311,7 @@ $bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'Silen
   "`$env:STACKCHAN_WHISPER_THREADS = '$SttThreads'; " +
   "& '$bridgeStarter' -Background -EnableAudioDownlink -StreamTtsPhrases " +
   "-InProcessOllamaRunner -InProcessDirectMlTts " +
-  "-Port $BridgePort -MemoryFile '$escapedMemoryFile' " +
+  "-HostName '0.0.0.0' -Port $BridgePort -MemoryFile '$escapedMemoryFile' " +
   "-SttServerUrl '$SttServerUrl' -SttRestartCommand '$escapedSttRestartCommand' " +
   "-SttHealthIntervalSeconds 2 " +
   "-EnableDashboard -DashboardHost '127.0.0.1' -DashboardPort $DashboardPort -RobotHost '$escapedDeviceHost' " +

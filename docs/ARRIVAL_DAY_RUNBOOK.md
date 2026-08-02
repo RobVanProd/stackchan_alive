@@ -307,12 +307,19 @@ Package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
 `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>`, then attach the generated
 `stackchan-python-runtime.json` and checker output to the release evidence.
 
-For PC Brain Mode lab bring-up from the source checkout, start the local bridge with the
-selected voice path:
+For PC Brain Mode lab bring-up from the source checkout, first use the loopback default for the
+synthetic host-only probe with the selected voice path:
 
 ```powershell
 .\tools\start_pc_brain.cmd -Background -StopExisting -EnableAudioDownlink -SelectedVoiceStartBytes 65536 -DownlinkBinaryFrameDelayMs 20
 .\tools\run_pc_brain_probe.cmd --url ws://127.0.0.1:8765/bridge
+```
+
+That loopback process is preflight-only. Before expecting the robot to connect, deliberately
+restart the bridge with a frozen robot peer:
+
+```powershell
+.\tools\start_pc_brain.cmd -HostName 0.0.0.0 -RobotHost <robot-lan-ip> -Background -StopExisting -EnableAudioDownlink -SelectedVoiceStartBytes 65536 -DownlinkBinaryFrameDelayMs 20
 ```
 
 On Windows, `tools\start_pc_brain.cmd` now defaults to the repo-local
@@ -590,6 +597,13 @@ $env:STACKCHAN_RVC_WORKER_URL = "http://127.0.0.1:5055"
 $env:STACKCHAN_RVC_WORKER_TIMEOUT_SECONDS = "90"
 $env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "65536"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts_client.py" -TtsVoice "stackchan-rvc-warm-rocm" -DownlinkBinaryFrameDelayMs 80
+```
+
+The command above is a preserved historical record, not a current instruction. Its current
+SEC-001 equivalent is the following explicit peer-restricted launch:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -HostName 0.0.0.0 -RobotHost <robot-lan-ip> -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts_client.py" -TtsVoice "stackchan-rvc-warm-rocm" -DownlinkBinaryFrameDelayMs 80
 ```
 
 Voice V2 DirectML has passed lab, wire, and supervised physical validation. The physical warm
@@ -989,6 +1003,13 @@ $env:STACKCHAN_RVC_DEVICE = "cpu:0"
 $env:STACKCHAN_RVC_F0_METHOD = "harvest"
 $env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "65536"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts.py" -TtsVoice "stackchan-rvc-live" -DownlinkBinaryFrameDelayMs 80
+```
+
+The command above is preserved historical evidence and must not be rerun as a current launch. The
+current peer-restricted equivalent is:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -HostName 0.0.0.0 -RobotHost <robot-lan-ip> -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts.py" -TtsVoice "stackchan-rvc-live" -DownlinkBinaryFrameDelayMs 80
 ```
 
 One-shot ROCm was slower for short responses because the process paid GPU/runtime startup
