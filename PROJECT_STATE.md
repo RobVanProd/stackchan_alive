@@ -4,23 +4,24 @@ State timestamp: 2026-08-02 America/New_York
 
 ## Current Objective
 
-Complete Milestone 0 repository/document truth and contain the newly confirmed LAN trust-boundary
-failure before any aliveness feature work. All ten read-only audits are complete. The atomic commit
-containing this record is the independently expanded, test-first, exact-tree-verified `SEC-001` host
-security repair. It has not been deployed: no production service, firmware, or robot behavior has
-been changed. Two user-authorized alternate-port live checks started and stopped the candidate
-exactly as recorded below.
+Keep stop-ship security work ahead of aliveness features. Milestone 0 and the independently
+verified `SEC-001` host admission repair are committed. `SEC-001` remains contained and undeployed.
+The active work is a preregistered, credential-free `SEC-002` firmware HTTP policy: public HTTP may
+serve bounded operational status and emergency stops, while every other mutating control fails
+closed before side effects. The directly coupled dashboard and actuator-validation tools must
+represent that restriction truthfully. No firmware, production service, or robot behavior has been
+changed for `SEC-002`.
 
 ## Source Identity
 
 - Repository: `RobVanProd/stackchan_alive`
 - Working branch: `codex/aliveness-repository-truth`
-- Pre-commit parent HEAD: `0e3467e79766ed1cafeef4837c162c8a50bb29e1`
+- Current committed HEAD before `SEC-002` preregistration:
+  `9c72f02091dc471f27e3c9bfff5e4af6e32e7134`
 - Fetched `origin/main`: `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`
 - Milestone 0 documentation baseline commit: `0e3467e79766ed1cafeef4837c162c8a50bb29e1`
-- SEC-001 identity: the candidate is the exact tree/commit containing this record. Before commit
-  it is staged against parent `0e3467e7`; after commit its authoritative SHA is the containing Git
-  commit assigned by Git and reported in the handoff.
+- SEC-001 identity: commit `9c72f02091dc471f27e3c9bfff5e4af6e32e7134`, exact accepted tree
+  `28a62773ee67103cd3f57f6cb93c0db6afbe143a`.
 - Verification scope: native firmware logic, host bridge tests, silent trusted-facts routing,
   secret-free release compilation through the documented isolated pioarduino core, and three
   release/evidence contract suites.
@@ -32,26 +33,155 @@ switched because live services use that checkout. Milestone 0 work uses the isol
 
 ## Active Hypothesis
 
-Selected candidate: `SEC-001`, fail-closed PC bridge admission using signals already emitted by
-firmware and configuration already supplied to the production launcher.
+Selected experiment: `SEC-002`, fixed emergency-stop-only admission on the firmware debug HTTP
+server, plus `PRIV-001` denial of its unauthenticated wake-microphone PCM export.
 
-- **Observed behavior:** A non-loopback bridge bind does not enforce exact path, firmware protocol/
-  device headers, configured robot peer, or browser-origin rejection; connection dispatch is not
-  conditioned on a validated HTTP upgrade, and blank endpoint identity bypasses an active owner.
-- **Primary hypothesis:** Enforcing those existing admission signals at the HTTP upgrade and
-  rejecting protected messages on an explicitly unadmitted session will reduce accepted untrusted
-  protected operations to zero while the valid firmware-shaped connect/server-hello/reconnect path
-  remains compatible.
-- **Falsification:** A current firmware client lacks a required stable signal; any wrong-peer/
-  origin/path/header/pre-admission case performs a protected operation; the valid case fails; or
-  the change requires a client-side hello, pairing secret, or new identity protocol.
-- **Frozen baseline:** Exact source `39b750e6`, contained bridge, untouched firmware/robot, live
-  voice/vision workers, current message schemas, memory/STT/model/TTS/dashboard behavior.
-- **Rollback:** Revert the atomic source/test commit and keep the non-loopback bridge stopped. Do
-  not restore the insecure listener as an automatic fallback.
+- **Observed behavior:** Port 8789 ignores the HTTP method, defaults malformed requests to `/`,
+  dispatches camera paths before any common admission decision, applies tone/wake-reset/motion-
+  enable/recovery/reboot effects before responding, returns generic status for unknown paths, and
+  echoes the raw request target. `/wake.wav` and `/wake-pcm.wav` return recent microphone-ring PCM
+  without the camera pairing gate. These are source observations; unsafe routes and PCM were not
+  exercised on hardware.
+- **Primary hypothesis:** One Arduino-free, exhaustive request-line/route policy invoked before
+  dispatch can reduce admitted unauthenticated mutating operations to emergency audio/motion stop
+  only, deny the PCM export, retain bounded status and paired camera behavior, and expose a
+  non-secret `emergency_stop_only` capability without changing OTA or autonomous recovery logic.
+- **Falsification:** Any denied route reaches a side effect; any malformed/query/prefix/suffix case
+  falls through to status; any query-free `GET` emergency stop used by maintained clients is lost;
+  paired camera or OTA behavior changes; a build profile bypasses the policy; any sink leaks raw
+  request/query/pairing/authorization material; or the repair requires a credential, pairing-file
+  transport, or hardware action before source gates.
+- **Frozen baseline:** Commit `9c72f020`, the contained production bridge, installed firmware of
+  unknown SHA-256, voice/vision/model workers, port-8790 OTA authorization, camera pairing grammar,
+  automatic offline recovery supervisor, 50 ms face gate, actuator ownership, and physical
+  evidence.
+- **Rollback:** Revert only the atomic `SEC-002` source/client compatibility commit. Do not restore
+  an insecure listener or flash the prior image as an automatic fallback; isolate or power off the
+  robot and preserve evidence.
 
 The reproducible-build and memory-authorization hypotheses remain queued P0 work; stop-ship
-transport/control containment takes precedence without reordering the later aliveness milestones.
+transport/control/privacy containment takes precedence without reordering later aliveness work.
+
+## SEC-002 / PRIV-001 Frozen Preregistration
+
+This preregistration is written against clean commit `9c72f020` before expected-red tests,
+production-source changes, compilation, or device action. It introduces no authentication scheme.
+Future authenticated resume/recovery authority, credentials, and pairing-file transport require a
+separate preregistration.
+
+The common policy must strictly parse `METHOD SP request-target SP HTTP-version` with exactly three
+tokens, an uppercase bounded method token, an origin-form target beginning `/`, and exact version
+`HTTP/1.0` or `HTTP/1.1`. A missing/extra token, unsupported version, control byte, incomplete line,
+or non-origin target is malformed. Target truncation/overflow is distinct. Classification occurs
+before camera dispatch or any existing effect:
+
+- `GET /` and `GET /debug`, with no query, serve the existing bounded status classes.
+- Exact `GET` or `POST` to `/audio-stop`, `/playback-stop`, `/motion-stop`, `/motion-off`, or
+  `/servos-off`, with no query, may request an emergency stop. These five aliases and methods define
+  supported unauthenticated stop availability. The baseline's accidental acceptance of other
+  methods is not an availability guarantee. An admitted stop returns `202` with bounded
+  `accepted:true`; a failed motion-stop queue publication returns `503` with `accepted:false`.
+  Neither response claims physical completion.
+- Query-bearing `GET /camera-gray.pgm?...` and `GET /vision-target?...` syntactic families route to
+  the existing parser/authorizer unchanged. Its successful exact paired forms remain
+  `/camera-gray.pgm?p=NNNNNN` and `/vision-target?p=NNNNNN&f=...`; malformed queries retain their
+  current camera-specific `400`/`403` and auth-counter behavior. No capture or target submission is
+  reachable before the existing pairing check. Wrong methods are rejected by the common policy.
+- `/tone`, `/speaker-test`, `/mic-tone`, `/mic-tone-soft`, `/mic-tone-tap`, `/mic-tone-old`,
+  `/wake-reset`, `/motion-resume`, `/motion-on`, `/servos-on`, `/recover`, `/bridge-recover`,
+  `/wifi-recover`, `/reboot`, `/restart`, and `/reset` return `403` before side effects for every
+  method and query.
+- `/wake.wav` and `/wake-pcm.wav` also return `403` before reading the PCM ring, constructing a WAV
+  response, or exporting bytes for every method and query. No test may request, store, print,
+  fixture, or inspect wake PCM.
+- Known allowed paths with a wrong method return `405`; malformed request lines return `400`;
+  oversize targets return `414`; unknown exact paths return `404`. Outside the two camera syntactic
+  families above, query, suffix, prefix, trailing-slash, fragment, encoded-alias, and truncated
+  near-misses never dispatch or fall through to `/`.
+- Denial responses are small, fixed-shape JSON. Status telemetry reports only bounded method/route/
+  result enums and counters. Responses, status, serial logs, diagnostic fields, counters, evidence,
+  test output, and every other sink must never emit a raw target, query, pairing code, authorization
+  header, or credential-derived value.
+
+Expected-red evidence must be demonstrated and preserved before implementation. First rerun
+`pio test -e native_logic` unchanged and require the pre-existing 289/289 baseline. Then add only
+the frozen tests/contracts and run these exact gates:
+
+- `pio test -e native_logic` must fail with the new
+  `test_bridge_debug_http_policy_*` cases unable to find the preregistered shared policy, not with a
+  toolchain, dependency, syntax, collection, or pre-existing-test failure;
+- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+  tools\test_firmware_http_control_policy_contract.ps1` must exit nonzero on its named mandatory-
+  policy/pre-effect assertion across all 19 effective Wi-Fi environments, not because the command,
+  file, dependency, or parser is unavailable;
+- selected `bridge.test_dashboard_service.DashboardRuntimeTests.test_*motion_resume*policy*` cases
+  must fail their missing/`emergency_stop_only` fail-closed assertions, not test setup or discovery;
+- dashboard, camera-follow, warm-soak, full-system-soak, and wake-watcher contracts must exit
+  nonzero on their named capability-preflight/refusal assertions, not unrelated syntax or fixture
+  failures.
+
+Any other red is rejected, preserved as separate evidence, and does not authorize implementation.
+
+The capability contract is exact: firmware `/debug` emits
+`"debug_http_control_policy":"emergency_stop_only"`. The dashboard projects only bounded
+`motionResumeAvailable:false` and `motionResumePolicy:"emergency_stop_only"|"unknown"`. Missing,
+unknown, malformed, or older-than-15-seconds capability is `unknown` and fail-closed. Resume refusal
+occurs before `_fetch_robot`; Stop never depends on that capability and keeps its existing off-state
+verification.
+
+Implementation is limited to:
+
+- `src/io/BridgeDebugHttpPolicy.hpp`, `src/io/BridgeDebugHttpPolicy.cpp`, `src/main.cpp`,
+  `platformio.ini`, and `test/test_native_logic/test_main.cpp`;
+- `bridge/dashboard_service.py`, `bridge/test_dashboard_service.py`, and `bridge/dashboard/app.js`;
+- `tools/test_firmware_http_control_policy_contract.ps1`,
+  `tools/test_stackchan_dashboard_launcher_contract.ps1`,
+  `tools/camera_follow_wake_validation.ps1`,
+  `tools/test_camera_follow_wake_validation_contract.ps1`,
+  `tools/run_full_system_soak_http_motion.ps1`,
+  `tools/start_warm_rocm_full_system_soak.ps1`,
+  `tools/test_start_warm_rocm_full_system_soak_contract.ps1`,
+  `tools/watch_stackchan_wake_test.ps1`, and `tools/verify_release_package.ps1`;
+- `PROJECT_STATE.md`, `TASK_LEDGER.md`, `INITIAL_RISK_REGISTER.md`, `docs/BRIDGE_PROTOCOL.md`,
+  `docs/BRIDGE_DASHBOARD.md`, and `docs/ARRIVAL_DAY_RUNBOOK.md`.
+
+No other file may change without a preserved expected-red result showing direct coupling and an
+independent scope review. In particular, the policy must not disable or condition the autonomous
+offline recovery supervisor, change port-8790 OTA, reuse camera pairing as general control auth,
+weaken a stop, change actuator coordination, or touch a private value.
+
+`bridge/dashboard/index.html` remains explicitly unchanged: its Resume button already starts
+disabled. Tests must prove the service and both JavaScript re-enable paths require an explicit
+available capability; changing the markup requires the documented scope-expansion gate.
+
+Test-to-tool ownership is frozen. `tools/test_stackchan_dashboard_launcher_contract.ps1` covers the
+dashboard service and both JavaScript enable paths;
+`tools/test_camera_follow_wake_validation_contract.ps1` covers its paired script;
+`tools/test_start_warm_rocm_full_system_soak_contract.ps1` covers the warm wrapper; and the new
+`tools/test_firmware_http_control_policy_contract.ps1` cross-checks those plus
+`run_full_system_soak_http_motion.ps1` and `watch_stackchan_wake_test.ps1`. Every changed tool must
+read the exact capability from `/debug` first; missing/unknown/contained policy must abort before
+Resume, wake-reset, tone, process/service launch, or evidence-runner start; it must not relabel the
+refusal as pass, fall back to a denied alias, or read pairing material. Emergency motion-stop cleanup
+remains callable. The wake watcher switches its operational read from the accidental `/status`
+fallback to exact `/debug` and can run observation-only only with reset/tone disabled.
+
+Acceptance order is fixed: expected red; focused then full native tests; all 19 Wi-Fi-profile source/
+config contract cases; dashboard and operator-tool contracts; full isolated bridge suite; silent
+trusted-facts privacy smoke; the existing no-hardware prearrival simulator as a general regression
+proxy that does not prove port-8789; secret-free `stackchan_release_full` compilation and package
+verifier. Those gates can accept only the source candidate. Deployment and `R-000B`/`R-000C` risk
+closure additionally require an independently approved and executed exact-image no-motion run,
+supervised physical emergency-stop proof, and final release gates with exact source/binary identity.
+No flash, OTA, reboot, endpoint mutation, or physical motion is authorized by source success.
+Supervised resume and motion-soak workflows remain blocked until separately authenticated/local
+authority is designed.
+
+Hard stop the candidate if expected red does not fail on its named security assertion; a maintained
+consumer falls back or treats refusal as success; an unlisted file changes without the documented
+scope-expansion review; microphone capture, wake gating, or the wake model changes; exact source and
+binary identity are unavailable before no-motion qualification; or deployment/risk closure is
+claimed before exact-image physical and release gates.
 
 ## SEC-001 Frozen Preregistration
 
@@ -204,31 +334,33 @@ a robot freeze, blackout, brownout, thermal event, USB failure, board failure, o
 
 ## Known Faults
 
-1. The committed `origin/main` baseline and the last observed production host service expose a
-   fail-open robot-to-host WebSocket admission boundary on the LAN. The isolated `SEC-001`
-   candidate repairs those source paths, but it is not deployed on the production listener or
-   robot; the previously exposed listener remains stopped.
-2. Wi-Fi-enabled firmware HTTP mutating controls are not protected by the existing camera pairing
-   gate; source shows motion-resume/recovery/reboot-class requests can reach their handlers. This
-   was not exercised on hardware. OTA remains separately token-gated.
-3. Dashboard connection/readiness state can remain affirmative after the heartbeat is stale and
+1. The last observed production host service exposed a fail-open robot-to-host WebSocket admission
+   boundary on the LAN. Commit `9c72f020` repairs those source paths, but is not deployed on the
+   production listener or robot; the previously exposed listener remains stopped.
+2. Wi-Fi-enabled firmware debug HTTP mutation is unauthenticated. Source shows tone, mic-tone,
+   wake-reset, motion-enable, recovery, and reboot aliases reach effects before response. Emergency
+   audio/motion stop aliases must remain public. Unsafe routes were not exercised on hardware; OTA
+   remains separately token-gated.
+3. `/wake.wav` and `/wake-pcm.wav` can export recent wake-microphone PCM without pairing. This is
+   source-observed only; no PCM was requested or inspected.
+4. Dashboard connection/readiness state can remain affirmative after the heartbeat is stale and
    the bridge has no established robot socket.
-4. The exact AGENTS baseline command through the default shared PlatformIO core fails before
+5. The exact AGENTS baseline command through the default shared PlatformIO core fails before
    source compilation because the pioarduino framework directory is absent. The same environment
    builds successfully when the documented `C:\spio\pioarduino` core is pinned.
-5. Ordinary valid model output can currently authorize an unprompted durable write or wildcard
+6. Ordinary valid model output can currently authorize an unprompted durable write or wildcard
    forget; generic third-party private details can evade the finite sensitive-name filter.
-6. A due callback can displace an unrelated user request, and explicit topic recall can choose the
+7. A due callback can displace an unrelated user request, and explicit topic recall can choose the
    newest unrelated episode.
-7. Playback failure can strand host Conversation v2 in `SPEAKING`; model/TTS recovery can disagree
+8. Playback failure can strand host Conversation v2 in `SPEAKING`; model/TTS recovery can disagree
    with the firmware wake gate; and the 10-second host lease is shorter than the allowed 12-second
    firmware utterance.
-8. Release firmware initializes synthetic demo affect events enabled; phrase streaming clamps
+9. Release firmware initializes synthetic demo affect events enabled; phrase streaming clamps
    signed negative valence to zero; semantic manipulation paraphrases bypass the current lexical
    relationship validator.
-9. Repeated face-lost updates can retain a historical face size while refreshing its timestamp,
+10. Repeated face-lost updates can retain a historical face size while refreshing its timestamp,
    causing a false-current presence bit; stale room state can still permit personal projection.
-10. Initiative power/thermal suppression fields are not present in the production heartbeat, and
+11. Initiative power/thermal suppression fields are not present in the production heartbeat, and
    an in-flight initiative is not revalidated on a later sleep/safety/presence transition.
 
 Documentation baseline status: required project-control/longitudinal documents and reconciled
@@ -238,8 +370,8 @@ control evidence, not physical qualification.
 
 ## Known Regressions
 
-The isolated candidate now changes host admission, launcher defaults, robot-facing
-wrappers, and runtime certification. It has not been deployed or started on the production
+Committed `SEC-001` changes host admission, launcher defaults, robot-facing wrappers, and runtime
+certification. It has not been deployed or started on the production
 listener or robot; the isolated alternate-port checks were started and stopped as recorded below.
 The exposed production PC bridge remains intentionally stopped; current deployed firmware
 therefore still has no verified host admission repair, and its exact installed SHA remains unknown.
@@ -261,7 +393,7 @@ exact-image no-motion conversation soak remain unqualified rather than failed.
 - Current-lead archive contract: passed.
 - Branch/PR evidence: `BRANCH_LEDGER.md`.
 
-## SEC-001 Candidate Evidence
+## SEC-001 Committed Evidence
 
 The live checks below and the first matrix were observed on 2026-08-02 in the isolated working tree
 based at `0e3467e7`. The final self-identifying staged-tree matrix repeated the applicable gates and
@@ -278,8 +410,8 @@ qualifies the installed firmware or authorizes a service restart.
 - Trusted-facts smoke: ready, 19 routed and 10 passthrough cases, zero model invocations, zero
   audio played, and no stored fact values printed.
 - Secret-free `stackchan_release_full` compilation: passed in `C:\spio\pioarduino`; the dirty-tree
-  build is 2,803,216 bytes with SHA-256
-  `96D72657097E96522F13972D26116BB370070D33E06930B0DB28A923BD3439E2`. This is compilation
+  build is 2,803,248 bytes with SHA-256
+  `602D1F75C45A754217116D72174E22621593817FD48D219504E9B82565DCC4A8`. This is compilation
   evidence only and is not a physical or reproducibility claim.
 - Full-system-soak evidence, current-lead reproducibility v2, and current-lead archive contracts:
   passed with synthetic fixtures.
@@ -296,11 +428,12 @@ qualifies the installed firmware or authorizes a service restart.
 
 ## Exact Next Action
 
-Use the atomic commit containing this record as the `SEC-001` source identity, without starting the
-production service. Then preregister the smallest `SEC-002` experiment for firmware mutating-control
-authorization and run source-only gates before any device action. `SEC-001` is admission hardening,
-not cryptographic authentication; production restart and every firmware/hardware action remain
-unauthorized until their separate qualification gates are earned.
+Use the atomic control-only preregistration commit containing this record as the frozen experiment,
+then add and preserve the expected-red `SEC-002`/`PRIV-001` native, config, dashboard, and operator-
+tool tests before implementation. Implement only the frozen
+emergency-stop-only policy and direct compatibility slice, then run source/native/bridge/privacy/
+release gates. Do not design credentials or read a pairing file. Production restart and every
+firmware/hardware action remain unauthorized until their separate qualification gates are earned.
 
 ## Unauthorized Actions
 
@@ -310,15 +443,17 @@ unauthorized until their separate qualification gates are earned.
   voice, vision, model, and the unrelated loopback service remain frozen. The one bridge
   termination above was explicitly authorized after the stop-ship finding and is now recorded.
 - No release publication, tag, push, PR mutation, branch deletion, force-push, or evidence deletion.
+- No wake-WAV request, raw microphone read/inspection, pairing-code read or file transport, or
+  fallback from a denied HTTP control.
 - No remote/Away infrastructure, credential, pairing, privacy-policy, sensitive-memory,
   identity-recognition, always-listening, cloud-required, or model-physical-authority work.
 - No human study, paid service, destructive hardware action, or cross-repository modification.
 
 ## Rollback Path
 
-SEC-001 is one isolated host source/test/operator-document candidate. Before commit, discard only
-that exact staged/working-tree slice if a final gate fails; after commit, rollback is reversion of
-the exact containing commit. Keep the exposed non-loopback listener stopped and never restore the
-fail-open listener as an automatic fallback. Hardware rollback remains the exact private accepted
-archive and runbook procedure; it is not exercised without the required source, build, no-motion,
+`SEC-001` rollback is reversion of exact commit `9c72f020`; keep the exposed listener stopped rather
+than restoring a fail-open fallback. `SEC-002` preregistration and its later implementation remain
+separate atomic commits and are reverted only by exact commit if a frozen invariant regresses. Do
+not flash an insecure prior image as an operational rollback. Hardware rollback remains the exact
+private accepted archive/runbook procedure and is not exercised without source, build, no-motion,
 physical, and exact-image gates.

@@ -401,27 +401,80 @@ Ledger timestamp: 2026-08-02 America/New_York
   bounded admission hardening, not cryptographic authentication. Deployment remains unauthorized;
   firmware HTTP control authorization remains the separate P0 `SEC-002` task.
 
-## SEC-002 — Disable Unauthenticated Firmware Mutating Controls
+## SEC-002 — Enforce Emergency-Stop-Only Firmware HTTP Control
 
-- **Problem:** Wi-Fi firmware applies motion-resume, tone/recovery, and reboot-class HTTP controls
-  without the existing camera pairing gate; remote recovery defaults on with Wi-Fi.
-- **User-facing consequence:** A LAN peer can request physical or recovery state changes without
-  authenticated owner authority.
-- **Evidence:** AUDIT-09 source/configuration trace only; no hardware endpoint was exercised.
+- **Problem:** Wi-Fi firmware applies tone, wake-reset, motion-enable, recovery, and reboot-class
+  HTTP controls before response without authenticated owner authority; malformed/unknown requests
+  can fall through to status and the raw request target is echoed.
+- **User-facing consequence:** A LAN peer can request physical/recovery changes, while dashboards
+  and motion-validation tools can offer an authority the contained firmware no longer has.
+- **Evidence:** Source/configuration trace only; no unsafe hardware endpoint was exercised.
 - **Priority:** P0 physical/control security.
-- **Dependencies:** Explicit authenticated-control design or fail-closed release decision;
-  `SEC-001`; one hardware-affecting branch at a time.
-- **Owner:** Future firmware security owner with independent hardware-authority, protocol, release,
+- **Dependencies:** `SEC-001` commit `9c72f020`; fail-closed release decision selected; one
+  hardware-affecting branch at a time.
+- **Owner:** `/root` implementation owner; independent policy, scope, operator-authority, release,
   and physical-evidence reviewers.
-- **Allowed files:** To be preregistered; mutating HTTP classifier/handler, configuration contract,
-  focused native tests, protocol/security docs.
-- **Frozen systems:** Emergency motion/audio stop, read-only debug/status, OTA token/digest path,
-  camera pairing, bridge protocol, face gate, all current hardware state/evidence.
-- **Acceptance tests:** Emergency stop remains available; resume/recovery/reboot/diagnostic-output
-  mutation fail closed when unauthenticated in every Wi-Fi/release profile; exact config/native/
-  embedded/simulator/no-motion/physical/release gates in order.
-- **Stop conditions:** Emergency stop becomes less available, auth contract is invented from an
-  unknown pairing state, or firmware is flashed before source/build/no-motion approval.
-- **Result:** Stop-ship queued; not implemented or exercised.
-- **Commit:** None.
-- **Decision:** Keep robot on a trusted isolated LAN or powered off until a qualified fix is installed.
+- **Decision:** Fixed emergency-stop-only containment. No authentication, credential, pairing-code
+  reuse, or pairing-file transport is introduced.
+- **Expected-red gate:** Before implementation, focused native tests must fail because no shared
+  request policy exists; the source/config contract must show that all 19 effective Wi-Fi profiles
+  inherit unsafe pre-response effects; dashboard tests must show Resume does not fail closed for
+  missing/contained policy; operator-tool contracts must show legacy workflows do not all stop
+  truthfully. Preserve exact commands and logs.
+- **Allowed routes:** Query-free `GET /`, `GET /debug`; query-free `GET`/`POST` emergency audio-stop
+  and motion-stop aliases. Those methods define supported stop availability; rejection of the
+  baseline's accidental other-method behavior is intentional. Query-bearing `GET` camera families
+  reach the existing parser/authorizer unchanged, and successful camera effects still require its
+  exact grammar and pairing check.
+- **Denied routes:** Both speaker-tone aliases, four mic-tone aliases, wake-reset, three motion-
+  enable aliases, three recovery aliases, and three reboot aliases, for every method/query, before
+  side effects. Malformed/query/prefix/suffix/encoded/truncated near-misses never dispatch.
+- **Allowed files:** Exact `SEC-002 / PRIV-001 Frozen Preregistration` list in `PROJECT_STATE.md`.
+  Any expansion requires preserved expected-red evidence of direct coupling and independent review.
+- **Frozen systems:** Automatic offline recovery/reboot supervisor, emergency stops, bounded status,
+  OTA token/digest path, camera pairing/grammar, bridge framing, 50 ms face gate, actuator authority,
+  installed firmware, and all physical evidence.
+- **Acceptance tests:** Expected red recorded for named assertions only; exhaustive method/route/
+  query policy green; admitted stops return bounded `202 accepted:true`, motion publication failure
+  returns `503 accepted:false`, and neither claims completion; no denied
+  callback/effect; all 19 effective Wi-Fi configurations lack a bypass; dashboard missing/unknown/
+  contained policy disables and refuses Resume while Stop remains available; coupled tools preflight
+  and stop truthfully; full native/bridge/silent-privacy gates, secret-free release build, and package
+  provenance and prearrival-simulator regression pass. Simulator results do not prove port 8789.
+  Source acceptance does not close either risk; exact-image no-motion, supervised emergency-stop,
+  exact identity, and final release gates remain separate.
+- **Stop conditions:** A maintained query-free GET stop becomes less reachable; expected red misses
+  its named assertion; any bypass/fallback appears or refusal is treated as success; camera pairing
+  is repurposed; a private value is read; automatic recovery is disabled; any sink leaks a raw
+  target/query/pairing/authorization value; microphone capture/wake gate/model changes; an unlisted
+  file changes without approved expansion; exact source/binary identity is unavailable before no-
+  motion qualification; hardware is touched early; or deployment/risk closure is claimed before
+  physical/release gates.
+- **Rollback:** Revert the exact atomic source/client candidate if target tests do not turn green or
+  a frozen invariant regresses. Do not flash a prior insecure image as automatic rollback; isolate
+  or power off the robot and preserve evidence.
+- **Result:** Preregistered; expected-red pending; no implementation or hardware exercise.
+- **Commit:** Atomic control-only preregistration commit containing this record; exact SHA assigned
+  by Git and reported in the handoff.
+- **Decision:** Stop-ship. Existing supervised Resume/motion-soak tooling has no approved authority
+  after containment; keep the robot on a trusted isolated LAN or powered off until qualification.
+
+## PRIV-001 — Disable Unauthenticated Wake PCM Export
+
+- **Problem:** `/wake.wav` and `/wake-pcm.wav` return recent 16 kHz wake-microphone ring PCM without
+  the camera pairing gate.
+- **Evidence:** Source-observed only. No raw audio was fetched, archived, logged, or inspected.
+- **Priority:** P0 privacy/trust.
+- **Decision:** The shared emergency-stop-only policy returns `403` for both aliases before reading
+  the PCM ring, constructing a WAV response, or exporting bytes in every Wi-Fi/release profile. It
+  does not label PCM as read-only health or alter on-device wake capture.
+- **Frozen systems:** Wake-gated audio processing, wake model, microphone capture needed on-device,
+  camera pairing, memory privacy, and all raw/private artifacts.
+- **Acceptance tests:** Pure policy and source/config tests only; no request, raw-audio fixture,
+  content assertion, log, or archive. Silent trusted-facts and release gates remain green.
+- **Stop conditions:** Any test requests or inspects PCM, microphone capture/wake gating/wake model
+  changes, general control auth is invented, consent/retention is assumed, or private audio enters a
+  repository/evidence path.
+- **Future authority:** Any diagnostic export requires separately approved authentication, explicit
+  consent, bounded retention, and private-artifact transport.
+- **Result:** Preregistered with `SEC-002`; expected-red pending; not exercised.
