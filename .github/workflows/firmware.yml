@@ -290,7 +290,7 @@ jobs:
       - uses: android-actions/setup-android@v4
 
       - name: Download companion Android APK artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-android-apks
           path: output/companion/ci-artifacts/companion-android-apks
@@ -630,31 +630,31 @@ jobs:
           sdkmanager "build-tools;36.0.0"
 
       - name: Download companion Android APK artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-android-apks
           path: output/companion/ci-artifacts/companion-android-apks
 
       - name: Download Android emulator launch evidence
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-android-emulator-smoke
           path: output/companion/ci-artifacts/companion-android-emulator-smoke
 
       - name: Download companion Linux desktop artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-desktop-linux
           path: output/companion/ci-artifacts/companion-desktop-linux
 
       - name: Download companion macOS desktop artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-desktop-macos
           path: output/companion/ci-artifacts/companion-desktop-macos
 
       - name: Download companion Windows desktop artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-desktop-windows
           path: output/companion/ci-artifacts/companion-desktop-windows
