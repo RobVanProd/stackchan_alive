@@ -455,16 +455,18 @@ Ledger timestamp: 2026-08-02 America/New_York
   or power off the robot and preserve evidence.
 - **Result:** Expected-red preserved; the source candidate represented by this record is
   implemented. Native logic passed 294/294, the exact policy passed all 19 Wi-Fi environments,
-  focused dashboard passed
-  28 tests, full bridge discovery passed 567 tests, coupled operator/evidence contracts passed,
+  focused dashboard passed 28 tests, full bridge discovery passed 567 tests, coupled operator/
+  evidence contracts passed,
   silent trusted-facts privacy smoke remained model/audio silent, the no-hardware simulator passed,
   and secret-free release compilation/link/image generation passed. Dirty-tree release-package
   assembly/verification passed, and independent policy, security, and documentation/authority
-  reviews accepted the exact source slice. No deploy, endpoint mutation, raw-audio request, reboot,
-  flash, OTA, or hardware exercise occurred; exact post-commit binary/package identity and physical
-  gates remain unearned.
-- **Commit:** Frozen preregistration commit `d75c62f3`; the exact SHA of the atomic implementation
-  commit containing this record is assigned by Git and reported in the handoff.
+  reviews accepted the exact source slice. The atomic implementation is `4d31de41`; a subsequent
+  clean three-profile package at that commit verified with `dirty:false`, ZIP SHA-256
+  `b69ecc75...174b96`, and full-image SHA-256 `4256f2e5...b31055`. No deploy, endpoint mutation,
+  raw-audio request, reboot, flash, OTA, or hardware exercise occurred; physical gates remain
+  unearned.
+- **Commit:** Frozen preregistration `d75c62f3`; package prerequisite `2ed5bb6a`; atomic
+  implementation `4d31de414f5f2279b4c423ac3dfd7e940bb540d9`.
 - **Decision:** Stop-ship. Existing supervised Resume/motion-soak tooling has no approved authority
   after containment; keep the robot on a trusted isolated LAN or powered off until qualification.
 
@@ -486,6 +488,115 @@ Ledger timestamp: 2026-08-02 America/New_York
   repository/evidence path.
 - **Future authority:** Any diagnostic export requires separately approved authentication, explicit
   consent, bounded retention, and private-artifact transport.
-- **Result:** Implemented with `SEC-002` in the source candidate represented by this record. Pure policy/config
-  coverage and the silent privacy gate passed without requesting, reading, fixtureing, printing, or
-  archiving wake PCM. Undeployed and physically unqualified; the risk remains open.
+- **Result:** Implemented with `SEC-002` in commit `4d31de41`. Pure policy/config coverage and the
+  silent privacy gate passed without requesting, reading, fixtureing, printing, or archiving wake
+  PCM. The exact clean package verified; it remains undeployed and physically unqualified, so the
+  risk remains open.
+
+## PERCEPT-002 — Classify and Follow One Anonymous Human, Dog, or Cat
+
+- **Problem:** The current paired vision worker detects faces only, sorts each frame independently,
+  and has no species or durable track continuity. Any fresh target is projected as a person.
+- **User-facing consequence:** Stackchan cannot intentionally follow a dog or cat and can silently
+  switch geometric targets or make a false person claim.
+- **Evidence:** Read-only source trace in
+  `docs/PERSON_PET_FOLLOW_IDENTITY_MOTION_PREREGISTRATION.md`; historical evidence proves only one-
+  human acquire/reacquire and slow horizontal follow.
+- **Priority:** P1 aliveness/perception after P0 truth, memory, and operator-safety repairs.
+- **Dependencies:** `PERCEPT-001`, `PRODUCT-001`, current camera-auth/privacy contract, and final
+  wake/listen/reply follow evidence.
+- **Owner:** One future host/firmware attention-slice owner with independent privacy, hardware-
+  authority, model-provenance, and failure-injection reviewers.
+- **Allowed files:** Freeze after expected-red tracing; likely local vision/model provenance,
+  bounded camera candidate protocol/attention/gaze consumers, typed host context, focused tests,
+  launcher/package contracts, and vision documentation.
+- **Frozen systems:** Pairing, raw-frame non-retention, identity, generic memory, wake/audio, model
+  authority, MotionTask/PowerCoordinator/ActuationEngine authority, 50 ms display gate, live robot,
+  and completed evidence.
+- **Acceptance tests:** Exact class allowlist; separated confidences; sticky single target across
+  jitter/reorder/short loss; ambiguity/crossing abstention; pet never audio-matched; stale pet never
+  described as person; no names/embeddings/private IDs on the firmware wire or diagnostics; model
+  hash/license/performance gates; native/bridge/simulator and staged physical gates.
+- **Stop conditions:** Confident wrong class, silent target switch, raw-frame retention, unpaired or
+  remote vision, identity leakage, hunting/snap, missing stop evidence, or any safety/timing/power/
+  thermal regression.
+- **Result:** Preregistered only; no detector, protocol, behavior, service, or hardware change.
+- **Commit:** Documentation-only preregistration commit containing this record; exact SHA assigned
+  by Git and reported in the handoff.
+- **Decision:** Anonymous classified following precedes every durable identity experiment.
+
+## IDENT-001 — Natural Session Names and Owner-Controlled Durable Recognition
+
+- **Problem:** The current system intentionally has no identity enrollment, recognition, names,
+  biometric authority, identity vault, or verified removal surface.
+- **User-facing consequence:** Stackchan cannot naturally remember who he is following; adding it
+  naively could misname people/pets, persist biometric data, or resurrect a deleted identity.
+- **Evidence:** Current YuNet/room/memory/dashboard source trace plus independent privacy review;
+  PetFace/OpenAnimals show feasibility and substantial animal re-identification difficulty.
+- **Priority:** P0 privacy within a later P1 experience feature.
+- **Dependencies:** `SAFE-001`, `PERCEPT-001`, `PERCEPT-002`, authenticated owner-admin authority,
+  private vault/deletion design, and explicit recognition-enable approval.
+- **Owner:** One future identity vertical-slice owner with independent privacy/security, memory-
+  truth, deletion, model-provenance, and product reviewers.
+- **Allowed files:** Freeze per phase; likely new identity policy/store/isolated worker and tests,
+  local vision typed integration, owner-admin dashboard surfaces, memory/prompt isolation guards,
+  launcher/package verification, and privacy/vision documentation.
+- **Frozen systems:** Recognition off by default; human/pet domains separated; names never guessed;
+  raw frames ephemeral; identity absent from generic memory/routine telemetry/firmware; recognition
+  never authentication or actuator/tool/memory authority; no cloud processing.
+- **Acceptance tests:** Session nickname requires explicit wake-gated naming, one stable track, and
+  confirmation; its dedicated in-RAM bridge registry is isolated from `BridgeMemory`, histories,
+  logs, caches, and evidence and expires on every worker/bridge/conversation/track boundary. No
+  biometric work begins before fresh admin action and consent; every pending-enrollment abort path
+  destroys RAM/capture/template/index/vault state. Durable enrollment requires admin authority,
+  nonce, consent, exact-label confirmation, threshold/margin/multi-frame agreement, and human/pet
+  separation. Every rename/disable/re-enable uses fresh owner-admin authentication and its own nonce,
+  advances epochs, invalidates caches/context (including every old-label binding on rename), fails
+  closed on replay/auth loss/rollback, and preserves template isolation. Offline deletion covers RAM/
+  index/templates/aliases/caches/managed backups and restart; tombstoned backup restore cannot rematch;
+  public packages contain no private identity artifact.
+- **Stop conditions:** Automatic durable enrollment, passive/model-authored names, missing consent
+  or admin authority, false match/name transfer, raw-frame persistence, private diagnostic output,
+  incomplete deletion, uncontrolled backup, rollback resurrection, or unlicensed/unhashed model.
+- **Result:** Preregistered and held. Session nickname and durable biometric recognition are
+  explicitly separate; neither is implemented or enabled.
+- **Commit:** Documentation-only preregistration commit containing this record; exact SHA assigned
+  by Git and reported in the handoff.
+- **Decision:** Recognition remains disabled until the separate explicit enable checkpoint passes.
+
+## MOTION-001 — Deterministic Emotional Motion and Sim/Real Trace Loop
+
+- **Problem:** Existing affect/gaze/idle/gesture behavior lacks one explicit persona motion-style
+  projection and calibrated final-actuator sim/real comparison. Production demo intent, blink,
+  saccade, and boot-seeded random sources mean trace determinism must be established under recorded
+  inputs/timing/seeds rather than assumed.
+- **User-facing consequence:** Head motion can be technically safe yet feel slow, generic, or
+  disconnected from face/voice/personality; tuning only pre-actuator frames can miss real output.
+- **Evidence:** Source trace shows `IntentEngine` composition followed by downstream
+  `ActuationEngine` idle sine, clamps, suppression, session, power, and hardware writes; the current
+  Python simulator is not a dynamics twin.
+- **Priority:** P1 embodiment after P0 motion-state truth and physical containment gates.
+- **Dependencies:** `PRODUCT-001`, exact SEC-002 physical qualification, `PERCEPT-002` for classified
+  follow scenarios, and a controlled-source final-actuator trace harness.
+- **Owner:** One future firmware motion-style owner with independent hardware-authority,
+  personality, deterministic-trace, and physical-evidence reviewers.
+- **Allowed files:** Freeze after expected-red trace; likely affect/intent/idle/gaze/style components,
+  native trace fixtures, orchestration/metrics, simulator contract, persona constants, and focused
+  documentation. Safety coordinators change only if an independent defect requires a separate task.
+- **Frozen systems:** No LLM/RL motor authority; exact servo/session/power/thermal/stop limits and
+  50 ms display gate; model proposes typed intent only; physical evidence remains hash-specific.
+- **Acceptance tests:** With demo injection controlled and every boot/persona/blink/saccade/random
+  source fixed or recorded, the same input/timing/source schedule is trace-identical; bounded recorded
+  variants stay within final yaw/pitch/velocity/acceleration/jerk/settling envelopes; zero suppressed/
+  expired writes; reduced motion includes downstream overlays; emotion metadata cannot change safety/
+  power decisions; target loss/reacquire and gestures settle; staged no-motion/HIL/follow/soak/post-
+  stop evidence passes on the exact image.
+- **Stop conditions:** Nonreproducible trace, unexplained sim/real sign/amplitude mismatch, unsafe
+  jerk/oscillation, hunting, bad motion state, weakened coordinator, missed stop/post-stop proof, or
+  timing/power/thermal regression.
+- **Result:** Preregistered only; no motion equation, parameter, simulator, firmware, or hardware
+  behavior changed.
+- **Commit:** Documentation-only preregistration commit containing this record; exact SHA assigned
+  by Git and reported in the handoff.
+- **Decision:** Use deterministic low-dimensional styling and system identification; do not add an
+  end-to-end learned motion policy.

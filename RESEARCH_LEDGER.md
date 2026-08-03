@@ -167,6 +167,78 @@ versioned public/synthetic trials and aggregate outcome IDs.
   while interaction counts alone do not predict comfort, autonomy, or wellbeing.
 - **Result after implementation:** Not run.
 
+## RL-011 — Local Object Detection and Track Continuity
+
+- **Citation:** [YOLOX](https://arxiv.org/abs/2107.08430) and
+  [ByteTrack](https://arxiv.org/abs/2110.06864).
+- **Source quality:** Primary model reports with released implementations and standard benchmarks.
+- **Exact finding:** YOLOX reported a 0.91M-parameter Nano detector and ONNX deployment; ByteTrack
+  improved multi-object tracking benchmarks by associating lower-score detections instead of
+  discarding them outright.
+- **Relevance:** A small host-local detector and continuity layer are plausible for anonymous
+  `human|dog|cat` attention without adding a new inference runtime.
+- **Proposed mechanism:** Benchmark a hash-pinned, license-reviewed OpenCV-DNN detector, then use
+  class-separated ephemeral tracklets and explicit ambiguity margins before selecting one target.
+- **Alternative interpretation:** COCO and MOT benchmarks do not represent the CoreS3 160x120
+  grayscale view, household occlusion, pets, or Stackchan's compute/power timing.
+- **Testable prediction:** Compared with per-frame size ranking, sticky track continuity reduces
+  unwanted target switches without increasing false-class acquisition or target-loss latency.
+- **Result after implementation:** Not run; candidate models/weights are not approved assets.
+
+## RL-012 — Human Face Recognition Is a Separate Measured Mechanism
+
+- **Citation:** [OpenCV DNN-based YuNet/SFace detection and recognition](https://docs.opencv.org/4.11.0/d0/dd4/tutorial_dnn_face.html).
+- **Source quality:** Official OpenCV implementation documentation and reference thresholds.
+- **Exact finding:** OpenCV exposes separate local face detection, alignment/feature extraction,
+  and cosine/L2 matching operations.
+- **Relevance:** It supplies a compatible local-only human recognition seam, but does not turn the
+  current YuNet detector into identity or authorization.
+- **Proposed mechanism:** Keep recognition default-off, use explicit enrollment, calibrate
+  threshold plus second-best margin and temporal agreement on the actual paired camera, and return
+  `unknown` on every weak component.
+- **Alternative interpretation:** Published/reference thresholds and full-resolution examples may
+  fail on Stackchan's small grayscale crops and household lighting.
+- **Testable prediction:** Stackchan-specific calibration can define a precision-first operating
+  point; if it cannot, durable human recognition remains disabled.
+- **Result after implementation:** Not run.
+
+## RL-013 — Animal Identity Is Not Human Re-Identification With New Labels
+
+- **Citation:** [PetFace](https://www.ecva.net/papers/eccv_2024/papers_ECCV/papers/02660.pdf),
+  [OpenAnimals](https://openaccess.thecvf.com/content/ICCV2025/html/Hou_OpenAnimals_Revisiting_Person_Re-Identification_for_Animals_Towards_Better_Generalization_ICCV_2025_paper.html),
+  and [DINOv2](https://arxiv.org/abs/2304.07193).
+- **Source quality:** Peer-reviewed ECCV/ICCV primary animal-identification work plus a primary
+  self-supervised visual-feature report.
+- **Exact finding:** PetFace adds large multi-family animal face verification/re-identification
+  benchmarks; OpenAnimals reports that many person-ReID techniques do not generalize directly to
+  animals; DINOv2 provides general visual features but is not a pet identity product.
+- **Relevance:** Dog/cat identity is technically plausible but materially harder than species
+  classification or session tracking.
+- **Proposed mechanism:** Keep pet identity in shadow mode behind explicit owner enrollment;
+  benchmark a pet-specific model against a DINOv2 baseline and the simpler session-track baseline.
+- **Alternative interpretation:** Benchmark datasets include different species, poses, image
+  quality, and environments; reported performance does not establish household precision.
+- **Testable prediction:** Pet-specific re-identification will beat generic embeddings on
+  cross-session owner-collected public/synthetic fixtures; otherwise retain session names only.
+- **Result after implementation:** Not run.
+
+## RL-014 — Bounded Variation Is a Test Method, Not Motor Authority
+
+- **Citation:** [Tobin et al., domain randomization for sim-to-real transfer](https://arxiv.org/abs/1703.06907).
+- **Source quality:** Peer-reviewed primary sim-to-real robotics result.
+- **Exact finding:** A policy trained across randomized simulated visual domains transferred to a
+  real task in the reported setting.
+- **Relevance:** Varying plausible camera/timing/actuator conditions can expose fragile Stackchan
+  motion assumptions before scarce hardware trials.
+- **Proposed mechanism:** Use controlled-source bounded sweeps and real trace system identification
+  around the real C++ motion path, fixing or recording its boot/demo/blink/saccade random sources;
+  do not train or deploy an end-to-end motor policy.
+- **Alternative interpretation:** The published learned visual-control task differs from a
+  two-servo social head and does not prove that randomization alone closes this hardware gap.
+- **Testable prediction:** Calibrated variation predicts the sign and envelope of physical trace
+  deviations better than a single nominal simulator, while all safety gates remain unchanged.
+- **Result after implementation:** Not run.
+
 ## Evaluation Audit Findings
 
 - The executable complaint qualification is a strong top-20 regression gate, not semantic coverage

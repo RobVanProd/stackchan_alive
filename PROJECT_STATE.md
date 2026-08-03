@@ -6,20 +6,30 @@ State timestamp: 2026-08-02 America/New_York
 
 Keep stop-ship security work ahead of aliveness features. Milestone 0 and the independently
 verified `SEC-001` host admission repair are committed. `SEC-001` remains contained and undeployed.
-The active working-tree candidate implements the preregistered, credential-free `SEC-002` firmware
-HTTP policy: public HTTP may serve bounded operational status and emergency stops, while every
-other mutating control fails closed before side effects. The directly coupled dashboard and
-actuator-validation tools represent that restriction fail-closed. This is source, test, simulator,
-secret-free compilation, and dirty-tree package-regression evidence only. Independent policy,
-security, and documentation reviewers accepted the source slice. It is undeployed and physically
-unqualified. No production service, installed firmware, or live robot behavior has been changed for
-`SEC-002`.
+`SEC-002`/`PRIV-001` is implemented and committed as `4d31de41`: public firmware HTTP may serve
+bounded operational status and emergency stops, while every other mutating control fails closed
+before side effects. Independent policy, security, and documentation reviewers accepted the source
+slice, and an exact clean three-profile package at that commit verified. It remains undeployed and
+physically unqualified. No production service, installed firmware, or live robot behavior has been
+changed for `SEC-002`.
+
+The requested human/dog/cat following, natural naming/removal, and personality-shaped emotional
+motion work is now a separate design-only lane in
+`docs/PERSON_PET_FOLLOW_IDENTITY_MOTION_PREREGISTRATION.md`. It introduces no detector, identity,
+protocol, dashboard, simulator, firmware, or live behavior. Anonymous classification/following is
+ordered behind truthful presence; durable recognition is ordered behind memory sole-authorization,
+owner-admin consent, and verified deletion; motion styling is limited to a deterministic low-
+dimensional projection behind controlled-source final-actuator and physical-safety gates.
 
 ## Source Identity
 
 - Repository: `RobVanProd/stackchan_alive`
 - Working branch: `codex/aliveness-repository-truth`
-- Current committed HEAD before the atomic `SEC-002` implementation commit:
+- Current firmware/source implementation commit before this documentation-only future-lane update:
+  `4d31de414f5f2279b4c423ac3dfd7e940bb540d9`
+- HTTP-containment contract-scope maintenance commit (test file only):
+  `aa7dfb9ca077704dca84bc5635fbb2142e13e47c`
+- Separate package prerequisite commit:
   `2ed5bb6ad4755129b61aa0f636f0b654a3493d86`
 - Frozen `SEC-002` preregistration baseline:
   `d75c62f37f8ff6e1c6cf49bc2c4c01479cd4f02f`
@@ -188,13 +198,13 @@ scope-expansion review; microphone capture, wake gating, or the wake model chang
 binary identity are unavailable before no-motion qualification; or deployment/risk closure is
 claimed before exact-image physical and release gates.
 
-## SEC-002 / PRIV-001 Source Candidate Result
+## SEC-002 / PRIV-001 Committed Result
 
 The preregistered expected-red phase was preserved before implementation: native policy tests
 failed only because the shared policy did not yet exist; dashboard cases failed their named
 missing/contained-capability assertions; and the firmware/tool contract cases failed their named
-policy/preflight assertions. The current uncommitted candidate then earned the following
-non-physical evidence on 2026-08-02:
+policy/preflight assertions. Atomic implementation commit `4d31de41` earned the following non-
+physical evidence on 2026-08-02:
 
 - native firmware logic passed 294/294;
 - the focused dashboard service suite passed 28 tests and full bridge discovery passed 567 tests;
@@ -211,13 +221,24 @@ non-physical evidence on 2026-08-02:
   package was invoked through PlatformIO's Python interpreter for this isolated build. No upload
   target was invoked.
 
-Dirty-tree release-package assembly and verification passed after the conversation-harness package
-prerequisite was committed separately as `2ed5bb6a`; independent policy, security, and
-documentation/authority reviews accepted the exact source slice. The regression build and package
-predate the final atomic source commit and are not exact-image candidates for deployment. `R-000B`
-and `R-000C` remain open until a clean committed source identity has matching binary/package hashes,
-independently approved exact-image no-motion qualification, supervised physical emergency-stop
-evidence, and final release gates all pass.
+Dirty-tree release-package regression passed after the conversation-harness prerequisite was
+committed separately as `2ed5bb6a`; independent policy, security, and documentation/authority
+reviews then accepted the exact source slice. After implementation commit `4d31de41`, the clean
+package `sec-002-4d31de41` rebuilt all three profiles, recorded manifest `dirty:false` and full
+commit `4d31de414f5f2279b4c423ac3dfd7e940bb540d9`, and verified:
+
+- display-only firmware SHA-256:
+  `4967d2705087c52b07550293fa732d85a54b8917631f24a562bb1a4f011e84e9`;
+- servo-calibration firmware SHA-256:
+  `99a9d77a1b4ef3ed55b260deaeac78f94c2aa3d8b01cd43abc961588e277a101`;
+- full-online firmware SHA-256:
+  `4256f2e5f4a5567361a97796cfc2a81e7de24ec7f2202fcfb7c9c4cfc1b31055`; and
+- ZIP SHA-256:
+  `b69ecc755455db1db66a174fc40ffd0b8b7795161387f0b44e5e4b39f1174b96`.
+
+No upload target was invoked. `R-000B` and `R-000C` remain open until an independently approved
+exact-image no-motion qualification, supervised physical emergency-stop evidence, installed-image
+identity, and final release gates all pass.
 
 ## SEC-001 Frozen Preregistration
 
@@ -468,11 +489,11 @@ qualifies the installed firmware or authorizes a service restart.
 
 ## Exact Next Action
 
-Create the one atomic `SEC-002`/`PRIV-001` implementation commit containing this record, rerun the
-exact source gates, and produce clean source/binary/package identities from that commit. Do not
-design credentials or read a pairing file. Production restart and every firmware/hardware action
-remain unauthorized until a separately approved exact-image no-motion qualification, supervised
-emergency-stop proof, and final release gates are earned.
+Keep `SEC-002`/`PRIV-001` ahead of the queued aliveness lanes: independently authorize and execute
+the exact `4d31de41` no-motion device qualification, then supervised emergency-stop proof and final
+release gates with the package hashes above. Do not design credentials or read a pairing file.
+`PERCEPT-002`, `IDENT-001`, and `MOTION-001` remain preregistration/research only until their ordered
+dependencies, expected-red tests, and explicit recognition/physical promotion checkpoints pass.
 
 ## Unauthorized Actions
 
@@ -484,8 +505,10 @@ emergency-stop proof, and final release gates are earned.
 - No release publication, tag, push, PR mutation, branch deletion, force-push, or evidence deletion.
 - No wake-WAV request, raw microphone read/inspection, pairing-code read or file transport, or
   fallback from a denied HTTP control.
-- No remote/Away infrastructure, credential, pairing, privacy-policy, sensitive-memory,
-  identity-recognition, always-listening, cloud-required, or model-physical-authority work.
+- No remote/Away infrastructure, credential, pairing, fundamental privacy-policy, sensitive-memory,
+  automatic identity-recognition enablement, always-listening, cloud-required, or model-physical-
+  authority work. Public/primary research and documentation-only identity/motion preregistration are
+  permitted; no private identity value, frame, embedding, enrollment, or live behavior is.
 - No human study, paid service, destructive hardware action, or cross-repository modification.
 
 ## Rollback Path
