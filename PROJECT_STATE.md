@@ -1,6 +1,6 @@
 # Project State
 
-State timestamp: 2026-08-02 America/New_York
+State timestamp: 2026-08-03 America/New_York
 
 ## Current Objective
 
@@ -12,6 +12,16 @@ before side effects. Independent policy, security, and documentation reviewers a
 slice, and an exact clean three-profile package at that commit verified. It remains undeployed and
 physically unqualified. No production service, installed firmware, or live robot behavior has been
 changed for `SEC-002`.
+
+Qualification audit found that the preserved `4d31de41` public full image
+`4256F2E5...B31055` is not a no-motion candidate: its effective configuration requests motion and
+autonomous refresh at boot. That package remains immutable historical evidence and is superseded
+for physical qualification. The selected correction keeps the public full profile motion-off at
+boot and explicitly disables autonomous boot refresh. It remains a source/build candidate only;
+the clean reproducible replacement image, OTA-selector-safe install path, passive no-motion
+runner, rollback proof, and physical qualification are still pending. Repeated bounded live
+`/debug` probes were unavailable, so current actuator state and installed application identity are
+unknown; ping response is recorded separately and does not close that gap.
 
 The requested human/dog/cat following, natural naming/removal, and personality-shaped emotional
 motion work is now a separate design-only lane in
@@ -489,9 +499,13 @@ qualifies the installed firmware or authorizes a service restart.
 
 ## Exact Next Action
 
-Keep `SEC-002`/`PRIV-001` ahead of the queued aliveness lanes: independently authorize and execute
-the exact `4d31de41` no-motion device qualification, then supervised emergency-stop proof and final
-release gates with the package hashes above. Do not design credentials or read a pairing file.
+Keep `SEC-002`/`PRIV-001` ahead of the queued aliveness lanes. First commit the reviewed public
+boot-motion correction, close `M0-004` with two clean identical builds, add and verify the
+OTA-selector-safe installer and guarded private rollback helper, and build a new clean package
+bound to its exact source and application SHA-256. Only that replacement may enter the dedicated
+passive no-motion qualification; the old `4d31de41` / `4256F2E5...B31055` package must be refused.
+After a passing passive gate, conduct the separately reviewed supervised emergency-stop proof and
+final release gates. Do not design credentials or read a pairing file.
 `PERCEPT-002`, `IDENT-001`, and `MOTION-001` remain preregistration/research only until their ordered
 dependencies, expected-red tests, and explicit recognition/physical promotion checkpoints pass.
 
@@ -502,7 +516,8 @@ dependencies, expected-red tests, and explicit recognition/physical promotion ch
 - No restart or replacement of the contained PC bridge until the selected admission repair passes;
   voice, vision, model, and the unrelated loopback service remain frozen. The one bridge
   termination above was explicitly authorized after the stop-ship finding and is now recorded.
-- No release publication, tag, push, PR mutation, branch deletion, force-push, or evidence deletion.
+- Use the reviewed `codex/` branch and draft PR for scoped commits and ordinary pushes. No release
+  publication, tag, branch deletion, force-push, or evidence deletion.
 - No wake-WAV request, raw microphone read/inspection, pairing-code read or file transport, or
   fallback from a denied HTTP control.
 - No remote/Away infrastructure, credential, pairing, fundamental privacy-policy, sensitive-memory,

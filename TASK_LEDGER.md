@@ -1,6 +1,6 @@
 # Task Ledger
 
-Ledger timestamp: 2026-08-02 America/New_York
+Ledger timestamp: 2026-08-03 America/New_York
 
 ## M0-001 — Establish Repository Truth
 
@@ -102,9 +102,16 @@ Ledger timestamp: 2026-08-02 America/New_York
   SHA-256; explicit documented PlatformIO core.
 - **Stop conditions:** Ordinary current-main build becomes red; a release environment cannot be
   classified; identical clean builds differ; implementation needs unrelated source changes.
-- **Result:** Not started.
-- **Commit:** None.
-- **Decision:** Candidate experiment, not yet selected.
+- **Result:** In progress. Two same-input clean `stackchan_release_full` builds produced different
+  firmware binaries, with 69 differing bytes including embedded wall-clock time and downstream
+  digest regions; this is the accepted expected-red evidence. PR #218 was reviewed read-only and
+  will not be merged or cherry-picked because its hook inheritance, override handling, dirty-tree
+  detection, and unrelated bridge-test change do not meet this gate. A hardened, fail-closed
+  implementation is preregistered after the public boot-motion correction is committed. No
+  reproducibility claim or hardware evidence is earned yet.
+- **Commit:** Expected-red and preregistration are recorded in the public boot-motion correction
+  slice; the implementation commit is still pending.
+- **Decision:** Selected as the next atomic slice after the boot-motion correction is committed.
 
 ## M0-005 — Reconcile Stale Status Documents
 
@@ -464,7 +471,10 @@ Ledger timestamp: 2026-08-02 America/New_York
   clean three-profile package at that commit verified with `dirty:false`, ZIP SHA-256
   `b69ecc75...174b96`, and full-image SHA-256 `4256f2e5...b31055`. No deploy, endpoint mutation,
   raw-audio request, reboot, flash, OTA, or hardware exercise occurred; physical gates remain
-  unearned.
+  unearned. A 2026-08-03 qualification audit found that the exact public full image had motion and
+  autonomous motion enabled at boot, so it is explicitly rejected as the no-motion qualification
+  candidate. The replacement source profile keeps both off at boot, but it remains source-only and
+  unqualified at the time of this ledger update and does not inherit the old package evidence.
 - **Commit:** Frozen preregistration `d75c62f3`; package prerequisite `2ed5bb6a`; atomic
   implementation `4d31de414f5f2279b4c423ac3dfd7e940bb540d9`.
 - **Decision:** Stop-ship. Existing supervised Resume/motion-soak tooling has no approved authority

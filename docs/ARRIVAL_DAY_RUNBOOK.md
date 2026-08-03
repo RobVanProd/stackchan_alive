@@ -17,6 +17,16 @@ control authority. Query-free emergency Stop remains available, but source tests
 installed image; exact-image no-motion and supervised emergency-stop qualification are still
 required before any physical promotion.
 
+SEC-002 package correction (2026-08-03): do not flash the preserved `4d31de41` public full image
+SHA-256 `4256F2E5...B31055` for a no-motion gate. That exact image was built with motion request and
+autonomous refresh enabled at boot. A source correction now makes the public full profile inherit
+motion-off and explicitly disables autonomous boot refresh, but the replacement is not an install
+candidate until it is committed, built reproducibly twice, packaged and verified from that clean
+commit, and reviewed. The release installer must also deterministically write the packaged OTA
+selector at `0xE000`; do not assume the live selector points to the application written at
+`0x10000`. Until those gates and a fresh `/debug` motion-off snapshot succeed, the physical step is
+`HOLD`, not a reason to reuse an older package or infer state from ping.
+
 ## 0. Bench Setup
 
 - Clear the work area around the body and servos.

@@ -2,6 +2,24 @@
 
 Status timestamp: 2026-07-13 15:53 America/New_York
 
+## Current SEC-002 Qualification Hold (2026-08-03)
+
+The clean `SEC-002` package built from `4d31de41` is preserved as source/package evidence only.
+Its public `full_online` image is SHA-256
+`4256F2E5B4D81E3615D1F074737E867E86925B6737A4F38A4EF158C2B31055` and its effective build
+configuration requests motion and autonomous motion at boot. It must not be installed for the
+planned exact-image no-motion qualification. This corrects the package's former role without
+rewriting its historical hash or claiming that it was deployed.
+
+The replacement source profile inherits motion-off-at-boot, explicitly keeps autonomous refresh
+off, and updates the package statement and release contracts accordingly. Source tests and one
+dirty-tree compile have passed, but no clean reproducible replacement package, installation,
+physical qualification, or soak exists yet. The current live application, motion request, servo
+rail, and torque state remain unknown because repeated bounded `/debug` probes were unavailable.
+Ping reachability alone is not a robot-health or actuator-state proof. Hold all flashing and
+physical promotion until reproducible-build closure, an OTA-selector-safe installer, a reviewed
+rollback path, exact package verification, and a fresh passive no-motion preflight are complete.
+
 ## Last Owner-Accepted Physical Lead — Historical Evidence; Current Installation Unknown
 
 This section records the latest owner-accepted physical lead as of 2026-07-13. A fresh device

@@ -631,12 +631,41 @@ foreach ($pcmToken in @('serveWakeMwwPcmWav', 'gWakeMwwPcmRing', 'writeWakeWavLe
 $baselinePlatformioText = if ($frozenCommitAvailable) {
   ((& git show "$frozenPreregCommit`:platformio.ini") -join "`n").TrimEnd()
 } else { "" }
+$baselinePublicReleaseMotion = @'
+build_unflags =
+  -D STACKCHAN_MOTION_ENABLED_AT_BOOT=0
+build_flags =
+  ${env:stackchan_release_forensics.build_flags}
+  -D STACKCHAN_MOTION_ENABLED_AT_BOOT=1
+  -D STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT=1
+'@
+$candidatePublicReleaseMotion = @'
+build_flags =
+  ${env:stackchan_release_forensics.build_flags}
+  -D STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT=0
+'@
+$normalizedCandidatePlatformio = $platformioText -replace "`r`n", "`n"
+$candidatePublicReleaseBlock = [regex]::Match(
+  $normalizedCandidatePlatformio,
+  '(?ms)^\[env:stackchan_release_full\]\s*(.*?)(?=^\[env:|\z)').Value
+$baselinePublicReleaseBlock = [regex]::Match(
+  $baselinePlatformioText,
+  '(?ms)^\[env:stackchan_release_full\]\s*(.*?)(?=^\[env:|\z)').Value
+Require-PolicyAssertion (([regex]::Matches(
+      $candidatePublicReleaseBlock,
+      [regex]::Escape($candidatePublicReleaseMotion))).Count -eq 1) "profile: public release no-motion boot stanza is missing or duplicated"
+Require-PolicyAssertion (([regex]::Matches(
+      $baselinePublicReleaseBlock,
+      [regex]::Escape($baselinePublicReleaseMotion))).Count -eq 1) "profile: frozen public release boot-motion stanza is missing or duplicated"
+$candidatePlatformioAtFrozenMotionPolicy = $normalizedCandidatePlatformio.Replace(
+  $candidatePublicReleaseMotion,
+  $baselinePublicReleaseMotion)
 $candidatePlatformioWithoutPolicy = ([regex]::Replace(
-    ($platformioText -replace "`r`n", "`n"),
+    $candidatePlatformioAtFrozenMotionPolicy,
     '(?m)^[^\S\r\n]*\+<io/BridgeDebugHttpPolicy\.cpp>[^\S\r\n]*\n?',
     '')).TrimEnd()
 Require-PolicyAssertion (-not [string]::IsNullOrEmpty($baselinePlatformioText) -and
-    $candidatePlatformioWithoutPolicy -ceq $baselinePlatformioText) "profile: platformio.ini changed beyond the one preregistered policy source-filter line"
+    $candidatePlatformioWithoutPolicy -ceq $baselinePlatformioText) "profile: platformio.ini changed beyond the preregistered policy source-filter and exact public no-motion boot stanzas"
 
 $allowedChangedFiles = @(
   'INITIAL_RISK_REGISTER.md', 'PROJECT_STATE.md', 'TASK_LEDGER.md', 'platformio.ini',
@@ -695,10 +724,12 @@ if ($grayEnd -ge 0 -and $visionEnd -gt $grayEnd) {
 } else { $issues.Add("camera-invariant: vision handler missing") }
 
 try {
+  Require-PolicyAssertion (-not (Test-Path Env:\PLATFORMIO_BUILD_FLAGS)) "profile: ambient PLATFORMIO_BUILD_FLAGS override is present"
   $config = (& pio project config --json-output | ConvertFrom-Json)
   $wifiEnvironments = @()
   $profileBypasses = @()
   $faceGateViolations = @()
+  $publicReleaseFlags = ""
   foreach ($section in $config) {
     $name = [string]$section[0]
     if (-not $name.StartsWith("env:")) { continue }
@@ -717,11 +748,24 @@ try {
         $faceGateViolations += $environmentName
       }
     }
+    if ($name -eq "env:stackchan_release_full") {
+      $publicReleaseFlags = $flags
+    }
   }
   Require-PolicyAssertion ($wifiEnvironments.Count -eq 19) "profile: expected 19 effective Wi-Fi environments, found $($wifiEnvironments.Count)"
   Require-PolicyAssertion ($profileBypasses.Count -eq 0) "profile: control-policy bypass flag appears in $($profileBypasses -join ',')"
   Require-PolicyAssertion ($faceGateViolations.Count -eq 0 -and
       (Get-Content -LiteralPath (Join-Path $repoRoot 'src\config\RobotConfig.hpp') -Raw).Contains('#define STACKCHAN_FACE_PERIOD_MS 33')) "invariant: a Wi-Fi profile weakens the strict 50 ms face gate"
+  $publicMotionDefinitions = @([regex]::Matches(
+      $publicReleaseFlags,
+      '(?<!\S)-D\s+STACKCHAN_MOTION_ENABLED_AT_BOOT=(?<value>[^\s]+)'))
+  $publicAutonomousDefinitions = @([regex]::Matches(
+      $publicReleaseFlags,
+      '(?<!\S)-D\s+STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT=(?<value>[^\s]+)'))
+  Require-PolicyAssertion ($publicMotionDefinitions.Count -eq 1 -and
+      $publicMotionDefinitions[0].Groups['value'].Value -ceq '0' -and
+      $publicAutonomousDefinitions.Count -eq 1 -and
+      $publicAutonomousDefinitions[0].Groups['value'].Value -ceq '0') "profile: public full release effective configuration is not uniquely motion-off and autonomous-refresh-off at boot"
 } catch {
   $issues.Add("profile: PlatformIO effective configuration unavailable: $($_.Exception.GetType().Name)")
 }

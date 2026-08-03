@@ -7,6 +7,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# PLATFORMIO_BUILD_FLAGS is an ambient PlatformIO override and can append
+# conflicting safety macros after the checked-in environment. Public packages
+# must be derived from the reviewed configuration, never an inherited caller
+# override. Check presence rather than truthiness and refuse before path/cache/
+# build/package work.
+if (Test-Path Env:\PLATFORMIO_BUILD_FLAGS) {
+  throw "Release packaging refuses ambient override: PLATFORMIO_BUILD_FLAGS"
+}
+
 $physicalRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (
   $env:OS -eq "Windows_NT" -and
@@ -1462,7 +1471,7 @@ $manifest = [ordered]@{
   board = "m5stack-cores3"
   defaultEnvironment = "stackchan"
   includedEnvironments = @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")
-  servoDefault = "display-only and calibration flows remain safety-gated; the production full firmware starts guarded autonomous motion after boot"
+  servoDefault = "display-only and calibration flows remain safety-gated; the production full firmware starts without requesting motion or autonomous refresh; physical servo rail and torque state require fresh /debug verification"
   status = "test-ready prerelease; hardware validation pending"
   dirty = ($sourceDirtyFiles.Count -gt 0)
   dirtyFiles = @($sourceDirtyFiles)
@@ -2315,7 +2324,7 @@ Recommended arrival command from the extracted package:
 
 Commit: $commit
 
-This is the publicly shareable $Version prerelease candidate for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and ships guarded autonomous motion in the production full firmware. Consumer rollout remains blocked pending source-matched physical qualification and explicit owner approval.
+This is the publicly shareable $Version prerelease candidate for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, and compile-checked, and includes preview media plus an expression QA sheet. The production full firmware starts without requesting motion or autonomous refresh; physical servo rail and torque state require fresh /debug verification. Consumer rollout remains blocked pending source-matched physical qualification and explicit owner approval.
 
 Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Production voice hashes are recorded in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md``, ``data/voice_source_provenance.yaml``, ``VOICE_SOURCE_STATUS.md``, and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, hardware simulation, flashing, publishing, evidence capture, and package verification helpers are included under ``tools/``.
 
