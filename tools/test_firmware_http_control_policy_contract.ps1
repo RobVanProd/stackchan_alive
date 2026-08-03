@@ -530,6 +530,7 @@ function Get-BoundedSourceSection([string]$Text, [string]$StartMarker, [string]$
 
 $frozenPreregCommit = 'd75c62f37f8ff6e1c6cf49bc2c4c01479cd4f02f'
 $approvedPackagePrerequisiteCommit = '2ed5bb6ad4755129b61aa0f636f0b654a3493d86'
+$approvedImplementationCommit = '4d31de414f5f2279b4c423ac3dfd7e940bb540d9'
 & git cat-file -e "$frozenPreregCommit`:src/main.cpp" 2>$null
 $frozenCommitAvailable = $LASTEXITCODE -eq 0
 Require-PolicyAssertion $frozenCommitAvailable "invariant: frozen preregistration source commit is unavailable"
@@ -551,6 +552,16 @@ Require-PolicyAssertion ($packagePrerequisiteFiles.Count -eq 1 -and
 & git merge-base --is-ancestor $approvedPackagePrerequisiteCommit HEAD
 $candidateDescendsFromPackagePrerequisite = $LASTEXITCODE -eq 0
 Require-PolicyAssertion $candidateDescendsFromPackagePrerequisite "scope: candidate does not descend from the approved package prerequisite"
+& git cat-file -e "$approvedImplementationCommit`^{commit}" 2>$null
+$implementationCommitAvailable = $LASTEXITCODE -eq 0
+Require-PolicyAssertion $implementationCommitAvailable "scope: approved implementation commit is unavailable"
+$implementationCommitParent = if ($implementationCommitAvailable) {
+  (& git rev-parse "$approvedImplementationCommit`^").Trim()
+} else { "" }
+Require-PolicyAssertion ($implementationCommitParent -ceq $approvedPackagePrerequisiteCommit) "scope: approved implementation does not directly follow the package prerequisite"
+& git merge-base --is-ancestor $approvedImplementationCommit HEAD
+$candidateDescendsFromImplementation = $LASTEXITCODE -eq 0
+Require-PolicyAssertion $candidateDescendsFromImplementation "scope: candidate does not descend from the approved implementation"
 $baselineMainText = if ($frozenCommitAvailable) { ((& git show "$frozenPreregCommit`:src/main.cpp") -join "`n") } else { "" }
 foreach ($frozenSection in @(
   @{ Start = '#ifndef STACKCHAN_OTA_PORT'; End = '#ifndef STACKCHAN_BASE_USB_POWER_INPUT'; Name = 'OTA port token digest and health configuration' },
@@ -642,12 +653,12 @@ $allowedChangedFiles = @(
   'tools/watch_stackchan_wake_test.ps1', 'tools/verify_release_package.ps1',
   'docs/BRIDGE_PROTOCOL.md', 'docs/BRIDGE_DASHBOARD.md', 'docs/ARRIVAL_DAY_RUNBOOK.md'
 )
-$changedFiles = @(& git diff --name-only $approvedPackagePrerequisiteCommit HEAD)
-$changedFiles += @(& git status --porcelain=v1 --untracked-files=all | ForEach-Object {
-  if ($_.Length -ge 4) { $_.Substring(3).Replace('\', '/') }
-})
-foreach ($changedFile in @($changedFiles | Sort-Object -Unique)) {
-  Require-PolicyAssertion ($allowedChangedFiles -contains $changedFile) "scope: unpreregistered changed file $changedFile"
+$implementationFiles = @(& git diff --name-only $approvedPackagePrerequisiteCommit $approvedImplementationCommit)
+foreach ($implementationFile in @($implementationFiles | Sort-Object -Unique)) {
+  Require-PolicyAssertion ($allowedChangedFiles -contains $implementationFile) "scope: approved implementation contains unpreregistered file $implementationFile"
+}
+foreach ($allowedChangedFile in $allowedChangedFiles) {
+  Require-PolicyAssertion ($implementationFiles -contains $allowedChangedFile) "scope: approved implementation is missing reviewed file $allowedChangedFile"
 }
 
 $grayStart = $mainText.IndexOf("void serveCameraGrayFrame")
