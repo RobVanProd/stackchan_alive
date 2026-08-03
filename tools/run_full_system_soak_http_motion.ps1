@@ -51,32 +51,19 @@ param(
   [switch]$RequireNoNewHardFloorEvents,
   [switch]$RequireManagedChargePolicy,
   [switch]$FailFastOnStrictBreach,
-  [switch]$NoSerial
+  [switch]$NoSerial,
+  [switch]$ControlPolicyContractProbe
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-Set-Location $RepoRoot
-$RunnerSourceCommit = (& git rev-parse HEAD).Trim().ToLowerInvariant()
-$SourceDirty = -not [string]::IsNullOrWhiteSpace(((& git status --porcelain=v1 --untracked-files=normal) -join "`n"))
-if ([string]::IsNullOrWhiteSpace($FirmwareSourceCommit)) {
-  $FirmwareSourceCommit = $RunnerSourceCommit
-}
-$SourceCommit = $FirmwareSourceCommit.Trim().ToLowerInvariant()
-if ($SourceCommit -notmatch "^[0-9a-f]{40}$") {
-  throw "FirmwareSourceCommit must be a full 40-character Git commit SHA."
-}
-& git cat-file -e "$SourceCommit`^{commit}" 2>$null
-if ($LASTEXITCODE -ne 0) {
-  throw "FirmwareSourceCommit is not available in this repository: $SourceCommit"
+
+function Assert-EmergencyStopOnlyMotionPolicy {
+  param([string]$Policy)
+  throw "motion_resume_unavailable: emergency_stop_only permits emergency stops only; motion resume is disabled."
 }
 
-$minPowerVbusMvThreshold = $MinPowerVbusMv
-$minPowerVbusReportedMvThreshold = $MinPowerVbusReportedMv
-if ($ExpectedPmicVindpmMv -ne 0 -and
-    ($ExpectedPmicVindpmMv -lt 3880 -or $ExpectedPmicVindpmMv -gt 5080 -or
-      (($ExpectedPmicVindpmMv - 3880) % 80) -ne 0)) {
-  throw "ExpectedPmicVindpmMv must be 0 or an 80 mV step from 3880 through 5080."
+if ($ControlPolicyContractProbe) {
+  Assert-EmergencyStopOnlyMotionPolicy -Policy "emergency_stop_only"
 }
 
 function Invoke-RobotEndpoint {
@@ -109,6 +96,45 @@ function Invoke-RobotEndpoint {
       error = $_.Exception.Message
     }
   }
+}
+
+function Get-FirmwareHttpControlPolicy {
+  $probe = Invoke-RobotEndpoint -Path "/debug" -TimeoutSeconds 4
+  if ($null -eq $probe -or $probe.ok -ne $true -or $null -eq $probe.json) {
+    return "unknown"
+  }
+  $policy = $probe.json.debug_http_control_policy
+  if ($policy -is [string] -and $policy -ceq "emergency_stop_only") {
+    return $policy
+  }
+  return "unknown"
+}
+
+$controlPolicyPreflight = Get-FirmwareHttpControlPolicy
+Assert-EmergencyStopOnlyMotionPolicy -Policy $controlPolicyPreflight
+
+$RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+Set-Location $RepoRoot
+$RunnerSourceCommit = (& git rev-parse HEAD).Trim().ToLowerInvariant()
+$SourceDirty = -not [string]::IsNullOrWhiteSpace(((& git status --porcelain=v1 --untracked-files=normal) -join "`n"))
+if ([string]::IsNullOrWhiteSpace($FirmwareSourceCommit)) {
+  $FirmwareSourceCommit = $RunnerSourceCommit
+}
+$SourceCommit = $FirmwareSourceCommit.Trim().ToLowerInvariant()
+if ($SourceCommit -notmatch "^[0-9a-f]{40}$") {
+  throw "FirmwareSourceCommit must be a full 40-character Git commit SHA."
+}
+& git cat-file -e "$SourceCommit`^{commit}" 2>$null
+if ($LASTEXITCODE -ne 0) {
+  throw "FirmwareSourceCommit is not available in this repository: $SourceCommit"
+}
+
+$minPowerVbusMvThreshold = $MinPowerVbusMv
+$minPowerVbusReportedMvThreshold = $MinPowerVbusReportedMv
+if ($ExpectedPmicVindpmMv -ne 0 -and
+    ($ExpectedPmicVindpmMv -lt 3880 -or $ExpectedPmicVindpmMv -gt 5080 -or
+      (($ExpectedPmicVindpmMv - 3880) % 80) -ne 0)) {
+  throw "ExpectedPmicVindpmMv must be 0 or an 80 mV step from 3880 through 5080."
 }
 
 function Get-BridgeSocketRemote {

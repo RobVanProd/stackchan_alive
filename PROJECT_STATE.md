@@ -6,18 +6,23 @@ State timestamp: 2026-08-02 America/New_York
 
 Keep stop-ship security work ahead of aliveness features. Milestone 0 and the independently
 verified `SEC-001` host admission repair are committed. `SEC-001` remains contained and undeployed.
-The active work is a preregistered, credential-free `SEC-002` firmware HTTP policy: public HTTP may
-serve bounded operational status and emergency stops, while every other mutating control fails
-closed before side effects. The directly coupled dashboard and actuator-validation tools must
-represent that restriction truthfully. No firmware, production service, or robot behavior has been
-changed for `SEC-002`.
+The active working-tree candidate implements the preregistered, credential-free `SEC-002` firmware
+HTTP policy: public HTTP may serve bounded operational status and emergency stops, while every
+other mutating control fails closed before side effects. The directly coupled dashboard and
+actuator-validation tools represent that restriction fail-closed. This is source, test, simulator,
+secret-free compilation, and dirty-tree package-regression evidence only. Independent policy,
+security, and documentation reviewers accepted the source slice. It is undeployed and physically
+unqualified. No production service, installed firmware, or live robot behavior has been changed for
+`SEC-002`.
 
 ## Source Identity
 
 - Repository: `RobVanProd/stackchan_alive`
 - Working branch: `codex/aliveness-repository-truth`
-- Current committed HEAD before `SEC-002` preregistration:
-  `9c72f02091dc471f27e3c9bfff5e4af6e32e7134`
+- Current committed HEAD before the atomic `SEC-002` implementation commit:
+  `2ed5bb6ad4755129b61aa0f636f0b654a3493d86`
+- Frozen `SEC-002` preregistration baseline:
+  `d75c62f37f8ff6e1c6cf49bc2c4c01479cd4f02f`
 - Fetched `origin/main`: `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`
 - Milestone 0 documentation baseline commit: `0e3467e79766ed1cafeef4837c162c8a50bb29e1`
 - SEC-001 identity: commit `9c72f02091dc471f27e3c9bfff5e4af6e32e7134`, exact accepted tree
@@ -183,6 +188,37 @@ scope-expansion review; microphone capture, wake gating, or the wake model chang
 binary identity are unavailable before no-motion qualification; or deployment/risk closure is
 claimed before exact-image physical and release gates.
 
+## SEC-002 / PRIV-001 Source Candidate Result
+
+The preregistered expected-red phase was preserved before implementation: native policy tests
+failed only because the shared policy did not yet exist; dashboard cases failed their named
+missing/contained-capability assertions; and the firmware/tool contract cases failed their named
+policy/preflight assertions. The current uncommitted candidate then earned the following
+non-physical evidence on 2026-08-02:
+
+- native firmware logic passed 294/294;
+- the focused dashboard service suite passed 28 tests and full bridge discovery passed 567 tests;
+- the exact firmware HTTP policy contract passed all 19 effective Wi-Fi environments;
+- dashboard, camera-follow, warm-soak, full-system-soak evidence, current-lead reproducibility v2,
+  and current-lead archive contracts passed;
+- the silent trusted-facts privacy smoke returned ready with zero model invocations and zero audio
+  playback, without printing stored fact values;
+- the no-hardware simulator reported `stackchan.hardware-sim.v1` status `pass`; this does not prove
+  port 8789, deployment, or physical behavior; and
+- `stackchan_release_full` completed compilation, link, size analysis, bootloader/partition/app
+  image generation, and produced a 2,803,375-byte application image report. Windows Device Guard
+  rejected PlatformIO's generated console-script executable, so the same pinned esptool 5.1.0
+  package was invoked through PlatformIO's Python interpreter for this isolated build. No upload
+  target was invoked.
+
+Dirty-tree release-package assembly and verification passed after the conversation-harness package
+prerequisite was committed separately as `2ed5bb6a`; independent policy, security, and
+documentation/authority reviews accepted the exact source slice. The regression build and package
+predate the final atomic source commit and are not exact-image candidates for deployment. `R-000B`
+and `R-000C` remain open until a clean committed source identity has matching binary/package hashes,
+independently approved exact-image no-motion qualification, supervised physical emergency-stop
+evidence, and final release gates all pass.
+
 ## SEC-001 Frozen Preregistration
 
 This preregistration was reviewed read-only against exact source `39b750e6` before any source or
@@ -337,12 +373,16 @@ a robot freeze, blackout, brownout, thermal event, USB failure, board failure, o
 1. The last observed production host service exposed a fail-open robot-to-host WebSocket admission
    boundary on the LAN. Commit `9c72f020` repairs those source paths, but is not deployed on the
    production listener or robot; the previously exposed listener remains stopped.
-2. Wi-Fi-enabled firmware debug HTTP mutation is unauthenticated. Source shows tone, mic-tone,
-   wake-reset, motion-enable, recovery, and reboot aliases reach effects before response. Emergency
-   audio/motion stop aliases must remain public. Unsafe routes were not exercised on hardware; OTA
+2. The last source-observed Wi-Fi firmware baseline allowed unauthenticated debug HTTP tone,
+   mic-tone, wake-reset, motion-enable, recovery, and reboot aliases to reach effects before
+   response; the installed-image identity remains unknown. The accepted working-tree candidate
+   contains those routes before effects while preserving public emergency audio/motion stops, but
+   it is undeployed and physically unqualified. Unsafe routes were not exercised on hardware; OTA
    remains separately token-gated.
-3. `/wake.wav` and `/wake-pcm.wav` can export recent wake-microphone PCM without pairing. This is
-   source-observed only; no PCM was requested or inspected.
+3. The last source-observed baseline allowed `/wake.wav` and `/wake-pcm.wav` to export recent
+   wake-microphone PCM without pairing, and the installed-image identity remains unknown. The
+   accepted working-tree candidate denies both aliases before PCM access, but it is undeployed and
+   physically unqualified. No PCM was requested or inspected.
 4. Dashboard connection/readiness state can remain affirmative after the heartbeat is stale and
    the bridge has no established robot socket.
 5. The exact AGENTS baseline command through the default shared PlatformIO core fails before
@@ -428,12 +468,11 @@ qualifies the installed firmware or authorizes a service restart.
 
 ## Exact Next Action
 
-Use the atomic control-only preregistration commit containing this record as the frozen experiment,
-then add and preserve the expected-red `SEC-002`/`PRIV-001` native, config, dashboard, and operator-
-tool tests before implementation. Implement only the frozen
-emergency-stop-only policy and direct compatibility slice, then run source/native/bridge/privacy/
-release gates. Do not design credentials or read a pairing file. Production restart and every
-firmware/hardware action remain unauthorized until their separate qualification gates are earned.
+Create the one atomic `SEC-002`/`PRIV-001` implementation commit containing this record, rerun the
+exact source gates, and produce clean source/binary/package identities from that commit. Do not
+design credentials or read a pairing file. Production restart and every firmware/hardware action
+remain unauthorized until a separately approved exact-image no-motion qualification, supervised
+emergency-stop proof, and final release gates are earned.
 
 ## Unauthorized Actions
 
@@ -452,8 +491,8 @@ firmware/hardware action remain unauthorized until their separate qualification 
 ## Rollback Path
 
 `SEC-001` rollback is reversion of exact commit `9c72f020`; keep the exposed listener stopped rather
-than restoring a fail-open fallback. `SEC-002` preregistration and its later implementation remain
-separate atomic commits and are reverted only by exact commit if a frozen invariant regresses. Do
+than restoring a fail-open fallback. `SEC-002` preregistration and its current implementation remain
+separate atomic changes and are reverted only by exact commit if a frozen invariant regresses. Do
 not flash an insecure prior image as an operational rollback. Hardware rollback remains the exact
 private accepted archive/runbook procedure and is not exercised without source, build, no-motion,
 physical, and exact-image gates.

@@ -4,6 +4,22 @@ Protocol: `stackchan.bridge.v1`
 
 The bridge is the P7 boundary between the real-time firmware and a LAN companion service. The firmware owns wake/listen/think/speak choreography, face, motion, earcons, and safety. The bridge owns STT, LLM text generation, memory, and dynamic TTS rendering.
 
+## Firmware Debug HTTP Containment
+
+The firmware service on port `8789` advertises
+`debug_http_control_policy=emergency_stop_only` in `/debug`. It strictly parses one HTTP/1.0 or
+HTTP/1.1 request line before dispatch. Query-free `GET /` and `GET /debug` are bounded status
+reads. Query-free `GET` or `POST` requests to the documented audio-stop and motion-stop aliases
+may only admit an emergency stop; `202 accepted:true` means the request was admitted, not that a
+physical stop is complete. A failed motion-stop publication returns `503 accepted:false`.
+
+Tone, wake-reset, Resume, recovery, reboot, and wake-PCM/WAV routes return a fixed `403` response
+before their former effects. Unknown, malformed, wrong-method, and oversized requests remain
+distinct `404`, `400`, `405`, and `414` outcomes. The two camera query families still reach their
+pre-existing parser and pairing authorizer; camera pairing is not general control authority.
+Raw request targets, queries, pairing codes, credentials, and wake PCM are not status or diagnostic
+output. Any future Resume or recovery control requires a separately preregistered authority design.
+
 Firmware bench replay uses newline-delimited UTF-8 JSON. The LAN bridge service uses
 WebSocket text frames for control, binary WebSocket frames for uploaded PCM, and optional
 binary WebSocket frames for downlinked TTS audio chunks. Current firmware has a native-tested

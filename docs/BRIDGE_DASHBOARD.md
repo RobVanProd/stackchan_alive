@@ -2,7 +2,7 @@
 
 The PC bridge can serve a local browser dashboard at `http://127.0.0.1:8766/`. It shows the
 bridge and robot link state, a square Stackchan face, bounded robot telemetry, recent dashboard
-events, and verified motion stop/resume controls.
+events, and a verified emergency motion-stop control. Resume is visibly contained.
 
 The connection badge represents operational bridge readiness, not only the robot socket. If the
 resident speech recognizer fails, the badge changes to **SPEECH RECOVERING** or **SPEECH
@@ -61,16 +61,17 @@ The dashboard does not write servo state directly. It calls the firmware-owned d
 on port `8789`:
 
 - Production DirectML startup always verifies a motion stop after bridge reconnect. Motion never
-  remains enabled when the launcher reports ready; the operator must use the guarded control
-  below to resume it.
+  remains enabled when the launcher reports ready.
 - **Stop motion** calls `/motion-stop`, then requires `/debug` to report motion, servo rail, and
   servo torque all off before showing a verified stop.
-- **Resume motion** stays disabled until the operator checks **Robot is upright and clear**. It
-  calls `/motion-resume`, then requires `/debug` to report motion, servo rail, and servo torque
-  enabled with no power or thermal suppression before showing success.
+- **Resume motion** remains disabled. Fresh `/debug` capability
+  `debug_http_control_policy=emergency_stop_only`, missing capability, malformed capability, and a
+  sample older than 15 seconds all fail closed. The dashboard projects only
+  `motionResumeAvailable:false` and `motionResumePolicy:emergency_stop_only|unknown`.
 
 A command timeout, rejected command, or mismatched `/debug` state is shown as unverified. The
-dashboard never converts transport success into a motion-success claim.
+dashboard never converts transport success into a motion-success claim. A `202 accepted:true`
+stop response is followed by independent `/debug` rail-and-torque verification.
 
 ## Security And Load
 

@@ -7,6 +7,8 @@ $directmlLauncher = Join-Path $PSScriptRoot "start_pc_brain_directml.ps1"
 $packager = Join-Path $PSScriptRoot "package_release.ps1"
 $packageVerifier = Join-Path $PSScriptRoot "verify_release_package.ps1"
 $icon = Join-Path $PSScriptRoot "..\docs\store-assets\desktop\stackchan-alive.ico"
+$dashboardService = Join-Path $PSScriptRoot "..\bridge\dashboard_service.py"
+$dashboardApp = Join-Path $PSScriptRoot "..\bridge\dashboard\app.js"
 
 foreach ($path in @($launcher, $installer, $baseLauncher, $directmlLauncher, $packager, $packageVerifier)) {
   $tokens = $null
@@ -72,6 +74,67 @@ if ($launcherText.Contains('"--runner-profile", "gemma4-e2b-gguf",' + "`r`n" + '
 }
 if ($launcherText -match 'EnableRoomObservation\s*=\s*\$true') {
   throw "Reset-safe dashboard startup must leave room observation default-off."
+}
+
+$dashboardServiceText = Get-Content -LiteralPath $dashboardService -Raw
+foreach ($required in @(
+  '"debug_http_control_policy"',
+  '"motionResumeAvailable"',
+  '"motionResumePolicy"',
+  'emergency_stop_only',
+  'firmware permits emergency stop only'
+)) {
+  if (-not $dashboardServiceText.Contains($required)) {
+    throw "Dashboard motion policy assertion failed: missing $required"
+  }
+}
+$setMotionStart = $dashboardServiceText.IndexOf('    def set_motion(')
+$setMotionEnd = $dashboardServiceText.IndexOf('    def set_initiative(', $setMotionStart)
+if ($setMotionStart -lt 0 -or $setMotionEnd -le $setMotionStart) {
+  throw "Dashboard motion policy assertion failed: set_motion section is missing."
+}
+$setMotionText = $dashboardServiceText.Substring($setMotionStart, $setMotionEnd - $setMotionStart)
+$resumeRefusalIndex = $setMotionText.IndexOf('firmware permits emergency stop only')
+$endpointFetchIndex = $setMotionText.IndexOf('self._fetch_robot(endpoint')
+if ($resumeRefusalIndex -lt 0 -or $endpointFetchIndex -lt 0 -or
+    $resumeRefusalIndex -gt $endpointFetchIndex) {
+  throw "Dashboard motion policy assertion failed: Resume refusal must precede robot fetch."
+}
+
+$dashboardAppText = Get-Content -LiteralPath $dashboardApp -Raw
+foreach ($required in @('robotClearCheck', 'motionResumePolicy', 'emergency_stop_only')) {
+  if (-not $dashboardAppText.Contains($required)) {
+    throw "Dashboard motion policy assertion failed: UI missing $required"
+  }
+}
+
+function Get-BoundedJavascriptSection([string]$Text, [string]$StartMarker, [string]$EndMarker) {
+  $start = $Text.IndexOf($StartMarker)
+  if ($start -lt 0) { throw "Dashboard motion policy assertion failed: missing section start $StartMarker" }
+  $end = $Text.IndexOf($EndMarker, $start + $StartMarker.Length)
+  if ($end -le $start) { throw "Dashboard motion policy assertion failed: missing section end $EndMarker" }
+  return $Text.Substring($start, $end - $start)
+}
+
+$renderMotionSection = Get-BoundedJavascriptSection $dashboardAppText 'function renderMotion(robot)' 'function renderEvents(events)'
+$changeMotionSection = Get-BoundedJavascriptSection $dashboardAppText 'async function changeMotion(enabled)' 'async function changeInitiative(enabled)'
+$clearCheckboxSection = Get-BoundedJavascriptSection $dashboardAppText '$("robotClearCheck").addEventListener("change"' '$("initiativeToggle").addEventListener("change"'
+
+$finallyStart = $changeMotionSection.IndexOf('finally {')
+$finallyMatch = if ($finallyStart -ge 0) {
+  [regex]::Match($changeMotionSection.Substring($finallyStart), '(?s)^finally\s*\{(?<body>.*?)\r?\n  \}\r?\n\}')
+} else {
+  [System.Text.RegularExpressions.Match]::Empty
+}
+$finallyBody = if ($finallyMatch.Success) { $finallyMatch.Groups['body'].Value } else { '' }
+if (-not $finallyMatch.Success -or -not ($finallyBody -match '(?m)^\s*\$\("resumeMotionButton"\)\.disabled\s*=\s*!\(\$\("robotClearCheck"\)\.checked\s*&&\s*state\.status\?\.robot\?\.motionResumeAvailable\s*===\s*true\);\s*$')) {
+  throw "Dashboard motion policy assertion failed: changeMotion finally path lacks explicit Resume availability guard."
+}
+if (-not ($clearCheckboxSection -match '(?s)resumeMotionButton.*?motionResumeAvailable\s*===\s*true')) {
+  throw "Dashboard motion policy assertion failed: clear-checkbox path lacks explicit Resume availability guard."
+}
+if (-not ($renderMotionSection -match '(?s)motionResumeAvailable\s*!==\s*true.*?robotClearCheck.*?checked\s*=\s*false.*?robotClearCheck.*?disabled\s*=\s*true.*?resumeMotionButton.*?disabled\s*=\s*true')) {
+  throw "Dashboard motion policy assertion failed: render path must clear confirmation and disable Resume under contained/unknown policy."
 }
 
 $installerText = Get-Content -LiteralPath $installer -Raw

@@ -8,6 +8,15 @@ Repository-truth warning (2026-08-02): the currently installed firmware SHA is u
 “installed,” “current,” and “live” notes below are historical evidence and cannot replace discovery,
 exact source/binary identity, or qualification of the image actually under test.
 
+Current control-containment warning (2026-08-02): the SEC-002 source candidate is
+`emergency_stop_only`. Its dashboard and legacy motion/wake runners refuse Resume, wake-reset, and
+tone before starting processes or evidence runs. Historical `/motion-resume`, `/recover`,
+`/reboot`, `/wake-reset`, tone, and wake-WAV commands below describe older evidence only and are
+not authorized current procedures. Do not work around the refusal or substitute camera pairing as
+control authority. Query-free emergency Stop remains available, but source tests do not prove the
+installed image; exact-image no-motion and supervised emergency-stop qualification are still
+required before any physical promotion.
+
 ## 0. Bench Setup
 
 - Clear the work area around the body and servos.

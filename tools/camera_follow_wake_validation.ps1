@@ -16,10 +16,51 @@ param(
   [switch]$OperatorPresent,
   [switch]$BodyClear,
   [switch]$ConfirmServoRisk,
-  [switch]$Json
+  [switch]$Json,
+  [switch]$ControlPolicyContractProbe
 )
 
 $ErrorActionPreference = "Stop"
+
+function Assert-EmergencyStopOnlyMotionPolicy {
+  param([string]$Policy)
+  throw "motion_resume_unavailable: emergency_stop_only permits emergency stops only; motion resume is disabled."
+}
+
+if ($ControlPolicyContractProbe) {
+  Assert-EmergencyStopOnlyMotionPolicy -Policy "emergency_stop_only"
+}
+
+function Invoke-RobotEndpoint {
+  param([string]$Path, [int]$TimeoutSeconds = 4)
+  $url = "http://$DeviceHost`:$DevicePort$Path"
+  $body = & curl.exe --max-time $TimeoutSeconds -s $url
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($body)) {
+    return [pscustomobject]@{ ok = $false; curlExit = $exitCode; body = $body; json = $null }
+  }
+  try {
+    return [pscustomobject]@{ ok = $true; curlExit = $exitCode; body = $body; json = ($body | ConvertFrom-Json) }
+  } catch {
+    return [pscustomobject]@{ ok = $false; curlExit = $exitCode; body = $body; json = $null; error = $_.Exception.Message }
+  }
+}
+
+function Get-FirmwareHttpControlPolicy {
+  $probe = Invoke-RobotEndpoint "/debug" 4
+  if ($null -eq $probe -or $probe.ok -ne $true -or $null -eq $probe.json) {
+    return "unknown"
+  }
+  $policy = $probe.json.debug_http_control_policy
+  if ($policy -is [string] -and $policy -ceq "emergency_stop_only") {
+    return $policy
+  }
+  return "unknown"
+}
+
+$controlPolicyPreflight = Get-FirmwareHttpControlPolicy
+Assert-EmergencyStopOnlyMotionPolicy -Policy $controlPolicyPreflight
+
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
 $SourceCommit = (& git rev-parse HEAD).Trim()
@@ -64,21 +105,6 @@ function Write-JsonAtomic {
     Move-Item -LiteralPath $temp -Destination $Path -Force
   } finally {
     Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
-  }
-}
-
-function Invoke-RobotEndpoint {
-  param([string]$Path, [int]$TimeoutSeconds = 4)
-  $url = "http://$DeviceHost`:$DevicePort$Path"
-  $body = & curl.exe --max-time $TimeoutSeconds -s $url
-  $exitCode = $LASTEXITCODE
-  if ($exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($body)) {
-    return [pscustomobject]@{ ok = $false; curlExit = $exitCode; body = $body; json = $null }
-  }
-  try {
-    return [pscustomobject]@{ ok = $true; curlExit = $exitCode; body = $body; json = ($body | ConvertFrom-Json) }
-  } catch {
-    return [pscustomobject]@{ ok = $false; curlExit = $exitCode; body = $body; json = $null; error = $_.Exception.Message }
   }
 }
 

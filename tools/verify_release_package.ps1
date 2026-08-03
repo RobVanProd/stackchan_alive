@@ -778,6 +778,8 @@ $requiredFiles = @(
   "provenance/platformio.ini",
   "provenance/partitions_esp_sr_16.csv",
   "provenance/src/main.cpp",
+  "provenance/src/io/BridgeDebugHttpPolicy.hpp",
+  "provenance/src/io/BridgeDebugHttpPolicy.cpp",
   "provenance/src/io/CameraAdapter.hpp",
   "provenance/src/io/CameraAdapter.cpp",
   "provenance/src/io/BridgeClient.hpp",
@@ -1395,7 +1397,7 @@ foreach ($pattern in @("On-device wake phrase", "microphone capture", "wake-gate
     throw "README.md missing mic capture status guidance: $pattern"
   }
 }
-foreach ($pattern in @("public v0.2 release candidate", "Status as of July 13, 2026", "corrected exact paired candidate", "28807 s", "5643/5643", "77/77", "bounded final stop", "public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
+foreach ($pattern in @("Status as of August 2, 2026", "private paired candidate", "historical", "owner-accepted exact-image physical evidence", "do not inherit that evidence", "installed SHA is", "presently unknown", "28807 s", "5643/5643", "77/77", "bounded final stop", "public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing current release-candidate status or navigation: $pattern"
   }
@@ -1437,7 +1439,7 @@ foreach ($pattern in @("../AGENTS.md", "BRAIN_MODEL.md", "CUSTOMIZING_THE_FACE.m
 }
 
 $conversationV2Text = Get-Content -LiteralPath (Join-PackagePath "docs/CONVERSATION_V2_ROADMAP.md") -Raw
-foreach ($pattern in @("post-release feature", "REPLY_WINDOW", "echo guard", "privacy-filtered", "under 3 seconds", "zero truncation")) {
+foreach ($pattern in @("outside the v1 promotion evidence", "runtime is unpromoted", "REPLY_WINDOW", "echo guard", "privacy-filtered", "under 3 seconds", "zero truncation")) {
   if ($conversationV2Text -notmatch [regex]::Escape($pattern)) {
     throw "docs/CONVERSATION_V2_ROADMAP.md missing bounded v2 architecture or acceptance guidance: $pattern"
   }
@@ -1672,6 +1674,23 @@ foreach ($pattern in @("SpeechAdapter::begin", "SpeechAdapter::handleCue", "Spee
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
+foreach ($pattern in @("BridgeDebugHttpPolicy.hpp", "evaluateBridgeDebugHttpRequestLine", "debug_http_control_policy", "emergency_stop_only", "serveBridgeDebugRejectionJson", "serveBridgeDebugAdmissionJson", "gBridgeDebugHttpEmergencyStops")) {
+  if ($mainText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/main.cpp missing SEC-002 emergency-stop-only containment: $pattern"
+  }
+}
+foreach ($forbidden in @('append(",\"debug_request\":\"%s\"', 'bridge_endpoint_pairing_code=', 'Serial.print(control.pairing.code)', 'requiredPairingCode()')) {
+  if ($mainText.Contains($forbidden)) {
+    throw "provenance/src/main.cpp exposes SEC-002/PRIV-001 forbidden diagnostic material: $forbidden"
+  }
+}
+$debugPolicyHeaderText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeDebugHttpPolicy.hpp") -Raw
+$debugPolicySourceText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeDebugHttpPolicy.cpp") -Raw
+foreach ($pattern in @("BridgeDebugHttpDecision", "BridgeDebugHttpDisposition", "requestLineInvalid", "RejectForbidden", "RejectUriTooLong")) {
+  if (($debugPolicyHeaderText + $debugPolicySourceText) -notmatch [regex]::Escape($pattern)) {
+    throw "firmware debug HTTP policy provenance missing exact containment support: $pattern"
+  }
+}
 foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "publishAudioOutSpeechFrame", "publishBridgeSpeechFrame", "handleBridgeOutput", "pollBridgeOutputs", "BridgeClient", "BridgeAudioDownlink", "BridgeAudioDownlinkSink", "BridgeAudioUplink", "BridgeWakeGate", "BridgeEndpointRegistry", "BridgeEndpointControl", "BridgeEndpointStore", "BridgeWiFiProvisioner", "BridgeNetworkSession", "BridgeWiFiClientSocket", "updateBridgeNetwork", "gBridge", "gBridgeAudioDownlink", "gBridgeAudioUplink", "gBridgeWakeGate", "gBridgeEndpointRegistry", "gBridgeEndpointControl", "gBridgeEndpointStore", "gBridgeWiFi", "gBridgeNetworkSession", "gBridge.update", "gBridgeEndpointStore.load", "gBridgeEndpointControl.attachStore", "gBridgeEndpointControl.update", "gBridgeWiFi.begin", "gBridgeNetworkSession.begin", "gBridgeAudioUplink.begin", "gBridgeWakeGate.begin", "gBridgeWakeGate.update", "gBridgeWakeGate.applyEvent", "gBridgeNetworkSession.update", "handleEndpointControlLine", "handleBridgeUplinkBench", "printBridgeUplinkResult", "submitPcmBytes", "beginTurn", "endTurn", "bench_audio_uplink_abort", "bridge_ready=", "bridge_state=", "bridge_messages=", "bridge_outputs=", "bridge_parse_errors=", "bridge_audio_stream_bytes_received=", "bridge_audio_stream_chunks=", "bridge_audio_stream_errors=", "bridge_endpoint_registry_ready=", "bridge_endpoint_count=", "bridge_endpoint_active=", "bridge_endpoint_restores=", "bridge_endpoint_control_ready=", "bridge_endpoint_messages=", "bridge_endpoint_rejected=", "bridge_endpoint_persistence_saves=", "bridge_endpoint_persistence_errors=", "bridge_endpoint_store_ready=", "bridge_endpoint_store_loads=", "bridge_endpoint_store_saves=", "bridge_endpoint_store_loaded=", "bridge_endpoint_store_saved=", "bridge_endpoint_store_parse_errors=", "bridge_endpoint_store_write_errors=", "bridge_wifi_ready=", "bridge_wifi_configured=", "bridge_wifi_connected=", "bridge_network_state=", "bridge_network_writer_frames=", "bridge_network_writer_text_frames=", "bridge_network_writer_binary_frames=", "bridge_network_text_queued=", "bridge_network_text_dropped=", "bridge_network_binary_queued=", "bridge_network_binary_dropped=", "bridge_downlink_ready=", "bridge_downlink_active=", "bridge_downlink_streams=", "bridge_downlink_completed=", "bridge_downlink_chunks=", "bridge_downlink_bytes=", "bridge_downlink_errors=", "bridge_downlink_playback_ready=", "bridge_downlink_playback_active=", "bridge_downlink_playback_starts=", "bridge_downlink_playback_chunks=", "bridge_downlink_playback_bytes=", "bridge_downlink_playback_unsupported=", "bridge_downlink_playback_errors=", "bridge_uplink_ready=", "bridge_uplink_enabled=", "bridge_uplink_active=", "bridge_uplink_wake_gate_required=", "bridge_uplink_turns=", "bridge_uplink_completed=", "bridge_uplink_chunks=", "bridge_uplink_bytes=", "bridge_uplink_errors=", "bridge_uplink_gate_blocks=", "bridge_uplink_queue_failures=", "bridge_wake_gate_ready=", "bridge_wake_gate_open=", "bridge_wake_gate_turn_active=", "bridge_wake_gate_opens=", "bridge_wake_gate_completed=", "bridge_timeouts=", "[bridge]", "[bridge_uplink]", "[endpoint]", "audio_stream_chunk", "chunk_index=", "chunk_bytes=", "payload_bytes=", "received_bytes=", "M5SpeakerAudioSink", "FirmwareVoiceAssets.hpp", "firmware_voice::find", "M5.Speaker.playWav", "M5.Speaker.playRaw", "STACKCHAN_ENABLE_SPEAKER", "gAudioOut.pollSpeechFrame", "gAudioOut.duck", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_hw_ready=", "audio_out_requests=", "audio_out_playing=", "audio_out_frames=", "audio_out_hw_frames=", "audio_out_hw_drops=", "sidecar_frames=", "playback_ms=", "hw_ready=", "hw_playing=", "hw_starts=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] requested=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
@@ -2327,14 +2346,14 @@ foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlStat
 }
 
 $dashboardServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard_service.py") -Raw
-foreach ($pattern in @("stackchan.bridge-dashboard.v1", "ThreadingHTTPServer", "/api/status", "/api/refresh", "/api/motion", "/motion-stop", "/motion-resume", "robot_clear", "servo_rail_enabled", "servo_torque_enabled", "motion_thermal_suppressed", "motion_power_suppressed", "X-Stackchan-Dashboard", "Content-Security-Policy", "Dashboard must bind to a loopback host.")) {
+foreach ($pattern in @("stackchan.bridge-dashboard.v1", "ThreadingHTTPServer", "/api/status", "/api/refresh", "/api/motion", "/motion-stop", "robot_clear", "debug_http_control_policy", "emergency_stop_only", "motionResumeAvailable", "motionResumePolicy", "firmware permits emergency stop only", "servo_rail_enabled", "servo_torque_enabled", "motion_thermal_suppressed", "motion_power_suppressed", "X-Stackchan-Dashboard", "Content-Security-Policy", "Dashboard must bind to a loopback host.")) {
   if ($dashboardServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/dashboard_service.py missing dashboard safety support: $pattern"
   }
 }
 
 $dashboardTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_dashboard_service.py") -Raw
-foreach ($pattern in @("DashboardRuntimeTests", "DashboardHttpTests", "DashboardBridgeIntegrationTests", "test_stop_requires_motion_rail_and_torque_verification", "test_cross_origin_write_is_rejected", "test_bridge_dashboard_receives_live_robot_heartbeat")) {
+foreach ($pattern in @("DashboardRuntimeTests", "DashboardHttpTests", "DashboardBridgeIntegrationTests", "test_stop_requires_motion_rail_and_torque_verification", "test_stop_accepts_bounded_admission_response_and_verifies_state", "test_stop_remains_available_under_emergency_stop_only_policy", "test_motion_resume_policy_missing_unknown_malformed_and_stale_fail_closed", "test_cross_origin_write_is_rejected", "test_bridge_dashboard_receives_live_robot_heartbeat")) {
   if ($dashboardTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_dashboard_service.py missing dashboard coverage: $pattern"
   }
@@ -2349,7 +2368,7 @@ foreach ($pattern in @("Stop motion", "Robot is upright and clear", "Resume moti
 foreach ($pattern in @("aspect-ratio: 1", "env(safe-area-inset-top)", "env(safe-area-inset-bottom)", ".mobile-nav")) {
   if ($dashboardCss -notmatch [regex]::Escape($pattern)) { throw "Dashboard CSS missing responsive contract: $pattern" }
 }
-foreach ($pattern in @("robot_clear", "/api/motion", "resumeMotionButton", "setInterval")) {
+foreach ($pattern in @("robot_clear", "/api/motion", "resumeMotionButton", "motionResumeAvailable", "motionResumePolicy", "emergency_stop_only", "setInterval")) {
   if ($dashboardJs -notmatch [regex]::Escape($pattern)) { throw "Dashboard JavaScript missing behavior: $pattern" }
 }
 

@@ -36,6 +36,14 @@ function showResult(message, kind = "") {
 function renderMotion(robot) {
   const badge = $("motionBadge");
   const enabled = robot.motionEnabled;
+  if (robot.motionResumeAvailable !== true) {
+    $("robotClearCheck").checked = false;
+    $("robotClearCheck").disabled = true;
+    $("resumeMotionButton").disabled = true;
+  } else {
+    $("robotClearCheck").disabled = false;
+    $("resumeMotionButton").disabled = state.busy || !$("robotClearCheck").checked;
+  }
   badge.className = "motion-badge";
   if (!robot.motionVerified || enabled === null) {
     badge.textContent = "UNVERIFIED";
@@ -55,6 +63,9 @@ function renderMotion(robot) {
     $("motionTitle").textContent = "Motion safely stopped";
     $("motionReason").textContent = robot.lastMotionReason || "Servo rail and torque are verified off.";
     $("motionSummary").textContent = "Stopped";
+  }
+  if (robot.motionResumePolicy === "emergency_stop_only") {
+    $("motionReason").textContent = "Firmware policy is emergency_stop_only; only emergency Stop is available.";
   }
 }
 
@@ -236,7 +247,7 @@ async function changeMotion(enabled) {
   } finally {
     state.busy = false;
     $("stopMotionButton").disabled = false;
-    $("resumeMotionButton").disabled = !$("robotClearCheck").checked;
+    $("resumeMotionButton").disabled = !($("robotClearCheck").checked && state.status?.robot?.motionResumeAvailable === true);
   }
 }
 
@@ -298,7 +309,7 @@ $("refreshButton").addEventListener("click", () => refresh(false));
 $("stopMotionButton").addEventListener("click", () => changeMotion(false));
 $("resumeMotionButton").addEventListener("click", () => changeMotion(true));
 $("robotClearCheck").addEventListener("change", (event) => {
-  $("resumeMotionButton").disabled = !event.target.checked || state.busy;
+  $("resumeMotionButton").disabled = !(event.target.checked && !state.busy && state.status?.robot?.motionResumeAvailable === true);
 });
 $("initiativeToggle").addEventListener("change", (event) => changeInitiative(event.target.checked));
 $("roomObservationToggle").addEventListener("change", () => changeRoomObservation());

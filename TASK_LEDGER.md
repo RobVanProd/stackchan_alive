@@ -453,9 +453,18 @@ Ledger timestamp: 2026-08-02 America/New_York
 - **Rollback:** Revert the exact atomic source/client candidate if target tests do not turn green or
   a frozen invariant regresses. Do not flash a prior insecure image as automatic rollback; isolate
   or power off the robot and preserve evidence.
-- **Result:** Preregistered; expected-red pending; no implementation or hardware exercise.
-- **Commit:** Atomic control-only preregistration commit containing this record; exact SHA assigned
-  by Git and reported in the handoff.
+- **Result:** Expected-red preserved; the source candidate represented by this record is
+  implemented. Native logic passed 294/294, the exact policy passed all 19 Wi-Fi environments,
+  focused dashboard passed
+  28 tests, full bridge discovery passed 567 tests, coupled operator/evidence contracts passed,
+  silent trusted-facts privacy smoke remained model/audio silent, the no-hardware simulator passed,
+  and secret-free release compilation/link/image generation passed. Dirty-tree release-package
+  assembly/verification passed, and independent policy, security, and documentation/authority
+  reviews accepted the exact source slice. No deploy, endpoint mutation, raw-audio request, reboot,
+  flash, OTA, or hardware exercise occurred; exact post-commit binary/package identity and physical
+  gates remain unearned.
+- **Commit:** Frozen preregistration commit `d75c62f3`; the exact SHA of the atomic implementation
+  commit containing this record is assigned by Git and reported in the handoff.
 - **Decision:** Stop-ship. Existing supervised Resume/motion-soak tooling has no approved authority
   after containment; keep the robot on a trusted isolated LAN or powered off until qualification.
 
@@ -477,4 +486,6 @@ Ledger timestamp: 2026-08-02 America/New_York
   repository/evidence path.
 - **Future authority:** Any diagnostic export requires separately approved authentication, explicit
   consent, bounded retention, and private-artifact transport.
-- **Result:** Preregistered with `SEC-002`; expected-red pending; not exercised.
+- **Result:** Implemented with `SEC-002` in the source candidate represented by this record. Pure policy/config
+  coverage and the silent privacy gate passed without requesting, reading, fixtureing, printing, or
+  archiving wake PCM. Undeployed and physically unqualified; the risk remains open.

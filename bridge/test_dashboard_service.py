@@ -1,3 +1,4 @@
+import io
 import json
 import socket
 import sys
@@ -146,6 +147,74 @@ class DashboardRuntimeTests(unittest.TestCase):
         self.assertFalse(result["commandSent"] if "commandSent" in result else False)
         fetch.assert_not_called()
 
+    def test_motion_resume_policy_emergency_stop_only_disables_resume(self) -> None:
+        self.runtime._record_debug(
+            {
+                "network_state": "connected",
+                "bridge_state": "ready",
+                "debug_http_control_policy": "emergency_stop_only",
+            }
+        )
+
+        robot = self.runtime.status()["robot"]
+
+        self.assertFalse(robot.get("motionResumeAvailable", True))
+        self.assertEqual("emergency_stop_only", robot.get("motionResumePolicy"))
+
+    def test_motion_resume_policy_missing_unknown_malformed_and_stale_fail_closed(self) -> None:
+        for value in (None, "future_policy", 42):
+            runtime = DashboardRuntime(self.runtime.config)
+            if value is not None:
+                runtime._record_debug({"debug_http_control_policy": value})
+            robot = runtime.status()["robot"]
+            self.assertFalse(robot.get("motionResumeAvailable", True))
+            self.assertEqual("unknown", robot.get("motionResumePolicy"))
+
+        with patch("dashboard_service.time.monotonic", return_value=100.0):
+            runtime = DashboardRuntime(self.runtime.config)
+            runtime._record_debug({"debug_http_control_policy": "emergency_stop_only"})
+        with patch("dashboard_service.time.monotonic", return_value=115.0):
+            boundary_robot = runtime.status()["robot"]
+        self.assertFalse(boundary_robot.get("motionResumeAvailable", True))
+        self.assertEqual("emergency_stop_only", boundary_robot.get("motionResumePolicy"))
+        with patch("dashboard_service.time.monotonic", return_value=115.001):
+            stale_robot = runtime.status()["robot"]
+        self.assertFalse(stale_robot.get("motionResumeAvailable", True))
+        self.assertEqual("unknown", stale_robot.get("motionResumePolicy"))
+
+    def test_motion_resume_policy_refuses_before_robot_request(self) -> None:
+        self.runtime._record_debug({"debug_http_control_policy": "emergency_stop_only"})
+        blocked = {"debug_motion_accepted": False}
+        with (
+            patch.object(self.runtime, "_fetch_robot", return_value=blocked) as fetch,
+            patch("dashboard_service.time.sleep"),
+        ):
+            result = self.runtime.set_motion(True, "robot_clear")
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result.get("commandSent", True))
+        self.assertIn("emergency stop only", result.get("error", ""))
+        fetch.assert_not_called()
+
+    def test_fetch_robot_accepts_emergency_stop_admission_202(self) -> None:
+        class AcceptedResponse:
+            status = 202
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+            @staticmethod
+            def read(_limit):
+                return b'{"ok":true,"accepted":true}'
+
+        with patch("dashboard_service.urllib.request.urlopen", return_value=AcceptedResponse()):
+            result = self.runtime._fetch_robot("/motion-stop")
+
+        self.assertTrue(result["accepted"])
+
     def test_debug_status_distinguishes_running_host_vision(self) -> None:
         self.runtime._record_debug(
             {
@@ -196,6 +265,98 @@ class DashboardRuntimeTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         self.assertFalse(result["status"]["robot"]["motionEnabled"])
 
+    def test_stop_accepts_bounded_admission_response_and_verifies_state(self) -> None:
+        command = {"accepted": True}
+        stopped = {
+            "motion_enabled": False,
+            "servo_rail_enabled": False,
+            "servo_torque_enabled": False,
+        }
+        with patch.object(self.runtime, "_fetch_robot", side_effect=[command, stopped]) as fetch:
+            result = self.runtime.set_motion(False)
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["accepted"])
+        self.assertTrue(result["verified"])
+        self.assertEqual(2, fetch.call_count)
+        self.assertEqual("/motion-stop", fetch.call_args_list[0].args[0])
+        self.assertEqual("/debug", fetch.call_args_list[1].args[0])
+
+    def test_stop_remains_available_under_emergency_stop_only_policy(self) -> None:
+        self.runtime._record_debug(
+            {"debug_http_control_policy": "emergency_stop_only"}
+        )
+        command = {"accepted": True}
+        stopped = {
+            "motion_enabled": False,
+            "servo_rail_enabled": False,
+            "servo_torque_enabled": False,
+            "debug_http_control_policy": "emergency_stop_only",
+        }
+        with patch.object(self.runtime, "_fetch_robot", side_effect=[command, stopped]) as fetch:
+            result = self.runtime.set_motion(False)
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["accepted"])
+        self.assertTrue(result["verified"])
+        self.assertEqual(["/motion-stop", "/debug"], [call.args[0] for call in fetch.call_args_list])
+
+    def test_stop_rejects_false_missing_or_non_boolean_admission(self) -> None:
+        stopped = {
+            "motion_enabled": False,
+            "servo_rail_enabled": False,
+            "servo_torque_enabled": False,
+        }
+        for command in ({"accepted": False}, {}, {"accepted": "true"}):
+            with self.subTest(command=command):
+                with patch.object(
+                    self.runtime, "_fetch_robot", side_effect=[command, stopped]
+                ) as fetch:
+                    result = self.runtime.set_motion(False)
+
+                self.assertFalse(result["ok"])
+                self.assertFalse(result.get("accepted", True))
+                self.assertTrue(result["verified"])
+                self.assertEqual(2, fetch.call_count)
+                self.assertEqual("/motion-stop", fetch.call_args_list[0].args[0])
+                self.assertEqual("/debug", fetch.call_args_list[1].args[0])
+
+    def test_stop_parses_wire_503_rejection_and_still_verifies_state(self) -> None:
+        class DebugResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+            @staticmethod
+            def read(_limit):
+                return (
+                    b'{"motion_enabled":false,"servo_rail_enabled":false,'
+                    b'"servo_torque_enabled":false}'
+                )
+
+        rejected = urllib.error.HTTPError(
+            "http://192.168.1.238:8789/motion-stop",
+            503,
+            "Service Unavailable",
+            None,
+            io.BytesIO(b'{"ok":false,"accepted":false,"error":"control_disabled"}'),
+        )
+        with patch(
+            "dashboard_service.urllib.request.urlopen",
+            side_effect=[rejected, DebugResponse()],
+        ) as fetch:
+            result = self.runtime.set_motion(False)
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["commandSent"])
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["verified"])
+        self.assertEqual(2, fetch.call_count)
+
     def test_stop_does_not_claim_success_when_torque_remains_on(self) -> None:
         command = {"debug_motion_accepted": True}
         unsafe = {
@@ -213,36 +374,24 @@ class DashboardRuntimeTests(unittest.TestCase):
         self.assertFalse(result["verified"])
         self.assertIn("did not verify", result["error"])
 
-    def test_resume_calls_firmware_endpoint_and_verifies_state(self) -> None:
-        command = {"debug_motion_accepted": True}
-        enabled = {
-            "motion_enabled": True,
-            "servo_rail_enabled": True,
-            "servo_torque_enabled": True,
-        }
-        with patch.object(self.runtime, "_fetch_robot", side_effect=[command, enabled]) as fetch:
-            result = self.runtime.set_motion(True, "robot_clear")
-
-        self.assertTrue(result["ok"])
-        self.assertEqual("/motion-resume", fetch.call_args_list[0].args[0])
-        self.assertEqual("/debug", fetch.call_args_list[1].args[0])
-
-    def test_resume_does_not_claim_success_while_power_suppressed(self) -> None:
-        command = {"debug_motion_accepted": True}
-        suppressed = {
-            "motion_enabled": True,
-            "servo_rail_enabled": True,
-            "servo_torque_enabled": True,
-            "motion_power_suppressed": True,
-        }
-        with (
-            patch.object(self.runtime, "_fetch_robot", side_effect=[command] + [suppressed] * 6),
-            patch("dashboard_service.time.sleep"),
-        ):
+    def test_resume_without_supported_authority_never_calls_firmware_endpoint(self) -> None:
+        self.runtime._record_debug({"debug_http_control_policy": "future_policy"})
+        with patch.object(self.runtime, "_fetch_robot") as fetch:
             result = self.runtime.set_motion(True, "robot_clear")
 
         self.assertFalse(result["ok"])
-        self.assertFalse(result["verified"])
+        self.assertFalse(result.get("commandSent", True))
+        self.assertIn("emergency stop only", result.get("error", ""))
+        fetch.assert_not_called()
+
+    def test_resume_missing_policy_does_not_claim_success(self) -> None:
+        with patch.object(self.runtime, "_fetch_robot") as fetch:
+            result = self.runtime.set_motion(True, "robot_clear")
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result.get("commandSent", True))
+        self.assertFalse(result.get("verified", False))
+        fetch.assert_not_called()
 
     def test_awareness_controls_are_host_only_and_aggregate(self) -> None:
         policy = InitiativePolicy(

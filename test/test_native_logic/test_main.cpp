@@ -17,6 +17,7 @@
 #include "io/BridgeAudioUplink.hpp"
 #include "io/BridgeClient.hpp"
 #include "io/BridgeEndpointControl.hpp"
+#include "io/BridgeDebugHttpPolicy.hpp"
 #include "io/BridgeEndpointRegistry.hpp"
 #include "io/BridgeEndpointStore.hpp"
 #include "io/BridgeNetworkSession.hpp"
@@ -8084,8 +8085,314 @@ void test_bridge_endpoint_control_persists_pairing_and_forget_when_store_attache
   TEST_ASSERT_EQUAL_UINT32(3, store.telemetry().saves);
 }
 
+BridgeDebugHttpDecision evaluateDebugHttpFixture(const char* requestLine,
+                                                 bool lineComplete = true,
+                                                 bool lineOverflow = false,
+                                                 bool lineInvalid = false) {
+  char requestTarget[224] = {};
+  return evaluateBridgeDebugHttpRequestLine(
+      requestLine, lineComplete, lineOverflow, lineInvalid, requestTarget, sizeof(requestTarget));
+}
+
+void assertDebugHttpDecision(const char* requestLine,
+                             BridgeDebugHttpRoute expectedRoute,
+                             BridgeDebugHttpDisposition expectedDisposition,
+                             uint16_t expectedStatus) {
+  const BridgeDebugHttpDecision decision = evaluateDebugHttpFixture(requestLine);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(expectedRoute), static_cast<int>(decision.route));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(expectedDisposition),
+                        static_cast<int>(decision.disposition));
+  TEST_ASSERT_EQUAL_UINT16(expectedStatus, decision.statusCode);
+}
+
+void test_bridge_debug_http_policy_allows_only_operational_and_emergency_routes() {
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    assertDebugHttpDecision((std::string("GET / ") + version).c_str(),
+                            BridgeDebugHttpRoute::Root,
+                            BridgeDebugHttpDisposition::ServeStatus,
+                            200);
+    assertDebugHttpDecision((std::string("GET /debug ") + version).c_str(),
+                            BridgeDebugHttpRoute::Debug,
+                            BridgeDebugHttpDisposition::ServeDebug,
+                            200);
+    for (const char* method : {"GET", "POST"}) {
+      for (const char* route : {"/audio-stop", "/playback-stop"}) {
+        const std::string line = std::string(method) + " " + route + " " + version;
+        assertDebugHttpDecision(line.c_str(),
+                                BridgeDebugHttpRoute::AudioStop,
+                                BridgeDebugHttpDisposition::EmergencyAudioStop,
+                                202);
+      }
+      for (const char* route : {"/motion-stop", "/motion-off", "/servos-off"}) {
+        const std::string line = std::string(method) + " " + route + " " + version;
+        assertDebugHttpDecision(line.c_str(),
+                                BridgeDebugHttpRoute::MotionStop,
+                                BridgeDebugHttpDisposition::EmergencyMotionStop,
+                                202);
+      }
+    }
+  }
+
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    for (const char* route : {"/", "/debug"}) {
+      for (const char* method : {"POST", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS", "CUSTOM"}) {
+        const std::string line = std::string(method) + " " + route + " " + version;
+        const BridgeDebugHttpDecision decision = evaluateDebugHttpFixture(line.c_str());
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectMethod),
+                              static_cast<int>(decision.disposition));
+        TEST_ASSERT_EQUAL_UINT16(405, decision.statusCode);
+      }
+    }
+    for (const char* route : {"/audio-stop", "/playback-stop", "/motion-stop", "/motion-off",
+                              "/servos-off"}) {
+      for (const char* method : {"HEAD", "PUT", "DELETE", "PATCH", "OPTIONS", "CUSTOM"}) {
+        const std::string line = std::string(method) + " " + route + " " + version;
+        const BridgeDebugHttpDecision decision = evaluateDebugHttpFixture(line.c_str());
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectMethod),
+                              static_cast<int>(decision.disposition));
+        TEST_ASSERT_EQUAL_UINT16(405, decision.statusCode);
+      }
+    }
+
+    for (const char* route : {"/", "/debug", "/audio-stop", "/playback-stop", "/motion-stop",
+                              "/motion-off", "/servos-off"}) {
+      for (const char* method : {"GET", "POST"}) {
+        for (const char* query : {"?", "?probe=1"}) {
+          const std::string line = std::string(method) + " " + route + query + " " + version;
+          const BridgeDebugHttpDecision decision = evaluateDebugHttpFixture(line.c_str());
+          TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectBadRequest),
+                                static_cast<int>(decision.disposition));
+          TEST_ASSERT_EQUAL_UINT16(400, decision.statusCode);
+        }
+      }
+    }
+  }
+}
+
+void test_bridge_debug_http_policy_rejects_unsafe_aliases_for_every_supported_method_and_query() {
+  const char* unsafeRoutes[] = {
+      "/tone",         "/speaker-test", "/mic-tone",      "/mic-tone-soft",
+      "/mic-tone-tap", "/mic-tone-old", "/wake-reset",    "/motion-resume",
+      "/motion-on",    "/servos-on",    "/recover",       "/bridge-recover",
+      "/wifi-recover", "/reboot",       "/restart",       "/reset",
+      "/wake.wav",     "/wake-pcm.wav",
+  };
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    for (const char* route : unsafeRoutes) {
+      for (const char* method : {"GET", "POST", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS",
+                                 "CUSTOM"}) {
+        for (const char* suffix : {"", "?", "?probe=1", "?x=1&y=2"}) {
+          const std::string line =
+              std::string(method) + " " + route + suffix + " " + version;
+          const BridgeDebugHttpDecision decision = evaluateDebugHttpFixture(line.c_str());
+          TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectForbidden),
+                                static_cast<int>(decision.disposition));
+          TEST_ASSERT_EQUAL_UINT16(403, decision.statusCode);
+        }
+      }
+    }
+  }
+}
+
+void test_bridge_debug_http_policy_rejects_malformed_and_near_match_requests() {
+  for (const char* malformed : {"", " GET / HTTP/1.1", "GET /", "GET  / HTTP/1.1",
+                                "get / HTTP/1.1", "GET / HTTP/1.2", "GET / HTTP/1.1 extra",
+                                "GET http://robot/ HTTP/1.1", "GET /\x01 HTTP/1.1",
+                                "GET / HTTP/1.1 ", "GET\t/ HTTP/1.1", "GET /\tHTTP/1.1",
+                                "GET / HTTP/1.0 ", "GET\t/ HTTP/1.0", "GET /\tHTTP/1.0",
+                                "GET / HTTP/1.0 extra",
+                                "GE\x01T / HTTP/1.1", "GET / HTTP/1.\x01",
+                                "GET / HTTP/1.1\x7f",
+                                "METHODNAMELONGERTHANSIXTEEN / HTTP/1.1"}) {
+    const BridgeDebugHttpDecision decision = evaluateDebugHttpFixture(malformed);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectBadRequest),
+                          static_cast<int>(decision.disposition));
+    TEST_ASSERT_EQUAL_UINT16(400, decision.statusCode);
+  }
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    for (const std::string& malformed : {
+             std::string(" GET / ") + version,
+             std::string("GET  / ") + version,
+             std::string("get / ") + version,
+             std::string("GET / ") + version + " ",
+             std::string("GET\t/ ") + version,
+             std::string("GET /\t") + version,
+             std::string("GE\x01T / ") + version,
+             std::string("GET /\x01 ") + version,
+             std::string("GET / ") + version + "\x7f",
+         }) {
+      const BridgeDebugHttpDecision decision = evaluateDebugHttpFixture(malformed.c_str());
+      TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectBadRequest),
+                            static_cast<int>(decision.disposition));
+      TEST_ASSERT_EQUAL_UINT16(400, decision.statusCode);
+    }
+  }
+  const BridgeDebugHttpDecision incomplete =
+      evaluateDebugHttpFixture("GET / HTTP/1.1", false, false);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectBadRequest),
+                        static_cast<int>(incomplete.disposition));
+  TEST_ASSERT_EQUAL_UINT16(400, incomplete.statusCode);
+  const BridgeDebugHttpDecision overflow =
+      evaluateDebugHttpFixture("GET / HTTP/1.1", true, true);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectUriTooLong),
+                        static_cast<int>(overflow.disposition));
+  TEST_ASSERT_EQUAL_UINT16(414, overflow.statusCode);
+  for (const char* admittedPrefix : {"GET / HTTP/1.0", "GET /debug HTTP/1.1"}) {
+    const BridgeDebugHttpDecision invalidCapture =
+        evaluateDebugHttpFixture(admittedPrefix, true, false, true);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectBadRequest),
+                          static_cast<int>(invalidCapture.disposition));
+    TEST_ASSERT_EQUAL_UINT16(400, invalidCapture.statusCode);
+  }
+
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    for (const char* badQuery : {"/?probe=1", "/debug?probe=1",
+                                 "/motion-stop?probe=1", "/not-a-route?probe=1"}) {
+      const std::string line = std::string("GET ") + badQuery + " " + version;
+      assertDebugHttpDecision(line.c_str(),
+                              BridgeDebugHttpRoute::Unknown,
+                              BridgeDebugHttpDisposition::RejectBadRequest,
+                              400);
+    }
+    for (const char* nearPath : {"/debug/", "/motion-stop-extra", "/motion-sto",
+                                 "/motion-stop#fragment", "/%6dotion-stop", "/x/debug",
+                                 "/x/motion-stop", "/x/motion-resume"}) {
+      const std::string line = std::string("GET ") + nearPath + " " + version;
+      assertDebugHttpDecision(line.c_str(),
+                              BridgeDebugHttpRoute::Unknown,
+                              BridgeDebugHttpDisposition::RejectNotFound,
+                              404);
+    }
+  }
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    for (const char* method : {"GET", "POST", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS",
+                               "CUSTOM"}) {
+      const std::string line = std::string(method) + " /not-a-route " + version;
+      assertDebugHttpDecision(line.c_str(),
+                              BridgeDebugHttpRoute::Unknown,
+                              BridgeDebugHttpDisposition::RejectNotFound,
+                              404);
+    }
+  }
+
+  for (const char* allowedPath : {"/", "/debug", "/audio-stop", "/playback-stop",
+                                  "/motion-stop", "/motion-off", "/servos-off"}) {
+    for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+      for (const char* nearSuffix : {"/", "#fragment", "-extra"}) {
+        const std::string line =
+            std::string("GET ") + allowedPath + nearSuffix + " " + version;
+        const BridgeDebugHttpDecision decision = evaluateDebugHttpFixture(line.c_str());
+        TEST_ASSERT_TRUE(decision.disposition != BridgeDebugHttpDisposition::ServeStatus);
+        TEST_ASSERT_TRUE(decision.disposition != BridgeDebugHttpDisposition::ServeDebug);
+        TEST_ASSERT_TRUE(decision.disposition != BridgeDebugHttpDisposition::EmergencyAudioStop);
+        TEST_ASSERT_TRUE(decision.disposition != BridgeDebugHttpDisposition::EmergencyMotionStop);
+      }
+    }
+  }
+
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    const std::string maximumTarget = "/" + std::string(222, 'a');
+    const BridgeDebugHttpDecision maximumDecision = evaluateDebugHttpFixture(
+        ("GET " + maximumTarget + " " + version).c_str());
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectNotFound),
+                          static_cast<int>(maximumDecision.disposition));
+    TEST_ASSERT_EQUAL_UINT16(404, maximumDecision.statusCode);
+
+    const std::string oversizedTarget = "/" + std::string(223, 'a');
+    const BridgeDebugHttpDecision oversizedDecision = evaluateDebugHttpFixture(
+        ("GET " + oversizedTarget + " " + version).c_str());
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectUriTooLong),
+                          static_cast<int>(oversizedDecision.disposition));
+    TEST_ASSERT_EQUAL_UINT16(414, oversizedDecision.statusCode);
+  }
+}
+
+void test_bridge_debug_http_policy_preserves_paired_camera_family_dispatch() {
+  constexpr const char* kGrayTarget = "/camera-gray.pgm?p=000000";
+  constexpr const char* kVisionTarget = "/vision-target?p=000000&f=";
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    for (const char* target : {"/camera-gray.pgm", "/vision-target"}) {
+      for (const char* method : {"GET", "POST", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS",
+                                 "CUSTOM"}) {
+        const std::string line = std::string(method) + " " + target + " " + version;
+        assertDebugHttpDecision(line.c_str(),
+                                BridgeDebugHttpRoute::Unknown,
+                                BridgeDebugHttpDisposition::RejectNotFound,
+                                404);
+      }
+    }
+  }
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    for (const char* target : {kGrayTarget, kVisionTarget}) {
+      char returnedTarget[224] = {};
+      const std::string line = std::string("GET ") + target + " " + version;
+      const BridgeDebugHttpDecision decision = evaluateBridgeDebugHttpRequestLine(
+          line.c_str(), true, false, false, returnedTarget, sizeof(returnedTarget));
+      TEST_ASSERT_TRUE(std::strcmp(target, returnedTarget) == 0);
+      TEST_ASSERT_TRUE(
+          (std::strcmp(target, kGrayTarget) == 0 && decision.route == BridgeDebugHttpRoute::CameraGray &&
+           decision.disposition == BridgeDebugHttpDisposition::CameraGray) ||
+          (std::strcmp(target, kVisionTarget) == 0 && decision.route == BridgeDebugHttpRoute::CameraVision &&
+           decision.disposition == BridgeDebugHttpDisposition::CameraVision));
+      TEST_ASSERT_EQUAL_UINT16(0, decision.statusCode);
+    }
+  }
+  char parsedPairing[7] = {};
+  TEST_ASSERT_TRUE(parseCameraHostPairingCode(
+      kGrayTarget, "/camera-gray.pgm", parsedPairing, sizeof(parsedPairing)));
+  CameraHostVisionTarget parsedVision;
+  TEST_ASSERT_TRUE(parseCameraHostVisionTarget(kVisionTarget, &parsedVision));
+
+  for (const char* version : {"HTTP/1.0", "HTTP/1.1"}) {
+    assertDebugHttpDecision((std::string("GET /camera-gray.pgm?malformed ") + version).c_str(),
+                            BridgeDebugHttpRoute::CameraGray,
+                            BridgeDebugHttpDisposition::CameraGray,
+                            0);
+    assertDebugHttpDecision((std::string("GET /vision-target?malformed ") + version).c_str(),
+                            BridgeDebugHttpRoute::CameraVision,
+                            BridgeDebugHttpDisposition::CameraVision,
+                            0);
+    for (const char* target : {kGrayTarget, kVisionTarget, "/camera-gray.pgm?malformed",
+                               "/vision-target?malformed"}) {
+      for (const char* method : {"POST", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS", "CUSTOM"}) {
+        const std::string line = std::string(method) + " " + target + " " + version;
+        const BridgeDebugHttpDecision decision = evaluateDebugHttpFixture(line.c_str());
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectMethod),
+                              static_cast<int>(decision.disposition));
+        TEST_ASSERT_EQUAL_UINT16(405, decision.statusCode);
+      }
+    }
+  }
+}
+
+void test_bridge_debug_http_policy_does_not_return_raw_denied_target_or_query() {
+  char returnedTarget[224];
+  std::memset(returnedTarget, 'x', sizeof(returnedTarget));
+  returnedTarget[sizeof(returnedTarget) - 1] = '\0';
+  const BridgeDebugHttpDecision decision = evaluateBridgeDebugHttpRequestLine(
+      "GET /motion-resume?sentinel_do_not_emit=1 HTTP/1.1",
+      true,
+      false,
+      false,
+      returnedTarget,
+      sizeof(returnedTarget));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(BridgeDebugHttpDisposition::RejectForbidden),
+                        static_cast<int>(decision.disposition));
+  TEST_ASSERT_TRUE(returnedTarget[0] == '\0');
+  TEST_ASSERT_TRUE(std::strstr(bridgeDebugHttpMethodName(decision.method), "sentinel") == nullptr);
+  TEST_ASSERT_TRUE(std::strstr(bridgeDebugHttpRouteName(decision.route), "sentinel") == nullptr);
+  TEST_ASSERT_TRUE(
+      std::strstr(bridgeDebugHttpDispositionName(decision.disposition), "sentinel") == nullptr);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_bridge_debug_http_policy_allows_only_operational_and_emergency_routes);
+  RUN_TEST(test_bridge_debug_http_policy_rejects_unsafe_aliases_for_every_supported_method_and_query);
+  RUN_TEST(test_bridge_debug_http_policy_rejects_malformed_and_near_match_requests);
+  RUN_TEST(test_bridge_debug_http_policy_preserves_paired_camera_family_dispatch);
+  RUN_TEST(test_bridge_debug_http_policy_does_not_return_raw_denied_target_or_query);
   RUN_TEST(test_spring_converges_without_exploding);
   RUN_TEST(test_dt_clamp_limits_large_step);
   RUN_TEST(test_wake_word_increases_arousal_and_focus);
