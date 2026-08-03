@@ -16,6 +16,8 @@ $workflowPath = Join-Path $repoRoot ".github/workflows/firmware.yml"
 $proofContractPath = Join-Path $repoRoot "tools/test_firmware_reproducibility_proof_contract.ps1"
 $failureContractPath = Join-Path $repoRoot "tools/test_firmware_reproducibility_failure_contract.ps1"
 $verifierTrustContractPath = Join-Path $repoRoot "tools/test_release_package_verifier_trust_contract.ps1"
+$selectorPolicyContractPath = Join-Path $repoRoot "tools/test_release_ota_selector_policy_contract.ps1"
+$flashSnapshotContractPath = Join-Path $repoRoot "tools/test_release_flash_snapshot_contract.ps1"
 $sourceBindingContractPath = Join-Path $repoRoot "tools/test_release_source_binding_contract.ps1"
 $dependencyEvidenceContractPath = Join-Path $repoRoot "tools/test_release_dependency_evidence_contract.ps1"
 $issues = New-Object 'System.Collections.Generic.List[string]'
@@ -153,6 +155,14 @@ if ($LASTEXITCODE -ne 0) {
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifierTrustContractPath
 if ($LASTEXITCODE -ne 0) {
   $issues.Add("verifier-trust-contract-failed: exit $LASTEXITCODE")
+}
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selectorPolicyContractPath
+if ($LASTEXITCODE -ne 0) {
+  $issues.Add("release-ota-selector-policy-contract-failed: exit $LASTEXITCODE")
+}
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $flashSnapshotContractPath
+if ($LASTEXITCODE -ne 0) {
+  $issues.Add("release-flash-snapshot-contract-failed: exit $LASTEXITCODE")
 }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sourceBindingContractPath
 if ($LASTEXITCODE -ne 0) {
@@ -342,6 +352,9 @@ $m0GovernanceTools = @(
   "tools/release_dependency_evidence.ps1",
   "tools/test_release_dependency_evidence_contract.ps1",
   "tools/release_git_trust.ps1",
+  "tools/release_ota_selector_policy.ps1",
+  "tools/test_release_ota_selector_policy_contract.ps1",
+  "tools/test_release_flash_snapshot_contract.ps1",
   "tools/test_release_package_verifier_trust_contract.ps1",
   "tools/test_release_source_binding_contract.ps1",
   "tools/release_zip_safety.ps1",
@@ -532,7 +545,7 @@ foreach ($marker in @(
 foreach ($marker in @(
   "verified-two-clean-cycles",
   "not-proven-skip-build",
-  "Firmware reproducibility proof must contain 12 artifacts per cycle",
+  "Firmware reproducibility proof must contain 15 artifacts per cycle",
   "Packaged artifact does not match reproducibility cycle B",
   "Firmware reproducibility proof clock boundary is inconsistent",
   "expectedProofKeys",

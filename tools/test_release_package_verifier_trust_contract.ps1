@@ -15,8 +15,10 @@ if ($verifyText.Contains('Release package verified:') -or
 }
 $zipSafetyPath = Join-Path $PSScriptRoot 'release_zip_safety.ps1'
 $gitTrustPath = Join-Path $PSScriptRoot 'release_git_trust.ps1'
+$selectorPolicyPath = Join-Path $PSScriptRoot 'release_ota_selector_policy.ps1'
 $zipSafetyText = Get-Content -LiteralPath $zipSafetyPath -Raw
 $gitTrustText = Get-Content -LiteralPath $gitTrustPath -Raw
+$selectorPolicyText = Get-Content -LiteralPath $selectorPolicyPath -Raw
 
 function Test-WithinFunctionDefinition {
   param([System.Management.Automation.Language.Ast]$Ast)
@@ -468,13 +470,13 @@ if ($operationalRebuildFunctions.Count -ne 1) {
 $operationalRebuild = $operationalRebuildFunctions[0]
 $operationalRebuildText = $operationalRebuild.Extent.Text
 $expectedOperationalArtifacts = @(
-  'firmware.bin', 'firmware.elf', 'bootloader.bin', 'partitions.bin'
+  'firmware.bin', 'firmware.elf', 'bootloader.bin', 'partitions.bin', 'boot_app0.bin'
 )
 $operationalArtifactArrays = @($operationalRebuild.FindAll({
   param($node)
   if ($node -isnot [System.Management.Automation.Language.ArrayExpressionAst]) { return $false }
   $values = @(Get-DirectStringArrayValues -Ast $node)
-  return ($values.Count -eq 4 -and $values -contains 'firmware.bin')
+  return ($values.Count -eq 5 -and $values -contains 'firmware.bin')
 }, $true))
 if ($operationalArtifactArrays.Count -ne 1) {
   throw 'Operational rebuild must define one exact fresh-build artifact inventory'
@@ -483,7 +485,7 @@ foreach ($artifactArray in $operationalArtifactArrays) {
   $values = @(Get-DirectStringArrayValues -Ast $artifactArray)
   if ((Compare-Object -ReferenceObject $expectedOperationalArtifacts `
       -DifferenceObject $values -CaseSensitive).Count -ne 0) {
-    throw "Operational rebuild artifact inventory is not the exact four-file set: $($values -join ', ')"
+    throw "Operational rebuild artifact inventory is not the exact five-file set: $($values -join ', ')"
   }
 }
 
@@ -492,6 +494,9 @@ foreach ($requiredRebuildMarker in @(
   "[ordered]@{ environment = 'stackchan_servo_calibration'; packageDir = 'servo_calibration'; coreDir = `$defaultCoreDir }",
   "[ordered]@{ environment = 'stackchan_release_full'; packageDir = 'full_online'; coreDir = `$releaseCoreDir }",
   '`$packageRelative = "firmware/`$([string]`$spec.packageDir)/`$artifact"',
+  'Assert-StackchanReleaseFrameworkOtaSelector',
+  'Get-StackchanReleaseOtaSelectorPolicy',
+  'Two-cycle proof does not match reviewed OTA selector authority:',
   "Get-Command -Name `$pioExecutable -CommandType Application",
   "`$pioVersion -cne 'PlatformIO Core, version 6.1.19'",
   '[string]$dependencyLock.platformioCore -cne $pioVersion',
@@ -635,6 +640,19 @@ foreach ($required in @(
     throw "Trusted Git contract is missing: $required"
   }
 }
+foreach ($required in @(
+  'stackchan.release-ota-selector-policy.v1',
+  '3.20017.241212+sha.dcc1105b',
+  '3.3.6',
+  'tools/partitions/boot_app0.bin',
+  'F94C5D786A7A8FAB06AC5D10E33BF37711A6697636DC037559EA19CC410A17F0',
+  'ReparsePoint',
+  'FileShare]::Read'
+)) {
+  if (-not $selectorPolicyText.Contains($required)) {
+    throw "Release OTA selector authority contract is missing: $required"
+  }
+}
 foreach ($relative in @(
   'verify_release_package.ps1',
   'verify_consumer_promotion.ps1',
@@ -735,11 +753,12 @@ foreach ($spec in $directEligibilitySpecs) {
   $priorInvocations = if ($operationalInvocations.ContainsKey($spec.file)) {
     @($operationalInvocations[$spec.file])
   } else { @() }
-  $operationalInvocations[$spec.file] = @($priorInvocations + $invocations)
+  $operationalInvocations[$spec.file] = @(@($priorInvocations) + @($invocations))
 }
 
 $arrayEligibilitySpecs = @(
   [pscustomobject]@{ file = 'flash_release_firmware.ps1'; variable = 'verifyArgs'; command = 'powershell.exe'; count = 1 },
+  [pscustomobject]@{ file = 'flash_release_firmware.ps1'; variable = 'snapshotVerifyArgs'; command = 'powershell.exe'; count = 1 },
   [pscustomobject]@{ file = 'start_hardware_evidence.ps1'; variable = 'verifyArgs'; command = 'powershell.exe'; count = 2 },
   [pscustomobject]@{ file = 'run_device_preflight.ps1'; variable = 'earlyVerifyArgs'; command = 'powershell.exe'; count = 1 },
   [pscustomobject]@{ file = 'export_rollout_status.ps1'; variable = 'packageVerifyArguments'; command = 'Invoke-ToolCapture'; count = 1 }
@@ -788,7 +807,51 @@ foreach ($spec in $arrayEligibilitySpecs) {
   $priorInvocations = if ($operationalInvocations.ContainsKey($spec.file)) {
     @($operationalInvocations[$spec.file])
   } else { @() }
-  $operationalInvocations[$spec.file] = @($priorInvocations + $invocations)
+  $operationalInvocations[$spec.file] = @(@($priorInvocations) + @($invocations))
+}
+
+$flashReleaseText = [string]$operationalTexts['flash_release_firmware.ps1']
+foreach ($selectorMarker in @(
+    '$otaSelector = Join-Path $firmwareDir "boot_app0.bin"',
+    'Packaged OTA selector must be exactly 8192 bytes.',
+    'Assert-StackchanReleaseOtaSelectorBytes',
+    'Copy-ReleaseZipSnapshot',
+    '$snapshotLock = Copy-ReleaseZipSnapshot',
+    '$snapshotZip.sha256',
+    '$snapshotLock.Dispose()',
+    'Private release ZIP snapshot failed eligibility verification.',
+    'Get-LockedReleaseZipChecksumRecords',
+    '$checksumRecords = Get-LockedReleaseZipChecksumRecords -SnapshotStream $snapshotLock',
+    "[string]`$_.FullName -ceq 'SHA256SUMS.txt'",
+    'Add-Type -AssemblyName System.IO.Compression',
+    'Flash payload changed after snapshot verification:',
+    'FileShare]::Read',
+    'Get-ReleaseFlashWriteArguments')) {
+  if (-not $flashReleaseText.Contains($selectorMarker)) {
+    throw "Release flasher does not fail closed over the packaged OTA selector: $selectorMarker"
+  }
+}
+$flashAst = $operationalAsts['flash_release_firmware.ps1']
+$flashArgumentFunctions = @($flashAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Get-ReleaseFlashWriteArguments'
+}, $true))
+if ($flashArgumentFunctions.Count -ne 1) {
+  throw 'Release flasher must define exactly one pure flash-write argument helper.'
+}
+$semanticProbe = [scriptblock]::Create(
+  $flashArgumentFunctions[0].Extent.Text + "`n" +
+  "Get-ReleaseFlashWriteArguments -Bootloader BOOT -Partitions PART -OtaSelector OTA -FirmwareBin APP")
+$actualFlashPairs = @(& $semanticProbe)
+$expectedFlashPairs = @('0x0', 'BOOT', '0x8000', 'PART', '0xe000', 'OTA', '0x10000', 'APP')
+if ($actualFlashPairs.Count -ne $expectedFlashPairs.Count) {
+  throw 'Release flasher returned an unexpected number of address/payload arguments.'
+}
+for ($index = 0; $index -lt $expectedFlashPairs.Count; $index++) {
+  if ([string]$actualFlashPairs[$index] -cne [string]$expectedFlashPairs[$index]) {
+    throw "Release flasher address/payload pair mismatch at index $index."
+  }
 }
 
 $shareFile = 'share_release.ps1'
@@ -1549,6 +1612,7 @@ if (-not [string]::IsNullOrWhiteSpace($BehaviorFixtureRoot)) {
       'tools/release_zip_safety.ps1',
       'tools/release_dependency_evidence.ps1',
       'tools/release_git_trust.ps1',
+      'tools/release_ota_selector_policy.ps1',
       'tools/preview_python_resolver.ps1',
       'tools/verify_voice_samples.ps1',
       'tools/verify_tracked_rvc_assets.ps1',

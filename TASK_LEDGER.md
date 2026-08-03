@@ -115,15 +115,20 @@ Ledger timestamp: 2026-08-03 America/New_York
   digest regions; this is the accepted expected-red evidence. PR #218 was reviewed read-only and
   will not be merged or cherry-picked because its hook inheritance, override handling, dirty-tree
   detection, and unrelated bridge-test change do not meet this gate. The public boot-motion
-  prerequisite is now committed at `b5ea5c5f`. The dirty working tree implements deterministic
-  inputs, source/dependency/toolchain analysis, safe packaging/verification, and hardened
-  publication paths. Diagnostic v8 is expressly dirty, diagnostic-only, non-release-eligible,
+  prerequisite is committed at `b5ea5c5f`. The deterministic input, source/dependency/toolchain,
+  safe packaging/verification, publication, consumer, and CI corrections are committed through
+  `3bf07730` and published on draft PR #220 with all checks green. The current selector-authority
+  slice binds one exact `boot_app0.bin` per firmware environment to reviewed framework identity,
+  size, and SHA-256; makes the release flasher write it at `0xE000` from locked, second-verified
+  snapshot bytes; and locks/verifies standalone publication assets. Diagnostic v13 proved the
+  five-file package inventory and selector address order while remaining expressly dirty,
+  diagnostic-only, non-release-eligible,
   non-flashable, and not reproducibility proof. No reviewed toolchain allowlist exists; fresh
   canonical dependency evidence covers only `stackchan`; PostBuild/candidate generation and every
   release-grade/eligibility path therefore remain fail closed. No reproducibility or hardware
   claim is earned yet.
-- **Commit:** Boot-motion prerequisite `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`;
-  M0-004 implementation commit pending final verification and state reconciliation.
+- **Commit:** Release-governance head `3bf07730960cbbcfd502c0157434abb157ee1cc8`;
+  OTA-selector-authority slice pending commit after full regression and review.
 - **Decision:** Continue the atomic governance slice, but do not mark it complete or generate an
   eligible package until command/toolchain authority, all three clean environments, and independent
   review are actually closed.
@@ -160,15 +165,15 @@ Ledger timestamp: 2026-08-03 America/New_York
 
 ## M0-STATE-TRUTH — Reconcile Governance And Recovery Evidence
 
-- **Problem:** The committed boot-motion correction, dirty M0 implementation, diagnostic package,
+- **Problem:** The committed boot-motion/governance correction, current selector slice, diagnostic package,
   private firmware backup, and historical deployment prose could be read as one transferable
   release or physical identity.
 - **User-facing consequence:** A diagnostic ZIP or backup-time observation could be flashed,
   published, or cited as current qualification without a clean source/toolchain/device binding.
-- **Evidence:** HEAD `b5ea5c5f`; dirty M0 worktree; diagnostic v8 manifest with release/flash/
-  hardware eligibility false; verified private three-read backup; backup-time `app0` selection with
-  unknown source mapping; repeated `/debug` timeouts; matching CoreS3 PnP identity present on COM4
-  without opening serial.
+- **Evidence:** committed head `3bf07730`; diagnostic v13 manifest with release/flash/hardware/
+  distribution eligibility false; verified private three-read backup; backup-time `app0` selection
+  with unknown source mapping; fresh intermittent `/debug` successes/timeouts; matching CoreS3 PnP
+  identity present on COM4 without opening serial.
 - **Priority:** P0 documentation and recovery truth before commit.
 - **Owner:** `/root`, with independent read-only Luna state audit.
 - **Allowed files:** `PROJECT_STATE.md`, `TASK_LEDGER.md`, `docs/FIRST_DEPLOY_STATUS.md`, and
@@ -181,10 +186,14 @@ Ledger timestamp: 2026-08-03 America/New_York
   whitespace checks pass.
 - **Stop conditions:** Any update would expose private backup content, infer a current application
   from USB/network absence or presence, strengthen historical evidence, or authorize restore/flash.
-- **Result:** Complete. State reconciliation records the committed correction, fail-closed M0
-  status, verified backup limits, current COM4 enumeration, continued debug unavailability, and no
-  serial/control/flash/motion action. Independent read-only review found no remaining identity,
-  qualification, historical-evidence, or recovery-authority contradiction.
+- **Result:** Complete for the latest snapshot. State reconciliation records the committed
+  governance head, fail-closed M0 status, verified backup limits, current COM4 enumeration, and
+  recovered intermittent debug. The live firmware self-reports confirmed `app0` and expected
+  `69d3db27...8ebfa8`, while independent current bytes remain unproven. Runtime motion, rail,
+  torque, and power authorities were off, but the installed image reports both motion and
+  autonomous motion enabled at boot. No serial/control/flash/motion action occurred. Independent
+  read-only review preserved the distinction between live self-report, backup extraction, source,
+  package, and physical qualification.
 - **Commit:** Pending with the atomic M0 governance slice.
 - **Decision:** Accept the reconciliation while keeping release and hardware promotion on hold;
   the backup remains recovery evidence only.

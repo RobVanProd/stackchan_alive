@@ -97,8 +97,8 @@ function Assert-StackchanFirmwareReproducibilityProof {
 
   $cycleAArtifacts = @($Proof.cycleAArtifacts)
   $cycleBArtifacts = @($Proof.cycleBArtifacts)
-  if ($cycleAArtifacts.Count -ne 12 -or $cycleBArtifacts.Count -ne 12) {
-    throw "Firmware reproducibility proof must contain 12 artifacts per cycle"
+  if ($cycleAArtifacts.Count -ne 15 -or $cycleBArtifacts.Count -ne 15) {
+    throw "Firmware reproducibility proof must contain 15 artifacts per cycle"
   }
   $packageFirmwareRoots = @{
     stackchan = "firmware/display_only"
@@ -109,12 +109,12 @@ function Assert-StackchanFirmwareReproducibilityProof {
   $packageRootPrefix = $packageRootPath + [System.IO.Path]::DirectorySeparatorChar
   $expectedProofKeys = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
   foreach ($expectedEnvironment in @($packageFirmwareRoots.Keys)) {
-    foreach ($expectedArtifact in @("firmware.bin", "firmware.elf", "bootloader.bin", "partitions.bin")) {
+    foreach ($expectedArtifact in @("firmware.bin", "firmware.elf", "bootloader.bin", "partitions.bin", "boot_app0.bin")) {
       [void]$expectedProofKeys.Add("$expectedEnvironment/$expectedArtifact")
     }
   }
   $seenProofKeys = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
-  for ($artifactIndex = 0; $artifactIndex -lt 12; $artifactIndex++) {
+  for ($artifactIndex = 0; $artifactIndex -lt 15; $artifactIndex++) {
     $left = $cycleAArtifacts[$artifactIndex]
     $right = $cycleBArtifacts[$artifactIndex]
     if ($left.environment -cne $right.environment -or

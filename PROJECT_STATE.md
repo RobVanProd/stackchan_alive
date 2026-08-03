@@ -19,13 +19,21 @@ Qualification audit found that the preserved `4d31de41` public full image
 autonomous refresh at boot. That package remains immutable historical evidence and is superseded
 for physical qualification. The selected correction keeps the public full profile motion-off at
 boot and explicitly disables autonomous boot refresh; it is committed as
-`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. Release-governance changes after that commit remain an
-uncommitted working-tree experiment. Diagnostic packaging is available, but release-grade
+`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. Release-governance changes through `3bf07730` are
+committed and published on draft PR #220. Diagnostic packaging is available, but release-grade
 packaging and release-eligible verification currently fail closed because no reviewed exact
-toolchain allowlist exists. The clean reproducible replacement image, OTA-selector-safe install
-path, passive no-motion runner, rollback proof, and physical qualification are still pending.
-Repeated bounded live `/debug` probes were unavailable, so current actuator state and installed
-application identity are unknown; USB enumeration and ping observations do not close that gap.
+toolchain allowlist exists. The current uncommitted selector-authority slice binds per-environment
+`boot_app0.bin` bytes to reviewed framework identity/size/SHA-256, closes flash and publication
+reopen races, and writes the selector at `0xE000`; its diagnostic v13 rehearsal passed. The clean
+reproducible replacement image, rollback proof, and
+physical qualification are still pending.
+
+Fresh bounded `/debug` evidence now shows the live runtime request, autonomous state, motion, servo
+rail, torque, and both power authorities off. Firmware self-reports confirmed `app0` and expected
+SHA `69d3db27...8ebfa8`, but this is not independent current flash-byte identity. The installed image
+also reports motion and autonomous motion enabled at boot, so it is not the P1 no-motion candidate.
+No bridge/RVC process or relevant local listener was present; intermittent debug timeouts recovered
+with increasing uptime and unchanged `boot_count=1` and are not classified as a robot freeze.
 
 The requested human/dog/cat following, natural naming/removal, and personality-shaped emotional
 motion work is now a separate design-only lane in
@@ -39,10 +47,11 @@ dimensional projection behind controlled-source final-actuator and physical-safe
 
 - Repository: `RobVanProd/stackchan_alive`
 - Working branch: `codex/aliveness-repository-truth`
-- Current committed firmware/source correction: `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`
-  (`fix: keep public release motion off at boot`).
-- Current release-governance/toolchain worktree: dirty and uncommitted; it must not be described as
-  the identity of a clean package or installed image.
+- Current committed release-governance head: `3bf07730960cbbcfd502c0157434abb157ee1cc8`
+  (`ci: isolate compiler normalization probe`), including the firmware source correction at
+  `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`.
+- Current worktree: dirty only for the OTA-selector-authority/install/publication slice and completed evidence
+  reconciliation; it must not be described as a clean package or installed image until committed.
 - HTTP-containment contract-scope maintenance commit (test file only):
   `aa7dfb9ca077704dca84bc5635fbb2142e13e47c`
 - Separate package prerequisite commit:
@@ -66,9 +75,12 @@ switched because live services use that checkout. Milestone 0 work uses the isol
 
 Selected experiment: `M0-004`, exact-source reproducible firmware and release-command governance.
 
-- **Observed behavior:** The boot-motion prerequisite is committed at `b5ea5c5f`, but the current
-  release-governance tree is dirty. The diagnostic v8 package is explicitly dirty, diagnostic-only,
-  non-release-eligible, non-flashable, and does not prove firmware reproducibility. No tracked
+- **Observed behavior:** The boot-motion prerequisite and release-governance slice are committed
+  through `3bf07730`; the current dirty slice is limited to selector-authority packaging/install,
+  publication integrity, and state reconciliation. Diagnostic v13 is explicitly dirty,
+  diagnostic-only, non-release-eligible,
+  non-flashable, and does not prove firmware reproducibility. It contains three exact 8,192-byte
+  selectors and the operational flasher rejects it before flash preparation. No tracked
   reviewed toolchain allowlist exists. Fresh canonical dependency evidence covers only the
   `stackchan` environment, and the current Git/runtime and packed-object semantics are not fully
   byte-authorized.
@@ -86,8 +98,8 @@ Selected experiment: `M0-004`, exact-source reproducible firmware and release-co
   Do not create or promote an allowlist from the same untrusted host evidence. PostBuild and
   candidate generation remain disabled until all three environments and the remaining Git/runtime
   semantics have independent authority.
-- **Frozen baseline:** Committed source `b5ea5c5f`, the contained production bridge, installed
-  firmware of unknown SHA-256, the verified private backup, voice/vision/model workers, OTA and
+- **Frozen baseline:** Committed source/governance head `3bf07730`, the contained production bridge,
+  installed firmware with only self-reported expected SHA `69d3db27...8ebfa8`, the verified private backup, voice/vision/model workers, OTA and
   camera authorization, automatic recovery, the 50 ms face gate, actuator ownership, and all
   physical evidence.
 - **Rollback:** Revert only the eventual atomic M0 governance commit if a frozen invariant

@@ -210,7 +210,8 @@ function Assert-ReleaseBootstrapTrust {
     'tools/platformio_resolver.ps1', 'tools/preview_python_resolver.ps1',
     'tools/release_asset_contract.ps1', 'tools/firmware_reproducibility_failure.ps1',
     'tools/release_source_binding.ps1', 'tools/release_dependency_evidence.ps1',
-    'tools/release_git_trust.ps1', 'tools/check_release_credential_hygiene.ps1'
+    'tools/release_git_trust.ps1', 'tools/release_ota_selector_policy.ps1',
+    'tools/check_release_credential_hygiene.ps1'
   )
   foreach ($relative in $bootstrapFiles) {
     $indexRecord = @(Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
@@ -468,6 +469,7 @@ if ($LASTEXITCODE -ne 0) {
 . (Join-Path $PSScriptRoot "release_source_binding.ps1")
 . (Join-Path $PSScriptRoot "release_dependency_evidence.ps1")
 . (Join-Path $PSScriptRoot "release_git_trust.ps1")
+. (Join-Path $PSScriptRoot "release_ota_selector_policy.ps1")
 
 $credentialHygieneJson = (& (Join-Path $PSScriptRoot "check_release_credential_hygiene.ps1") -Root $repoRoot -Json | Out-String)
 $credentialHygieneReport = $credentialHygieneJson | ConvertFrom-Json
@@ -477,6 +479,17 @@ if ($credentialHygieneReport.status -ne "release-credential-hygiene-ready" -or [
 Write-Host $credentialHygieneJson.Trim()
 
 $releaseLegacyPlatformioCore = Get-StackchanPlatformioCoreDir
+if ([string]::IsNullOrWhiteSpace($releaseLegacyPlatformioCore) -and
+    -not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+  $legacyCoreFallback = Join-Path $env:USERPROFILE '.platformio'
+  if (Test-Path -LiteralPath $legacyCoreFallback -PathType Container) {
+    $releaseLegacyPlatformioCore = (Resolve-Path -LiteralPath $legacyCoreFallback).Path
+  }
+}
+if ([string]::IsNullOrWhiteSpace($releaseLegacyPlatformioCore) -or
+    -not (Test-Path -LiteralPath $releaseLegacyPlatformioCore -PathType Container)) {
+  throw 'Release packaging could not resolve the legacy PlatformIO core directory.'
+}
 $releasePlatformioCoreRoot = if ($env:OS -eq "Windows_NT") {
   # The repository may be running through a temporary subst drive. Keep the
   # pioarduino core on the physical system drive so it survives that mapping
@@ -493,6 +506,15 @@ function Get-ReleasePlatformioCoreDir {
     return Join-Path $releasePlatformioCoreRoot "pioarduino"
   }
   return $releaseLegacyPlatformioCore
+}
+
+function Get-ReleaseOtaSelectorPath {
+  param([Parameter(Mandatory = $true)][string]$Environment)
+
+  $coreDir = Get-ReleasePlatformioCoreDir -Environment $Environment
+  $selector = Assert-StackchanReleaseFrameworkOtaSelector `
+    -Environment $Environment -CoreDir $coreDir
+  return [string]$selector.path
 }
 
 function Invoke-StackchanReleasePlatformio {
@@ -555,27 +577,34 @@ if ($SkipBuild -and -not $Version.StartsWith("diagnostic-", [System.StringCompar
   throw "Diagnostic -SkipBuild package versions must start with 'diagnostic-'."
 }
 
-$firmwareArtifactNames = @(
+$firmwareBuildArtifactNames = @(
   "firmware.bin",
   "firmware.elf",
   "bootloader.bin",
   "partitions.bin"
 )
+$firmwareArtifactNames = @($firmwareBuildArtifactNames + "boot_app0.bin")
 
 function Copy-BuildArtifacts {
   param(
+    [Parameter(Mandatory = $true)][string]$Environment,
     [string]$BuildDir,
     [string]$Destination
   )
 
   New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-  foreach ($file in $firmwareArtifactNames) {
+  foreach ($file in $firmwareBuildArtifactNames) {
     $source = Join-Path $BuildDir $file
     if (-not (Test-Path -LiteralPath $source)) {
       throw "Missing build artifact: $source"
     }
     Copy-Item -LiteralPath $source -Destination $Destination -Force
   }
+  $otaSelector = Get-ReleaseOtaSelectorPath -Environment $Environment
+  $packagedSelector = Join-Path $Destination "boot_app0.bin"
+  Copy-Item -LiteralPath $otaSelector -Destination $packagedSelector -Force
+  Assert-StackchanReleaseOtaSelectorBytes `
+    -Environment $Environment -LiteralPath $packagedSelector | Out-Null
 }
 
 $releaseOutputRoot = if ($SkipBuild) {
@@ -854,6 +883,7 @@ function Invoke-FirmwareBuildCycle {
       -LogPath (Join-Path $CycleRoot "logs/$environment-build.log") `
       -Description "$CycleName/$environment build" | Out-Null
     Copy-BuildArtifacts `
+      -Environment $environment `
       -BuildDir (Join-Path $BuildProjectRoot ".pio/build/$environment") `
       -Destination (Join-Path $CycleRoot $environment)
     Assert-ReleaseSourceIdentity `
@@ -1069,8 +1099,8 @@ if (-not $SkipBuild) {
       -Phase "reproducibility proof post-cycle-b" `
       -ProjectRoot $activeBuildSourceRoot
 
-    if ($cycleAArtifacts.Count -ne 12 -or $cycleBArtifacts.Count -ne 12) {
-      throw "Firmware reproducibility proof did not produce all 12 artifacts per cycle."
+    if ($cycleAArtifacts.Count -ne 15 -or $cycleBArtifacts.Count -ne 15) {
+      throw "Firmware reproducibility proof did not produce all 15 artifacts per cycle."
     }
     for ($artifactIndex = 0; $artifactIndex -lt $cycleAArtifacts.Count; $artifactIndex++) {
       $left = $cycleAArtifacts[$artifactIndex]
@@ -1298,11 +1328,12 @@ function Copy-SourceTree {
 
 function Copy-FirmwareSet {
   param(
+    [Parameter(Mandatory = $true)][string]$Environment,
     [string]$BuildDir,
     [string]$Destination
   )
 
-  Copy-BuildArtifacts -BuildDir $BuildDir -Destination $Destination
+  Copy-BuildArtifacts -Environment $Environment -BuildDir $BuildDir -Destination $Destination
 }
 
 $firmwareSourceRoot = if ($builtFirmwareCache) {
@@ -1310,9 +1341,9 @@ $firmwareSourceRoot = if ($builtFirmwareCache) {
 } else {
   Join-Path $repoRoot ".pio/build"
 }
-Copy-FirmwareSet -BuildDir (Join-Path $firmwareSourceRoot "stackchan") -Destination $displayFirmwareDir
-Copy-FirmwareSet -BuildDir (Join-Path $firmwareSourceRoot "stackchan_servo_calibration") -Destination $servoFirmwareDir
-Copy-FirmwareSet -BuildDir (Join-Path $firmwareSourceRoot "stackchan_release_full") -Destination $fullOnlineFirmwareDir
+Copy-FirmwareSet -Environment "stackchan" -BuildDir (Join-Path $firmwareSourceRoot "stackchan") -Destination $displayFirmwareDir
+Copy-FirmwareSet -Environment "stackchan_servo_calibration" -BuildDir (Join-Path $firmwareSourceRoot "stackchan_servo_calibration") -Destination $servoFirmwareDir
+Copy-FirmwareSet -Environment "stackchan_release_full" -BuildDir (Join-Path $firmwareSourceRoot "stackchan_release_full") -Destination $fullOnlineFirmwareDir
 
 $mediaFiles = @(
   "docs/media/stackchan_alive_preview.png",
@@ -1740,6 +1771,9 @@ $releaseTools = @(
   "tools/release_dependency_evidence.ps1",
   "tools/test_release_dependency_evidence_contract.ps1",
   "tools/release_git_trust.ps1",
+  "tools/release_ota_selector_policy.ps1",
+  "tools/test_release_ota_selector_policy_contract.ps1",
+  "tools/test_release_flash_snapshot_contract.ps1",
   "tools/test_release_package_verifier_trust_contract.ps1",
   "tools/test_release_source_binding_contract.ps1",
   "tools/release_zip_safety.ps1",

@@ -64,7 +64,7 @@ try {
   foreach ($environment in @($roots.Keys)) {
     $destination = Join-Path $fixtureRoot $roots[$environment]
     New-Item -ItemType Directory -Force -Path $destination | Out-Null
-    foreach ($artifact in @("firmware.bin", "firmware.elf", "bootloader.bin", "partitions.bin")) {
+    foreach ($artifact in @("firmware.bin", "firmware.elf", "bootloader.bin", "partitions.bin", "boot_app0.bin")) {
       $path = Join-Path $destination $artifact
       [System.IO.File]::WriteAllText(
         $path,
@@ -107,8 +107,8 @@ try {
 
   Invoke-ExpectedProofFailure { param($p) $p.status = 'claimed' } "two-cycle firmware reproducibility proof"
   Invoke-ExpectedProofFailure { param($p) $p.minimumClockBoundarySeconds = 64 } "two-cycle firmware reproducibility proof"
-  Invoke-ExpectedProofFailure { param($p) $p.cycleAArtifacts = @($p.cycleAArtifacts | Select-Object -First 11) } "12 artifacts"
-  Invoke-ExpectedProofFailure { param($p) $p.cycleBArtifacts += (Copy-Proof $p.cycleBArtifacts[0]) } "12 artifacts"
+  Invoke-ExpectedProofFailure { param($p) $p.cycleAArtifacts = @($p.cycleAArtifacts | Select-Object -First 14) } "15 artifacts"
+  Invoke-ExpectedProofFailure { param($p) $p.cycleBArtifacts += (Copy-Proof $p.cycleBArtifacts[0]) } "15 artifacts"
   Invoke-ExpectedProofFailure { param($p) $p.cycleBArtifacts[1] = Copy-Proof $p.cycleBArtifacts[0] } "mismatch at artifact index"
   Invoke-ExpectedProofFailure { param($p) $p.cycleBArtifacts[0].bytes = [long]$p.cycleBArtifacts[0].bytes + 1 } "mismatch at artifact index"
   Invoke-ExpectedProofFailure { param($p) $p.cycleBArtifacts[0].sha256 = "0" * 64 } "mismatch at artifact index"

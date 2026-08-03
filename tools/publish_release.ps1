@@ -338,6 +338,94 @@ function Invoke-OperationalPackageVerification {
   }
 }
 
+function Get-PublicationLockedSha256 {
+  param([Parameter(Mandatory = $true)][System.IO.FileStream]$Stream)
+
+  $Stream.Position = 0
+  $hasher = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return ([System.BitConverter]::ToString($hasher.ComputeHash($Stream)) -replace '-', '').ToUpperInvariant()
+  } finally {
+    $hasher.Dispose()
+    $Stream.Position = 0
+  }
+}
+
+function Copy-LockedPublicationZipSnapshot {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourcePath,
+    [Parameter(Mandatory = $true)][string]$DestinationPath
+  )
+
+  $sourceStream = [System.IO.FileStream]::new(
+    $SourcePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+    [System.IO.FileShare]::Read, 1MB, [System.IO.FileOptions]::SequentialScan)
+  $writer = $null
+  $transition = $null
+  $lockedReader = $null
+  try {
+    $writer = [System.IO.FileStream]::new(
+      $DestinationPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite,
+      [System.IO.FileShare]::Read, 1MB, [System.IO.FileOptions]::SequentialScan)
+    $sourceStream.CopyTo($writer)
+    $writer.Flush($true)
+    $transition = [System.IO.FileStream]::new(
+      $DestinationPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+      [System.IO.FileShare]::ReadWrite, 4096, [System.IO.FileOptions]::SequentialScan)
+    $writer.Dispose()
+    $writer = $null
+    $lockedReader = [System.IO.FileStream]::new(
+      $DestinationPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+      [System.IO.FileShare]::Read, 1MB, [System.IO.FileOptions]::SequentialScan)
+    $transition.Dispose()
+    $transition = $null
+    return $lockedReader
+  } catch {
+    if ($null -ne $writer) { $writer.Dispose() }
+    if ($null -ne $transition) { $transition.Dispose() }
+    if ($null -ne $lockedReader) { $lockedReader.Dispose() }
+    throw
+  } finally {
+    $sourceStream.Dispose()
+  }
+}
+
+function Get-PublicationSnapshotChecksums {
+  param([Parameter(Mandatory = $true)][System.IO.FileStream]$SnapshotStream)
+
+  Add-Type -AssemblyName System.IO.Compression -ErrorAction Stop
+  $SnapshotStream.Position = 0
+  $archive = [System.IO.Compression.ZipArchive]::new(
+    $SnapshotStream, [System.IO.Compression.ZipArchiveMode]::Read, $true)
+  try {
+    $entries = @($archive.Entries | Where-Object {
+      [string]$_.FullName -ceq 'SHA256SUMS.txt'
+    })
+    if ($entries.Count -ne 1 -or [long]$entries[0].Length -gt 10MB) {
+      throw 'Locked publication snapshot lacks one bounded SHA256SUMS.txt authority.'
+    }
+    $reader = [System.IO.StreamReader]::new(
+      $entries[0].Open(), [System.Text.Encoding]::ASCII, $false, 4096, $false)
+    try {
+      $checksumText = $reader.ReadToEnd()
+    } finally {
+      $reader.Dispose()
+    }
+  } finally {
+    $archive.Dispose()
+    $SnapshotStream.Position = 0
+  }
+  $records = @{}
+  foreach ($line in @($checksumText -split '\r?\n')) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    if ($line -notmatch '^([a-f0-9]{64})  (.+)$' -or $records.ContainsKey($Matches[2])) {
+      throw "Invalid locked publication checksum authority: $line"
+    }
+    $records[$Matches[2]] = $Matches[1].ToUpperInvariant()
+  }
+  return $records
+}
+
 function New-VerifiedPublicationSnapshot {
   param(
     [Parameter(Mandatory = $true)][string]$Version,
@@ -352,10 +440,15 @@ function New-VerifiedPublicationSnapshot {
   $snapshotZip = Join-Path $snapshotRoot "stackchan_alive_$Version.zip"
   $snapshotSidecar = "$snapshotZip.sha256"
   $snapshotPackage = Join-Path $snapshotRoot "package"
+  $snapshotLock = $null
   try {
     New-Item -ItemType Directory -Path $snapshotRoot | Out-Null
-    Copy-Item -LiteralPath $ZipPath -Destination $snapshotZip
-    Copy-Item -LiteralPath $ZipSidecarPath -Destination $snapshotSidecar
+    $snapshotLock = Copy-LockedPublicationZipSnapshot `
+      -SourcePath $ZipPath -DestinationPath $snapshotZip
+    $snapshotSha256 = (Get-PublicationLockedSha256 -Stream $snapshotLock).ToLowerInvariant()
+    [System.IO.File]::WriteAllText(
+      $snapshotSidecar, "$snapshotSha256  stackchan_alive_$Version.zip`n",
+      [System.Text.Encoding]::ASCII)
 
     Invoke-OperationalPackageVerification `
       -Version $Version `
@@ -363,14 +456,21 @@ function New-VerifiedPublicationSnapshot {
       -ExpectedCommit $ExpectedCommit `
       -AllowDirtyPackage:$AllowDirtyPackage | Out-Host
     Expand-StackchanReleaseZipSafely -ZipPath $snapshotZip -DestinationPath $snapshotPackage
+    $snapshotChecksums = Get-PublicationSnapshotChecksums -SnapshotStream $snapshotLock
 
     return [pscustomobject]@{
       Root = $snapshotRoot
       ZipPath = $snapshotZip
       ZipSidecarPath = $snapshotSidecar
       PackageRoot = $snapshotPackage
+      ZipLock = $snapshotLock
+      Checksums = $snapshotChecksums
     }
   } catch {
+    if ($null -ne $snapshotLock) {
+      $snapshotLock.Dispose()
+      $snapshotLock = $null
+    }
     if (Test-Path -LiteralPath $snapshotRoot) {
       $resolvedSnapshot = (Resolve-Path -LiteralPath $snapshotRoot).Path
       $tempPrefix = $tempBase + [System.IO.Path]::DirectorySeparatorChar
@@ -502,6 +602,7 @@ $snapshot = New-VerifiedPublicationSnapshot `
   -ZipSidecarPath $zipSidecarPath `
   -ExpectedCommit $tagCommit `
   -AllowDirtyPackage:$AllowDirtyPackage
+$finalAssetLocks = New-Object System.Collections.Generic.List[System.IO.FileStream]
 try {
   $publishedPackageRoot = $snapshot.PackageRoot
   $publishedZipPath = $snapshot.ZipPath
@@ -513,6 +614,19 @@ try {
   Copy-Item -LiteralPath (Join-Path $publishedPackageRoot "firmware/servo_calibration/firmware.bin") -Destination (Join-Path $stageDir "firmware-servo-calibration.bin")
   Copy-Item -LiteralPath (Join-Path $publishedPackageRoot "firmware/display_only/bootloader.bin") -Destination (Join-Path $stageDir "bootloader.bin")
   Copy-Item -LiteralPath (Join-Path $publishedPackageRoot "firmware/display_only/partitions.bin") -Destination (Join-Path $stageDir "partitions.bin")
+  Copy-Item -LiteralPath (Join-Path $publishedPackageRoot "firmware/display_only/boot_app0.bin") -Destination (Join-Path $stageDir "boot-app0.bin")
+
+  $finalReleaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $publishedPackageRoot -ZipPath $publishedZipPath -ZipSidecarPath $publishedZipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
+  $finalReleaseAssets = @($finalReleaseAssetEntries | ForEach-Object { $_.Path })
+  $finalAssetLocksByPath = @{}
+  foreach ($assetPath in $finalReleaseAssets) {
+    $resolvedAssetPath = (Resolve-Path -LiteralPath $assetPath).Path
+    $assetLock = [System.IO.FileStream]::new(
+      $resolvedAssetPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+      [System.IO.FileShare]::Read, 4096, [System.IO.FileOptions]::SequentialScan)
+    $finalAssetLocks.Add($assetLock)
+    $finalAssetLocksByPath[$resolvedAssetPath] = $assetLock
+  }
 
   Write-Host "Verify finalized release asset contract against the safe extraction of the exact verified ZIP."
   & (Join-Path $PSScriptRoot "verify_release_asset_contract.ps1") `
@@ -523,8 +637,27 @@ try {
     -FirmwareAssetRoot $stageDir `
     -FirmwareAssetPathMode Stage
 
-  $finalReleaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $publishedPackageRoot -ZipPath $publishedZipPath -ZipSidecarPath $publishedZipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
-  $finalReleaseAssets = @($finalReleaseAssetEntries | ForEach-Object { $_.Path })
+  $firmwareSnapshotBindings = @(
+    [ordered]@{ name = 'firmware-display-only.bin'; relative = 'firmware/display_only/firmware.bin' },
+    [ordered]@{ name = 'firmware-servo-calibration.bin'; relative = 'firmware/servo_calibration/firmware.bin' },
+    [ordered]@{ name = 'bootloader.bin'; relative = 'firmware/display_only/bootloader.bin' },
+    [ordered]@{ name = 'partitions.bin'; relative = 'firmware/display_only/partitions.bin' },
+    [ordered]@{ name = 'boot-app0.bin'; relative = 'firmware/display_only/boot_app0.bin' }
+  )
+  foreach ($binding in $firmwareSnapshotBindings) {
+    $entry = @($finalReleaseAssetEntries | Where-Object {
+      [string]$_.Name -ceq [string]$binding.name
+    })
+    if ($entry.Count -ne 1 -or
+        -not $snapshot.Checksums.ContainsKey([string]$binding.relative)) {
+      throw "Publication snapshot lacks exact firmware authority: $([string]$binding.name)"
+    }
+    $entryPath = (Resolve-Path -LiteralPath ([string]$entry[0].Path)).Path
+    $lockedHash = Get-PublicationLockedSha256 -Stream $finalAssetLocksByPath[$entryPath]
+    if ($lockedHash -cne [string]$snapshot.Checksums[[string]$binding.relative]) {
+      throw "Staged firmware asset does not match locked publication ZIP: $([string]$binding.name)"
+    }
+  }
 
   $releaseExists = $false
   if (-not $DryRun) {
@@ -614,5 +747,11 @@ try {
     Write-Host "Release dry run passed without creating, pushing, or uploading anything."
   }
 } finally {
+  foreach ($finalAssetLock in $finalAssetLocks) {
+    $finalAssetLock.Dispose()
+  }
+  if ($null -ne $snapshot.ZipLock) {
+    $snapshot.ZipLock.Dispose()
+  }
   Remove-VerifiedPublicationSnapshot -SnapshotRoot $snapshot.Root
 }

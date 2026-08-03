@@ -119,6 +119,12 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip) -and
     -not [string]::IsNullOrWhiteSpace($PackageRoot)) {
   throw "Pass only one of -PackageZip or -PackageRoot."
 }
+if (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  throw "Operational flashing requires -PackageZip so one private verified snapshot is the sole flash source."
+}
+if ([string]::IsNullOrWhiteSpace($PackageZip)) {
+  throw "Operational flashing requires an explicit -PackageZip."
+}
 
 if (-not [string]::IsNullOrWhiteSpace($PackageZip) -and
     [string]::IsNullOrWhiteSpace($Version)) {
@@ -147,31 +153,15 @@ if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
   }
 }
 
-if ([string]::IsNullOrWhiteSpace($PackageZip) -and
-    [string]::IsNullOrWhiteSpace($PackageRoot)) {
-  $candidateManifest = Join-Path $root "release_manifest.json"
-  if (Test-Path -LiteralPath $candidateManifest -PathType Leaf) {
-    $PackageRoot = $root
-  } else {
-    $PackageRoot = Join-Path $root "output/release/$Version"
-  }
-}
-
 $verifyScript = Join-Path $PSScriptRoot "verify_release_package.ps1"
 $verifyArgs = @(
   "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $verifyScript,
   "-Version", $Version, "-ExpectedCommit", $ExpectedCommit,
   "-RequireReleaseEligible"
 )
-if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
-  Assert-File $PackageZip
-  $PackageZip = (Resolve-Path -LiteralPath $PackageZip).Path
-  $verifyArgs += @("-ZipPath", $PackageZip)
-} else {
-  Assert-File $PackageRoot
-  $PackageRoot = (Resolve-Path -LiteralPath $PackageRoot).Path
-  $verifyArgs += @("-PackageRoot", $PackageRoot)
-}
+Assert-File $PackageZip
+$PackageZip = (Resolve-Path -LiteralPath $PackageZip).Path
+$verifyArgs += @("-ZipPath", $PackageZip)
 if ($AllowDirtyPackage) {
   $verifyArgs += "-AllowDirtyPackage"
 }
@@ -182,6 +172,121 @@ if ($LASTEXITCODE -ne 0) {
 
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 . (Join-Path $PSScriptRoot "release_zip_safety.ps1")
+. (Join-Path $PSScriptRoot "release_ota_selector_policy.ps1")
+
+function Copy-ReleaseZipSnapshot {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourcePath,
+    [Parameter(Mandatory = $true)][string]$DestinationPath
+  )
+
+  $sourceStream = [System.IO.FileStream]::new(
+    $SourcePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+    [System.IO.FileShare]::Read, 1MB, [System.IO.FileOptions]::SequentialScan)
+  $destinationStream = $null
+  $transitionStream = $null
+  $lockedReadStream = $null
+  try {
+    $destinationStream = [System.IO.FileStream]::new(
+      $DestinationPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite,
+      [System.IO.FileShare]::Read, 1MB, [System.IO.FileOptions]::SequentialScan)
+    $sourceStream.CopyTo($destinationStream)
+    $destinationStream.Flush($true)
+    $transitionStream = [System.IO.FileStream]::new(
+      $DestinationPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+      [System.IO.FileShare]::ReadWrite, 4096, [System.IO.FileOptions]::SequentialScan)
+    $destinationStream.Dispose()
+    $destinationStream = $null
+    $lockedReadStream = [System.IO.FileStream]::new(
+      $DestinationPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+      [System.IO.FileShare]::Read, 1MB, [System.IO.FileOptions]::SequentialScan)
+    $transitionStream.Dispose()
+    $transitionStream = $null
+    return $lockedReadStream
+  } catch {
+    if ($null -ne $destinationStream) { $destinationStream.Dispose() }
+    if ($null -ne $transitionStream) { $transitionStream.Dispose() }
+    if ($null -ne $lockedReadStream) { $lockedReadStream.Dispose() }
+    throw
+  } finally {
+    $sourceStream.Dispose()
+  }
+}
+
+function Get-LockedReleasePayloadSha256 {
+  param([Parameter(Mandatory = $true)][System.IO.FileStream]$Stream)
+
+  $Stream.Position = 0
+  $hasher = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return ([System.BitConverter]::ToString($hasher.ComputeHash($Stream)) -replace '-', '').ToUpperInvariant()
+  } finally {
+    $hasher.Dispose()
+    $Stream.Position = 0
+  }
+}
+
+function Get-LockedReleaseZipChecksumRecords {
+  param([Parameter(Mandatory = $true)][System.IO.FileStream]$SnapshotStream)
+
+  Add-Type -AssemblyName System.IO.Compression -ErrorAction Stop
+  $SnapshotStream.Position = 0
+  $archive = [System.IO.Compression.ZipArchive]::new(
+    $SnapshotStream, [System.IO.Compression.ZipArchiveMode]::Read, $true)
+  try {
+    $checksumEntries = @($archive.Entries | Where-Object {
+      [string]$_.FullName -ceq 'SHA256SUMS.txt'
+    })
+    if ($checksumEntries.Count -ne 1 -or
+        [long]$checksumEntries[0].Length -lt 68 -or
+        [long]$checksumEntries[0].Length -gt 10MB) {
+      throw 'Locked release ZIP does not contain one bounded canonical SHA256SUMS.txt entry.'
+    }
+    $entryStream = $checksumEntries[0].Open()
+    $reader = [System.IO.StreamReader]::new(
+      $entryStream, [System.Text.Encoding]::ASCII, $false, 4096, $false)
+    try {
+      $checksumText = $reader.ReadToEnd()
+    } finally {
+      $reader.Dispose()
+    }
+  } finally {
+    $archive.Dispose()
+    $SnapshotStream.Position = 0
+  }
+
+  $records = @{}
+  foreach ($line in @($checksumText -split '\r?\n')) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    if ($line -notmatch '^([a-f0-9]{64})  (.+)$') {
+      throw "Invalid locked-snapshot checksum record: $line"
+    }
+    if ($records.ContainsKey($Matches[2])) {
+      throw "Duplicate locked-snapshot checksum record: $($Matches[2])"
+    }
+    $records[$Matches[2]] = $Matches[1].ToUpperInvariant()
+  }
+  if ($records.Count -eq 0) {
+    throw 'Locked release ZIP checksum authority is empty.'
+  }
+  return $records
+}
+
+function Get-ReleaseFlashWriteArguments {
+  param(
+    [Parameter(Mandatory = $true)][string]$Bootloader,
+    [Parameter(Mandatory = $true)][string]$Partitions,
+    [Parameter(Mandatory = $true)][string]$OtaSelector,
+    [Parameter(Mandatory = $true)][string]$FirmwareBin
+  )
+
+  return @(
+    '0x0', $Bootloader,
+    '0x8000', $Partitions,
+    '0xe000', $OtaSelector,
+    '0x10000', $FirmwareBin
+  )
+}
 
 if ($Firmware -in @("servo_calibration", "full_online")) {
   Write-Warning "$Firmware firmware contains motor support. Keep the body clear and powered safely."
@@ -190,16 +295,37 @@ if ($Firmware -in @("servo_calibration", "full_online")) {
   }
 }
 
+$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-release-flash"
 $cleanupDir = $null
+$snapshotLock = $null
 try {
-  if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
-    $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-release-flash"
-    $cleanupDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Force -Path $cleanupDir | Out-Null
-    Expand-StackchanReleaseZipSafely `
-      -ZipPath $PackageZip -DestinationPath $cleanupDir
-    $PackageRoot = $cleanupDir
+  $cleanupDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $cleanupDir | Out-Null
+  $snapshotZip = Join-Path $cleanupDir 'verified-input.zip'
+  $snapshotLock = Copy-ReleaseZipSnapshot `
+    -SourcePath $PackageZip -DestinationPath $snapshotZip
+  $snapshotSha256 = (Get-LockedReleasePayloadSha256 -Stream $snapshotLock).ToLowerInvariant()
+  [System.IO.File]::WriteAllText(
+    "$snapshotZip.sha256", "$snapshotSha256  verified-input.zip`n",
+    [System.Text.Encoding]::ASCII)
+
+  $snapshotVerifyArgs = @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $verifyScript,
+    "-Version", $Version, "-ExpectedCommit", $ExpectedCommit,
+    "-RequireReleaseEligible", "-ZipPath", $snapshotZip
+  )
+  if ($AllowDirtyPackage) {
+    $snapshotVerifyArgs += "-AllowDirtyPackage"
   }
+  & powershell.exe @snapshotVerifyArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Private release ZIP snapshot failed eligibility verification."
+  }
+  $checksumRecords = Get-LockedReleaseZipChecksumRecords -SnapshotStream $snapshotLock
+
+  $PackageRoot = Join-Path $cleanupDir 'package'
+  Expand-StackchanReleaseZipSafely `
+    -ZipPath $snapshotZip -DestinationPath $PackageRoot
 
   Assert-File $PackageRoot
   $manifestPath = Join-Path $PackageRoot "release_manifest.json"
@@ -214,10 +340,49 @@ try {
   $firmwareDir = Join-Path $PackageRoot "firmware/$Firmware"
   $bootloader = Join-Path $firmwareDir "bootloader.bin"
   $partitions = Join-Path $firmwareDir "partitions.bin"
+  $otaSelector = Join-Path $firmwareDir "boot_app0.bin"
   $firmwareBin = Join-Path $firmwareDir "firmware.bin"
   Assert-File $bootloader
   Assert-File $partitions
+  Assert-File $otaSelector
   Assert-File $firmwareBin
+  $flashPayloads = @(
+    [ordered]@{ relative = "firmware/$Firmware/bootloader.bin"; path = $bootloader },
+    [ordered]@{ relative = "firmware/$Firmware/partitions.bin"; path = $partitions },
+    [ordered]@{ relative = "firmware/$Firmware/boot_app0.bin"; path = $otaSelector },
+    [ordered]@{ relative = "firmware/$Firmware/firmware.bin"; path = $firmwareBin }
+  )
+  $payloadLocks = New-Object System.Collections.Generic.List[System.IO.FileStream]
+  $payloadLocksByRelative = @{}
+  try {
+    foreach ($payload in $flashPayloads) {
+      $payloadLock = [System.IO.FileStream]::new(
+        [string]$payload.path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::Read, 4096, [System.IO.FileOptions]::SequentialScan)
+      $payloadLocks.Add($payloadLock)
+      $payloadLocksByRelative[[string]$payload.relative] = $payloadLock
+    }
+    if ($payloadLocksByRelative["firmware/$Firmware/boot_app0.bin"].Length -ne 8192) {
+      throw "Packaged OTA selector must be exactly 8192 bytes."
+    }
+    $selectorEnvironment = switch ($Firmware) {
+      'display_only' { 'stackchan' }
+      'servo_calibration' { 'stackchan_servo_calibration' }
+      'full_online' { 'stackchan_release_full' }
+    }
+    Assert-StackchanReleaseOtaSelectorBytes `
+      -Environment $selectorEnvironment -LiteralPath $otaSelector | Out-Null
+
+    foreach ($payload in $flashPayloads) {
+      if (-not $checksumRecords.ContainsKey([string]$payload.relative)) {
+        throw "Package checksum is missing flash payload: $([string]$payload.relative)"
+      }
+      $actualPayloadHash = Get-LockedReleasePayloadSha256 `
+        -Stream $payloadLocksByRelative[[string]$payload.relative]
+      if ($actualPayloadHash -cne [string]$checksumRecords[[string]$payload.relative]) {
+        throw "Flash payload changed after snapshot verification: $([string]$payload.relative)"
+      }
+    }
 
   $esptool = Get-EsptoolInvocation
   $esptoolArgs = @($esptool.BaseArgs) + @(
@@ -243,22 +408,22 @@ try {
     "--flash_freq",
     "80m",
     "--flash_size",
-    "16MB",
-    "0x0",
-    $bootloader,
-    "0x8000",
-    $partitions,
-    "0x10000",
-    $firmwareBin
+    "16MB"
   )
+  $esptoolArgs += Get-ReleaseFlashWriteArguments `
+    -Bootloader $bootloader -Partitions $partitions `
+    -OtaSelector $otaSelector -FirmwareBin $firmwareBin
 
-  if ($DryRun) {
-    Write-Host "Dry run: $(Format-Command @($esptool.Python)) $(Format-Command $esptoolArgs)"
-  } else {
-    & $esptool.Python @esptoolArgs
-    if ($LASTEXITCODE -ne 0) {
-      throw "esptool flashing failed with exit code $LASTEXITCODE"
+    if ($DryRun) {
+      Write-Host "Dry run: $(Format-Command @($esptool.Python)) $(Format-Command $esptoolArgs)"
+    } else {
+      & $esptool.Python @esptoolArgs
+      if ($LASTEXITCODE -ne 0) {
+        throw "esptool flashing failed with exit code $LASTEXITCODE"
+      }
     }
+  } finally {
+    foreach ($payloadLock in $payloadLocks) { $payloadLock.Dispose() }
   }
 
   if ($Monitor) {
@@ -277,6 +442,10 @@ try {
     }
   }
 } finally {
+  if ($null -ne $snapshotLock) {
+    $snapshotLock.Dispose()
+    $snapshotLock = $null
+  }
   if ($cleanupDir -and (Test-Path -LiteralPath $cleanupDir)) {
     $resolvedCleanup = (Resolve-Path $cleanupDir).Path
     $resolvedTempRoot = (Resolve-Path $tempRoot).Path

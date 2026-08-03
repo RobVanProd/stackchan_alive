@@ -252,6 +252,7 @@ if ($RequireReleaseEligible) {
     'tools/release_zip_safety.ps1',
     'tools/release_dependency_evidence.ps1',
     'tools/release_git_trust.ps1',
+    'tools/release_ota_selector_policy.ps1',
     'tools/platformio_resolver.ps1'
   )) {
     $indexRecord = @(Invoke-TrustedVerifierGit -Arguments @(
@@ -291,6 +292,7 @@ if ($RequireReleaseEligible) {
 . (Join-Path $PSScriptRoot "release_zip_safety.ps1")
 . (Join-Path $PSScriptRoot "release_dependency_evidence.ps1")
 . (Join-Path $PSScriptRoot "release_git_trust.ps1")
+. (Join-Path $PSScriptRoot "release_ota_selector_policy.ps1")
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 
 $cleanupDir = $null
@@ -968,8 +970,13 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
           throw "Operational independent firmware rebuild failed: $environment/$phase (exit $phaseExit)."
         }
       }
-      foreach ($artifact in @('firmware.bin', 'firmware.elf', 'bootloader.bin', 'partitions.bin')) {
-        $rebuiltPath = Join-Path $rebuildWorktree ".pio/build/$environment/$artifact"
+      foreach ($artifact in @('firmware.bin', 'firmware.elf', 'bootloader.bin', 'partitions.bin', 'boot_app0.bin')) {
+        $rebuiltPath = if ($artifact -ceq 'boot_app0.bin') {
+          [string](Assert-StackchanReleaseFrameworkOtaSelector `
+            -Environment $environment -CoreDir ([string]$spec.coreDir)).path
+        } else {
+          Join-Path $rebuildWorktree ".pio/build/$environment/$artifact"
+        }
         if (-not (Test-Path -LiteralPath $rebuiltPath -PathType Leaf)) {
           throw "Operational independent firmware rebuild is missing $environment/$artifact."
         }
@@ -978,6 +985,14 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
         $proofMatches = @($reproducibilityProof.cycleBArtifacts | Where-Object {
           [string]$_.environment -ceq $environment -and [string]$_.artifact -ceq $artifact
         })
+        if ($artifact -ceq 'boot_app0.bin') {
+          $selectorPolicy = Get-StackchanReleaseOtaSelectorPolicy -Environment $environment
+          if ($proofMatches.Count -ne 1 -or
+              [long]$proofMatches[0].bytes -ne [long]$selectorPolicy.exactBytes -or
+              [string]$proofMatches[0].sha256 -cne [string]$selectorPolicy.sha256) {
+            throw "Two-cycle proof does not match reviewed OTA selector authority: $environment."
+          }
+        }
         if ($proofMatches.Count -ne 1 -or
             [long]$proofMatches[0].bytes -ne [long]$rebuiltItem.Length -or
             [string]$proofMatches[0].sha256 -cne $rebuiltHash) {
@@ -1208,6 +1223,9 @@ $m0GovernanceTools = @(
   "tools/release_dependency_evidence.ps1",
   "tools/test_release_dependency_evidence_contract.ps1",
   "tools/release_git_trust.ps1",
+  "tools/release_ota_selector_policy.ps1",
+  "tools/test_release_ota_selector_policy_contract.ps1",
+  "tools/test_release_flash_snapshot_contract.ps1",
   "tools/platformio_resolver.ps1",
   "tools/test_release_package_verifier_trust_contract.ps1",
   "tools/test_release_source_binding_contract.ps1",
@@ -1481,14 +1499,17 @@ $requiredFiles = @(
   "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.md",
   "companion/evidence/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json",
   "firmware/display_only/bootloader.bin",
+  "firmware/display_only/boot_app0.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
   "firmware/display_only/partitions.bin",
   "firmware/servo_calibration/bootloader.bin",
+  "firmware/servo_calibration/boot_app0.bin",
   "firmware/servo_calibration/firmware.bin",
   "firmware/servo_calibration/firmware.elf",
   "firmware/servo_calibration/partitions.bin",
   "firmware/full_online/bootloader.bin",
+  "firmware/full_online/boot_app0.bin",
   "firmware/full_online/firmware.bin",
   "firmware/full_online/firmware.elf",
   "firmware/full_online/partitions.bin",
@@ -2366,14 +2387,14 @@ foreach ($pattern in @("CompanionV1EvidenceRoot", "Assert-CompanionV1PromotionRe
 }
 
 $releaseAssetContractText = Get-Content -LiteralPath (Join-PackagePath "tools/release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "Get-ReleaseCompanionAssetEntries", "firmware-display-only.bin", "firmware-servo-calibration.bin", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan-companion-android-`$Version.apk", "stackchan-companion-android-`$Version.aab", "stackchan-companion-windows-`$Version.msi", "stackchan-companion-linux-`$Version.deb", "stackchan-companion-macos-`$Version.dmg", "COMPANION_RELEASE_EVIDENCE.json")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "Get-ReleaseCompanionAssetEntries", "firmware-display-only.bin", "firmware-servo-calibration.bin", "boot-app0.bin", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan-companion-android-`$Version.apk", "stackchan-companion-android-`$Version.aab", "stackchan-companion-windows-`$Version.msi", "stackchan-companion-linux-`$Version.deb", "stackchan-companion-macos-`$Version.dmg", "COMPANION_RELEASE_EVIDENCE.json")) {
   if ($releaseAssetContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/release_asset_contract.ps1 missing required release asset contract logic: $pattern"
   }
 }
 
 $releaseAssetContractVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 17", "ExpectedCount 20", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "FirmwareAssetRoot", "FirmwareAssetPathMode", "Assert-StagedFirmwareMatchesPackage", "Get-FileHash", "Release asset contract verified")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 18", "ExpectedCount 21", "boot-app0.bin", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "FirmwareAssetRoot", "FirmwareAssetPathMode", "Assert-StagedFirmwareMatchesPackage", "Get-FileHash", "Release asset contract verified")) {
   if ($releaseAssetContractVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_release_asset_contract.ps1 missing required asset contract verification logic: $pattern"
   }
@@ -3955,6 +3976,18 @@ foreach ($pattern in @("character_red_team.py", "character-red-team", "CHARACTER
 Assert-File "firmware/display_only/firmware.bin" 100000
 Assert-File "firmware/servo_calibration/firmware.bin" 100000
 Assert-File "firmware/full_online/firmware.bin" 1000000
+Assert-File "firmware/display_only/boot_app0.bin" 8192
+Assert-File "firmware/servo_calibration/boot_app0.bin" 8192
+Assert-File "firmware/full_online/boot_app0.bin" 8192
+foreach ($selectorRelativePath in @(
+    [ordered]@{ path = "firmware/display_only/boot_app0.bin"; environment = "stackchan" },
+    [ordered]@{ path = "firmware/servo_calibration/boot_app0.bin"; environment = "stackchan_servo_calibration" },
+    [ordered]@{ path = "firmware/full_online/boot_app0.bin"; environment = "stackchan_release_full" })) {
+  $selectorPath = Join-PackagePath ([string]$selectorRelativePath.path)
+  Assert-StackchanReleaseOtaSelectorBytes `
+    -Environment ([string]$selectorRelativePath.environment) `
+    -LiteralPath $selectorPath | Out-Null
+}
 Assert-File "media/stackchan_alive_preview.png" 1000
 Assert-File "media/stackchan_alive_expression_sheet.png" 2000
 Assert-File "media/face_gallery.png" 2000
@@ -4266,6 +4299,23 @@ Assert-StackchanFirmwareReproducibilityProof `
   -SourceEpoch ([string]$firmwareReproducibility.sourceEpoch) `
   -ManifestStatus ([string]$manifest.status) `
   -PackageRoot $packageRootPath
+
+if (-not [bool]$manifest.diagnosticPackage) {
+  foreach ($cycleName in @('cycleAArtifacts', 'cycleBArtifacts')) {
+    foreach ($environment in @('stackchan', 'stackchan_servo_calibration', 'stackchan_release_full')) {
+      $policy = Get-StackchanReleaseOtaSelectorPolicy -Environment $environment
+      $selectorProof = @($reproducibilityProof.$cycleName | Where-Object {
+        [string]$_.environment -ceq $environment -and
+          [string]$_.artifact -ceq 'boot_app0.bin'
+      })
+      if ($selectorProof.Count -ne 1 -or
+          [long]$selectorProof[0].bytes -ne [long]$policy.exactBytes -or
+          [string]$selectorProof[0].sha256 -cne [string]$policy.sha256) {
+        throw "Firmware proof $cycleName does not match reviewed OTA selector authority: $environment."
+      }
+    }
+  }
+}
 
 if (-not [bool]$manifest.diagnosticPackage -and
     ($manifest.status -notmatch "test-ready prerelease" -or $manifest.status -notmatch "hardware validation pending")) {

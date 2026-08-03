@@ -745,6 +745,7 @@ jobs:
           Copy-Item "$packageRoot/firmware/servo_calibration/firmware.bin" "$stageDir/firmware-servo-calibration.bin"
           Copy-Item "$packageRoot/firmware/display_only/bootloader.bin" "$stageDir/bootloader.bin"
           Copy-Item "$packageRoot/firmware/display_only/partitions.bin" "$stageDir/partitions.bin"
+          Copy-Item "$packageRoot/firmware/display_only/boot_app0.bin" "$stageDir/boot-app0.bin"
 
           function Copy-SingleCompanionArtifact([string]$Pattern, [string]$Destination, [string]$RequiredPathFragment = "") {
             $matches = @(Get-ChildItem "output/companion/release-input" -Recurse -File -Filter $Pattern | Where-Object {
@@ -831,48 +832,72 @@ jobs:
           Copy-Item "$packageRoot/firmware/servo_calibration/firmware.bin" "$stageDir/firmware-servo-calibration.bin"
           Copy-Item "$packageRoot/firmware/display_only/bootloader.bin" "$stageDir/bootloader.bin"
           Copy-Item "$packageRoot/firmware/display_only/partitions.bin" "$stageDir/partitions.bin"
+          Copy-Item "$packageRoot/firmware/display_only/boot_app0.bin" "$stageDir/boot-app0.bin"
           $companionStageDir = Join-Path $publicationRoot "companion-assets"
-          ./tools/verify_release_asset_contract.ps1 -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
           $releaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
           $companionAssetEntries = Get-ReleaseCompanionAssetEntries -Version $version -CompanionAssetRoot $companionStageDir
           $releaseAssetPaths = @($releaseAssetEntries + $companionAssetEntries | ForEach-Object { $_.Path })
 
-          $gitCommand = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-          $ghCommand = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($null -eq $gitCommand -or $null -eq $ghCommand) {
-            throw "Release publication requires Git and GitHub CLI application executables."
-          }
-          $tagRef = "refs/tags/$version"
-          $peeledRef = "$tagRef^{}"
-          $remoteLines = @(& $gitCommand.Source ls-remote "https://github.com/${{ github.repository }}.git" $tagRef $peeledRef)
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not resolve the triggering release tag immediately before publication."
-          }
-          $resolvedRefs = @($remoteLines | ForEach-Object {
-            if ([string]$_ -match '^([0-9a-fA-F]{40})\s+(.+)$') {
-              [pscustomobject]@{ commit = $Matches[1].ToLowerInvariant(); ref = $Matches[2] }
+          $assetLocks = New-Object System.Collections.Generic.List[System.IO.FileStream]
+          try {
+            foreach ($assetPath in $releaseAssetPaths) {
+              $assetLocks.Add([System.IO.FileStream]::new(
+                (Resolve-Path -LiteralPath $assetPath).Path,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::Read))
             }
-          })
-          $peeled = @($resolvedRefs | Where-Object ref -CEQ $peeledRef)
-          $direct = @($resolvedRefs | Where-Object ref -CEQ $tagRef)
-          $remoteCommit = if ($peeled.Count -eq 1) {
-            [string]$peeled[0].commit
-          } elseif ($peeled.Count -eq 0 -and $direct.Count -eq 1) {
-            [string]$direct[0].commit
-          } else {
-            ''
-          }
-          if ($remoteCommit -cne ([string]$env:STACKCHAN_RELEASE_COMMIT).ToLowerInvariant()) {
-            throw "Remote release tag resolves to '$remoteCommit', not the package-verified commit $env:STACKCHAN_RELEASE_COMMIT."
-          }
+            ./tools/verify_release_asset_contract.ps1 -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
 
-          & $ghCommand.Source release create $version `
-            @releaseAssetPaths `
-            --repo "${{ github.repository }}" `
-            --target $env:STACKCHAN_RELEASE_COMMIT `
-            --title "Stackchan Alive $version" `
-            --notes-file (Join-Path $packageRoot "RELEASE_NOTES.md") `
-            --prerelease
+            $gitCommand = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+            $ghCommand = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -eq $gitCommand -or $null -eq $ghCommand) {
+              throw "Release publication requires Git and GitHub CLI application executables."
+            }
+            $tagRef = "refs/tags/$version"
+            $peeledRef = "$tagRef^{}"
+            $remoteLines = @(& $gitCommand.Source ls-remote "https://github.com/${{ github.repository }}.git" $tagRef $peeledRef)
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not resolve the triggering release tag immediately before publication."
+            }
+            $resolvedRefs = @($remoteLines | ForEach-Object {
+              if ([string]$_ -match '^([0-9a-fA-F]{40})\s+(.+)$') {
+                [pscustomobject]@{ commit = $Matches[1].ToLowerInvariant(); ref = $Matches[2] }
+              }
+            })
+            $peeled = @($resolvedRefs | Where-Object ref -CEQ $peeledRef)
+            $direct = @($resolvedRefs | Where-Object ref -CEQ $tagRef)
+            $remoteCommit = if ($peeled.Count -eq 1) {
+              [string]$peeled[0].commit
+            } elseif ($peeled.Count -eq 0 -and $direct.Count -eq 1) {
+              [string]$direct[0].commit
+            } else {
+              ''
+            }
+            if ($remoteCommit -cne ([string]$env:STACKCHAN_RELEASE_COMMIT).ToLowerInvariant()) {
+              throw "Remote release tag resolves to '$remoteCommit', not the package-verified commit $env:STACKCHAN_RELEASE_COMMIT."
+            }
+
+            & $ghCommand.Source release create $version `
+              @releaseAssetPaths `
+              --repo "${{ github.repository }}" `
+              --target $env:STACKCHAN_RELEASE_COMMIT `
+              --title "Stackchan Alive $version" `
+              --notes-file (Join-Path $packageRoot "RELEASE_NOTES.md") `
+              --prerelease
+            if ($LASTEXITCODE -ne 0) {
+              throw "GitHub release creation failed."
+            }
+            ./tools/verify_published_release.ps1 `
+              -Version $version `
+              -Repo "${{ github.repository }}" `
+              -PackageRoot $packageRoot `
+              -ZipPath $zipPath `
+              -ZipSidecarPath $zipSidecarPath `
+              -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT)
+          } finally {
+            foreach ($assetLock in $assetLocks) { $assetLock.Dispose() }
+          }
 
       - name: Clean verified release publication snapshot
         if: always()

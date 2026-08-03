@@ -16,10 +16,14 @@ off, and is committed as `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. The later M
 worktree can create and verify diagnostic-only packages, but release-grade packaging and
 `RequireReleaseEligible` verification intentionally fail closed because no reviewed exact
 toolchain allowlist exists. No clean reproducible replacement package, installation, physical
-qualification, or soak exists yet. The current live application, motion request, servo rail, and
-torque state remain unknown because repeated bounded `/debug` probes were unavailable. USB or ping
-reachability alone is not a robot-health or actuator-state proof. Hold all flashing and physical
-promotion until reproducible-build and toolchain-trust closure, an OTA-selector-safe installer, a
+qualification, or soak exists yet. The release package/flasher source now carries a per-environment
+`boot_app0.bin` bound to reviewed framework versions, exact 8,192-byte size, and SHA-256, and writes
+it at `0xE000` between the partition table and application. The flasher uses a second-verified,
+read-locked private ZIP snapshot and hashes locked payload streams against that snapshot before
+esptool. Publication holds staged assets read-locked through upload and downloads the standalone
+firmware assets for remote hash verification. A diagnostic-only v13 rehearsal verified those
+contracts, but it is not a flash or qualification input.
+Hold all flashing and physical promotion until reproducible-build and toolchain-trust closure, a
 reviewed rollback path, exact clean package verification, and a fresh passive no-motion preflight
 are complete.
 
@@ -32,10 +36,26 @@ The whole-flash hash is not an application hash. This backup does not prove the 
 current bytes, release identity, or automatic restore authority, and it must never be published.
 
 Bounded read-only update on 2026-08-03: the matching CoreS3 USB PnP identity is present on COM4;
-the unrelated CH340 remains separate on COM3. Neither port was opened. Three `/debug` requests to
-`192.168.1.238:8789` timed out and no local bridge/RVC/debug listener was present on ports 8765,
-5059, or 8789. This records endpoint/service unavailability only; it is not evidence of a freeze,
-reset, blackout, USB fault, board fault, or power root cause.
+the unrelated CH340 remains separate on COM3. Neither port was opened. Later bounded `/debug`
+retries intermittently returned HTTP 200 between isolated timeouts. A preserved successful sample
+under ignored `output/private/p0-live-state-20260803` reports increasing uptime, `boot_count=1`,
+`reset_reason=poweron`, motion request/autonomous/enabled false, servo rail and torque false, and
+both power motion/rail authority false. It also self-reports confirmed `app0` with expected SHA-256
+`69d3db27f2d7197799fdc08ff3c1dc4d6e3011724fe29899367dc016e48ebfa8`. That value agrees with the
+historical accepted lead but is not an independent current flash-byte readback. The same sample
+reports `motion_enabled_at_boot=1` and `motion_autonomous_at_boot=1`, so the installed image is not
+the planned P1 no-motion candidate even though its runtime actuator state was safely off.
+
+No local bridge/RVC/debug listener was present on ports 8765, 5059, or 8789, and the robot reported
+`network_state=backoff`, `bridge_state=offline`, and `network_error=tcp_connect_failed`. The
+intermittent HTTP timeouts, followed by later successful samples with increasing uptime and the same
+boot count, are not evidence of a freeze, reset, blackout, USB fault, board fault, or power root
+cause. Diagnostic selector-authority rehearsal v13 is
+`output/diagnostics/stackchan_alive_diagnostic-m0-selector-authority-v13.zip`, 189,427,490 bytes,
+SHA-256 `15D5609CE6F1706FB4E5B9771CFFDF402473026FA1BC13E632029B174C04E926`. Its three 8,192-byte selector
+entries each hash to `F94C5D786A7A8FAB06AC5D10E33BF37711A6697636DC037559EA19CC410A17F0`;
+the non-authorizing verifier passes, the operational flasher rejects it before flash preparation,
+and all release, hardware-validation, flash, and distribution eligibility flags are false.
 
 ## Last Owner-Accepted Physical Lead — Historical Evidence; Current Installation Unknown
 

@@ -4,9 +4,10 @@ Use this when bringing up a physical Stackchan device from the public `v0.2.0` r
 locally rebuilt or post-release firmware as a new candidate until its applicable evidence gates
 below are complete.
 
-Repository-truth warning (2026-08-03): the currently installed firmware SHA is unknown. Dated
-“installed,” “current,” and “live” notes below are historical evidence and cannot replace discovery,
-exact source/binary identity, or qualification of the image actually under test.
+Repository-truth warning (2026-08-03): live firmware now self-reports confirmed `app0` and expected
+SHA-256 `69d3db27...8ebfa8`, matching the historical accepted lead, but current flash bytes have not
+been independently read back. Dated “installed,” “current,” and “live” notes below remain historical
+evidence and cannot replace exact source/binary identity or qualification of the image under test.
 
 Current control-containment warning (2026-08-03): the committed SEC-002 source policy is
 `emergency_stop_only`. Its dashboard and legacy motion/wake runners refuse Resume, wake-reset, and
@@ -25,10 +26,24 @@ motion-off, explicitly disables autonomous boot refresh, and is committed as
 command/toolchain trust is independently closed, two clean builds match for all three packaged
 environments, and the resulting exact package is verified and reviewed. Release-grade packaging
 currently refuses to run because no reviewed exact toolchain allowlist exists; diagnostic packages
-are never flash or qualification inputs. The release installer must also deterministically write
-the packaged OTA selector at `0xE000`; do not assume the live selector points to the application
-written at `0x10000`. Until those gates and a fresh `/debug` motion-off snapshot succeed, the
-physical step is `HOLD`, not a reason to reuse an older package or infer state from USB or ping.
+are never flash or qualification inputs. The release package/flasher source now requires an OTA
+selector bound to the exact legacy/release framework identities, 8,192-byte size, and reviewed
+SHA-256, and deterministically writes it at `0xE000` between the partition table and application.
+The operational flasher accepts only an explicit release ZIP, second-verifies a locked private
+snapshot, derives checksums from that snapshot, and holds the four payloads read-locked through
+esptool. Diagnostic v13 proved packaging, non-authorizing verification, selector authority, and
+address ordering only; its release/flash/hardware/distribution flags remain false and the flasher
+rejects it. A fresh `/debug` sample shows the current runtime request,
+autonomous state, motion, rail, torque, and power authorities off, but also reports the installed
+image was built with motion and autonomous motion enabled at boot. Until the toolchain, rollback,
+exact eligible package, and P1 gates close, the physical step is `HOLD`, not a reason to reuse an
+older package or infer state from USB or ping.
+
+Current read-only packet: ignored `output/private/p0-live-state-20260803`. Its successful debug JSON
+is SHA-256 `070CA1CDEA6B78D7C15589559E204330716CB6CAD1542BE4BE6DE56DA5C594FB`.
+Intermittent timeouts alternated with successful samples and increasing uptime at one boot; do not
+classify them as a freeze. No local bridge or RVC process/listener was present, and the robot was in
+bridge `offline` / network `backoff` with `tcp_connect_failed` at the captured sample.
 
 Private recovery evidence (2026-08-02): a verified three-read 16 MiB SPI-flash backup is preserved
 only under ignored `output/private/firmware-backups/20260802-233346-COM4`, with whole-flash SHA-256

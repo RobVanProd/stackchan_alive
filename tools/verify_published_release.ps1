@@ -83,7 +83,10 @@ function Assert-Asset {
   }
 
   $expectedDigest = "sha256:$(Get-Sha256 $ExpectedPath)"
-  if (-not [string]::IsNullOrWhiteSpace([string]$asset[0].digest) -and [string]$asset[0].digest -ne $expectedDigest) {
+  if ([string]::IsNullOrWhiteSpace([string]$asset[0].digest)) {
+    throw "Release asset digest is missing for $Name"
+  }
+  if ([string]$asset[0].digest -ne $expectedDigest) {
     throw "Release asset digest mismatch for $Name"
   }
 }
@@ -185,6 +188,7 @@ if ($localRootVerifyExit -ne 0) {
 }
 
 . (Join-Path $PSScriptRoot "release_asset_contract.ps1")
+. (Join-Path $PSScriptRoot "release_ota_selector_policy.ps1")
 
 Assert-Command "gh"
 if ([string]::IsNullOrWhiteSpace($Repo)) {
@@ -298,6 +302,32 @@ foreach ($asset in $assets) {
 }
 
 New-Item -ItemType Directory -Force -Path $remoteDir | Out-Null
+
+$standaloneFirmwareNames = @(
+  'firmware-display-only.bin',
+  'firmware-servo-calibration.bin',
+  'bootloader.bin',
+  'partitions.bin',
+  'boot-app0.bin'
+)
+foreach ($assetName in $standaloneFirmwareNames) {
+  $localEntry = @($expectedAssetEntries | Where-Object { [string]$_.Name -ceq $assetName })
+  if ($localEntry.Count -ne 1) {
+    throw "Missing local standalone firmware contract entry: $assetName"
+  }
+  gh release download $Version --repo $Repo --pattern $assetName --dir $remoteDir --clobber
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to download published standalone firmware asset $assetName for $Version"
+  }
+  $remoteFirmwarePath = Join-Path $remoteDir $assetName
+  if ((Get-Sha256 $remoteFirmwarePath) -cne (Get-Sha256 ([string]$localEntry[0].Path))) {
+    throw "Downloaded standalone firmware asset does not match the verified package: $assetName"
+  }
+  if ($assetName -ceq 'boot-app0.bin') {
+    Assert-StackchanReleaseOtaSelectorBytes `
+      -Environment 'stackchan' -LiteralPath $remoteFirmwarePath | Out-Null
+  }
+}
 
 foreach ($assetEntry in $companionAssetEntries) {
   gh release download $Version --repo $Repo --pattern $assetEntry.Name --dir $remoteDir --clobber
