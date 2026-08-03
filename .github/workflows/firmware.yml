@@ -745,8 +745,9 @@ jobs:
         shell: pwsh
         run: |
           ./tools/test_firmware_reproducible_build_contract.ps1
-          $env:PLATFORMIO_CORE_DIR = Join-Path $env:RUNNER_TEMP "stackchan-pioarduino"
-          ./tools/test_firmware_reproducible_build_contract.ps1
+          $pioarduinoCoreDir = Join-Path $env:RUNNER_TEMP "stackchan-pioarduino"
+          ./tools/test_firmware_reproducible_build_contract.ps1 `
+            -CompilerProbeCoreDir $pioarduinoCoreDir
 
       - name: Build unit-test firmware
         run: pio test -e stackchan --without-uploading --without-testing

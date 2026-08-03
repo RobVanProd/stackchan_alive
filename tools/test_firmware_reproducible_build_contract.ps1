@@ -1,3 +1,7 @@
+param(
+  [string]$CompilerProbeCoreDir
+)
+
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -129,6 +133,14 @@ $proofHelperText = Get-Content -LiteralPath `
 $verifyGovernanceText = $verifyText + "`n" + $proofHelperText
 $workflowText = Get-Content -LiteralPath $workflowPath -Raw
 $contractText = Get-Content -LiteralPath $PSCommandPath -Raw
+
+foreach ($workflowCompilerProbeMarker in @(
+    '$pioarduinoCoreDir = Join-Path $env:RUNNER_TEMP "stackchan-pioarduino"',
+    '-CompilerProbeCoreDir $pioarduinoCoreDir'
+  )) {
+  Require-ReproAssertion ($workflowText.Contains($workflowCompilerProbeMarker)) `
+    "workflow-explicit-compiler-probe: missing $workflowCompilerProbeMarker"
+}
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $proofContractPath
 if ($LASTEXITCODE -ne 0) {
@@ -811,11 +823,26 @@ function Test-PrefixMapCompiler {
   }
 }
 
+$explicitCompilerProbeCore = -not [string]::IsNullOrWhiteSpace($CompilerProbeCoreDir)
+$resolvedCompilerProbeCoreDir = if (-not $explicitCompilerProbeCore) {
+  Get-StackchanPlatformioCoreDir
+} else {
+  $resolvedProbeRoot = Resolve-Path -LiteralPath $CompilerProbeCoreDir -ErrorAction Stop
+  if (-not (Test-Path -LiteralPath $resolvedProbeRoot.Path -PathType Container)) {
+    throw "Compiler probe PlatformIO core is not a directory: $CompilerProbeCoreDir"
+  }
+  $resolvedProbeRoot.Path
+}
+
 $compilerCandidates = @(
-  (Join-Path (Get-StackchanPlatformioCoreDir) 'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-g++.exe'),
-  (Join-Path (Get-StackchanPlatformioCoreDir) 'packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32s3-elf-g++.exe')
+  (Join-Path $resolvedCompilerProbeCoreDir 'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-g++.exe'),
+  (Join-Path $resolvedCompilerProbeCoreDir 'packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32s3-elf-g++.exe')
 )
-if ($env:OS -eq 'Windows_NT') {
+if ($explicitCompilerProbeCore -and
+    @($compilerCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }).Count -eq 0) {
+  throw "No supported compiler found under explicit probe core: $resolvedCompilerProbeCoreDir"
+}
+if (-not $explicitCompilerProbeCore -and $env:OS -eq 'Windows_NT') {
   $compilerCandidates += Join-Path ([System.IO.Path]::GetPathRoot($env:SystemRoot)) `
     'spio/pioarduino/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32s3-elf-g++.exe'
 }
