@@ -506,6 +506,8 @@ $bridgePackageFiles = @(
   "memory_probe.py",
   "test_memory_probe.py",
   "memory_prefill_probe.py",
+  "conversation_harness.py",
+  "test_conversation_harness.py",
   "character_harness.py",
   "test_character_harness.py",
   "character_red_team.py",
