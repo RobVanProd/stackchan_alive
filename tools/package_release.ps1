@@ -2,24 +2,412 @@ param(
   [string]$Version,
   [switch]$SkipBuild,
   [switch]$AllowDirty,
-  [switch]$ObserveCandidateActions
+  [switch]$ObserveCandidateActions,
+  [switch]$ReleaseShortPathChild
 )
 
 $ErrorActionPreference = "Stop"
+$script:releaseSourceCleanupReady = $false
 
-# PLATFORMIO_BUILD_FLAGS is an ambient PlatformIO override and can append
-# conflicting safety macros after the checked-in environment. Public packages
-# must be derived from the reviewed configuration, never an inherited caller
-# override. Check presence rather than truthiness and refuse before path/cache/
-# build/package work.
-if (Test-Path Env:\PLATFORMIO_BUILD_FLAGS) {
-  throw "Release packaging refuses ambient override: PLATFORMIO_BUILD_FLAGS"
+# These variables can alter safety flags or the canonical build epoch. Public
+# packages must be derived from the reviewed configuration and clean Git
+# identity. Check presence rather than truthiness and refuse before path/cache/
+# build/package work. Diagnostic direct builds may use STACKCHAN_BUILD_EPOCH;
+# release packaging never may.
+$releaseOverrideNames = @(
+  "PLATFORMIO_BUILD_FLAGS",
+  "STACKCHAN_BUILD_EPOCH",
+  "SOURCE_DATE_EPOCH",
+  "STACKCHAN_BUILD_STAMP",
+  "STACKCHAN_DISABLE_REPRODUCIBLE_BUILD",
+  "STACKCHAN_EXPECTED_BUILD_COMMIT",
+  "STACKCHAN_EXPECTED_BUILD_EPOCH",
+  "STACKCHAN_PERSONA",
+  "STACKCHAN_WIFI_SSID",
+  "STACKCHAN_WIFI_PASSWORD",
+  "STACKCHAN_BRIDGE_HOST",
+  "STACKCHAN_BRIDGE_PORT",
+  "STACKCHAN_BRIDGE_PATH",
+  "STACKCHAN_PAIRING_SHORT_CODE",
+  "STACKCHAN_OTA_TOKEN",
+  "STACKCHAN_OTA_PORT",
+  "PLATFORMIO_EXE",
+  "PLATFORMIO_CORE_DIR",
+  "PLATFORMIO_PROJECT_DIR",
+  "PLATFORMIO_SRC_DIR",
+  "PLATFORMIO_BUILD_DIR",
+  "PLATFORMIO_LIBDEPS_DIR",
+  "PLATFORMIO_PACKAGES_DIR",
+  "PLATFORMIO_CACHE_DIR",
+  "PLATFORMIO_BUILD_CACHE_DIR",
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_COMMON_DIR",
+  "GIT_CEILING_DIRECTORIES"
+)
+foreach ($releaseOverrideName in $releaseOverrideNames) {
+  if (Test-Path ("Env:\" + $releaseOverrideName)) {
+    throw "Release packaging refuses ambient override: $releaseOverrideName"
+  }
+}
+$unexpectedPlatformioOverrides = @(
+  Get-ChildItem Env: | Where-Object { $_.Name -like "PLATFORMIO_*" }
+)
+if ($unexpectedPlatformioOverrides.Count -gt 0) {
+  $unexpectedPlatformioNames = @($unexpectedPlatformioOverrides.Name | Sort-Object -Unique)
+  throw "Release packaging refuses ambient PlatformIO overrides: $($unexpectedPlatformioNames -join ', ')"
+}
+$unexpectedGitOverrides = @(
+  Get-ChildItem Env: | Where-Object { $_.Name -like "GIT_*" }
+)
+if ($unexpectedGitOverrides.Count -gt 0) {
+  $unexpectedGitNames = @($unexpectedGitOverrides.Name | Sort-Object -Unique)
+  throw "Release packaging refuses ambient Git overrides: $($unexpectedGitNames -join ', ')"
+}
+
+if (-not $SkipBuild) {
+  throw @'
+Release-grade packaging is fail-closed before Git or build-tool execution. No tracked reviewed
+exact toolchain allowlist currently authorizes the Git executable, PlatformIO/Python launchers,
+their complete runtime inputs, and the post-build dependency state. Diagnostic packaging remains
+available only with -SkipBuild -AllowDirty; it is never release eligible.
+'@
+}
+
+$releaseBootstrapNullAttributes = if ($env:OS -eq 'Windows_NT') { 'NUL' } else { '/dev/null' }
+$releaseBootstrapGitCommand = Get-Command -Name git -CommandType Application -ErrorAction SilentlyContinue |
+  Select-Object -First 1
+if ($null -eq $releaseBootstrapGitCommand) {
+  throw 'Release packaging requires a Git application executable; functions, aliases, and scripts are refused.'
+}
+$releaseBootstrapGitExecutable = (
+  Resolve-Path -LiteralPath ([string]$releaseBootstrapGitCommand.Source)).Path
+function Invoke-ReleaseBootstrapGit {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string[]]$Arguments
+  )
+
+  $disabledHooks = Join-Path $Root 'output/private/disabled-release-bootstrap-hooks'
+  if (Test-Path -LiteralPath $disabledHooks) {
+    throw "Release bootstrap disabled-hooks sentinel unexpectedly exists: $disabledHooks"
+  }
+  $gitArguments = @(
+    '-c', "core.hooksPath=$disabledHooks", '-c', 'core.fsmonitor=false',
+    '-c', 'core.untrackedCache=false', '-c', 'core.useBuiltinFSMonitor=false',
+    '-c', 'maintenance.auto=false', '-c', 'core.autocrlf=true',
+    '-c', "core.attributesFile=$script:releaseBootstrapNullAttributes",
+    '-c', 'filter.lfs.process=', '-c', 'filter.lfs.clean=',
+    '-c', 'filter.lfs.smudge=', '-c', 'filter.lfs.required=false',
+    '-C', $Root
+  ) + $Arguments
+  $previousNoReplaceObjects = $env:GIT_NO_REPLACE_OBJECTS
+  $previousNoSystemAttributes = $env:GIT_ATTR_NOSYSTEM
+  try {
+    $env:GIT_NO_REPLACE_OBJECTS = '1'
+    $env:GIT_ATTR_NOSYSTEM = '1'
+    & $script:releaseBootstrapGitExecutable @gitArguments
+  } finally {
+    if ($null -eq $previousNoReplaceObjects) {
+      Remove-Item Env:\GIT_NO_REPLACE_OBJECTS -ErrorAction SilentlyContinue
+    } else {
+      $env:GIT_NO_REPLACE_OBJECTS = $previousNoReplaceObjects
+    }
+    if ($null -eq $previousNoSystemAttributes) {
+      Remove-Item Env:\GIT_ATTR_NOSYSTEM -ErrorAction SilentlyContinue
+    } else {
+      $env:GIT_ATTR_NOSYSTEM = $previousNoSystemAttributes
+    }
+  }
+}
+
+function Get-ReleaseBootstrapCanonicalBlobHash {
+  param(
+    [Parameter(Mandatory = $true)][string]$LiteralPath,
+    [Parameter(Mandatory = $true)][ValidateSet(40, 64)][int]$HashLength
+  )
+
+  $bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
+  if (-not ($bytes -contains [byte]0)) {
+    $normalized = New-Object System.Collections.Generic.List[byte]
+    for ($index = 0; $index -lt $bytes.Length; $index++) {
+      if ($bytes[$index] -eq 13 -and $index + 1 -lt $bytes.Length -and
+          $bytes[$index + 1] -eq 10) {
+        $normalized.Add(10)
+        $index++
+      } else {
+        $normalized.Add($bytes[$index])
+      }
+    }
+    $bytes = $normalized.ToArray()
+  }
+  $header = [System.Text.Encoding]::ASCII.GetBytes("blob $($bytes.Length)`0")
+  $objectBytes = New-Object byte[] ($header.Length + $bytes.Length)
+  [System.Array]::Copy($header, 0, $objectBytes, 0, $header.Length)
+  [System.Array]::Copy($bytes, 0, $objectBytes, $header.Length, $bytes.Length)
+  $hasher = if ($HashLength -eq 40) {
+    [System.Security.Cryptography.SHA1]::Create()
+  } else {
+    [System.Security.Cryptography.SHA256]::Create()
+  }
+  try {
+    return (($hasher.ComputeHash($objectBytes) | ForEach-Object { $_.ToString('x2') }) -join '')
+  } finally {
+    $hasher.Dispose()
+  }
+}
+
+function Resolve-ReleaseBootstrapGitPath {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$Candidate
+  )
+  if ([System.IO.Path]::IsPathRooted($Candidate)) {
+    return [System.IO.Path]::GetFullPath($Candidate)
+  }
+  return [System.IO.Path]::GetFullPath((Join-Path $Root $Candidate))
+}
+
+function Assert-ReleaseBootstrapTrust {
+  param([Parameter(Mandatory = $true)][string]$Root)
+
+  $resolvedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+  $topLevel = (Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
+    'rev-parse', '--show-toplevel')).Trim()
+  if ($LASTEXITCODE -ne 0 -or
+      -not [System.IO.Path]::GetFullPath($topLevel).TrimEnd('\', '/').Equals(
+        $resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Release packaging must start at its exact Git top-level.'
+  }
+  $attributePaths = New-Object System.Collections.Generic.List[string]
+  $worktreeAttributes = (Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
+    'rev-parse', '--git-path', 'info/attributes')).Trim()
+  $commonDir = (Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
+    'rev-parse', '--git-common-dir')).Trim()
+  if ([string]::IsNullOrWhiteSpace($worktreeAttributes) -or
+      [string]::IsNullOrWhiteSpace($commonDir)) {
+    throw 'Release packaging could not resolve repository-local attributes state.'
+  }
+  $attributePaths.Add((Resolve-ReleaseBootstrapGitPath -Root $resolvedRoot -Candidate $worktreeAttributes))
+  $attributePaths.Add((Resolve-ReleaseBootstrapGitPath -Root $resolvedRoot -Candidate (
+    Join-Path $commonDir 'info/attributes')))
+  foreach ($attributePath in @($attributePaths | Sort-Object -Unique)) {
+    if (Test-Path -LiteralPath $attributePath -PathType Leaf) {
+      throw "Release packaging refuses repository-local Git attributes: $attributePath"
+    }
+  }
+  $commit = (Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
+    'rev-parse', '--verify', 'HEAD')).Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40,64}$') {
+    throw 'Release packaging could not resolve its exact Git commit.'
+  }
+  $bootstrapFiles = @(
+    '.gitattributes', 'tools/package_release.ps1',
+    'tools/test_firmware_reproducible_build_contract.ps1',
+    'tools/platformio_resolver.ps1', 'tools/preview_python_resolver.ps1',
+    'tools/release_asset_contract.ps1', 'tools/firmware_reproducibility_failure.ps1',
+    'tools/release_source_binding.ps1', 'tools/release_dependency_evidence.ps1',
+    'tools/release_git_trust.ps1', 'tools/check_release_credential_hygiene.ps1'
+  )
+  foreach ($relative in $bootstrapFiles) {
+    $indexRecord = @(Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
+      'ls-files', '-v', '--', $relative))
+    $trustedBlob = (Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
+      'rev-parse', '--verify', "${commit}:$relative")).Trim().ToLowerInvariant()
+    $workingPath = Join-Path $resolvedRoot $relative
+    if ($indexRecord.Count -ne 1 -or [string]$indexRecord[0] -cne "H $relative" -or
+        $trustedBlob -notmatch '^[0-9a-f]{40,64}$' -or
+        -not (Test-Path -LiteralPath $workingPath -PathType Leaf) -or
+        (Get-ReleaseBootstrapCanonicalBlobHash -LiteralPath $workingPath `
+          -HashLength $trustedBlob.Length) -cne $trustedBlob) {
+      throw "Release packaging bootstrap input is not exact trusted commit content: $relative"
+    }
+  }
+  $dirty = @(Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
+    'status', '--porcelain=v1', '--untracked-files=all'))
+  if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) {
+    throw 'Release packaging requires a clean trusted checkout before executing helpers or mutating release state.'
+  }
+}
+
+function Invoke-ReleaseGit {
+  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+  Invoke-StackchanTrustedGit `
+    -GitExecutable $script:releaseBootstrapGitExecutable `
+    -DisabledHooksPath $script:releaseGitDisabledHooksPath `
+    -Arguments $Arguments
+}
+
+function Assert-SafeReleaseVersionLeaf {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  if ($Value.Length -gt 128 -or
+      $Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
+      $Value -in @('.', '..') -or
+      $Value.EndsWith('.', [System.StringComparison]::Ordinal)) {
+    throw "Version must be one safe filename component containing only letters, digits, '.', '_', or '-'."
+  }
+}
+
+function New-StackchanDeterministicReleaseZip {
+  param(
+    [Parameter(Mandatory = $true)][string]$RootPath,
+    [Parameter(Mandatory = $true)][string]$ZipPath,
+    [Parameter(Mandatory = $true)][long]$SourceEpoch
+  )
+
+  Add-Type -AssemblyName System.IO.Compression -ErrorAction Stop
+  $rootItem = Get-Item -LiteralPath (Resolve-Path -LiteralPath $RootPath).Path -Force
+  if (-not $rootItem.PSIsContainer -or
+      ($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+    throw 'Release ZIP root must be one exact non-redirected directory.'
+  }
+  $resolvedRoot = $rootItem.FullName.TrimEnd('\', '/')
+  $resolvedZip = [System.IO.Path]::GetFullPath($ZipPath)
+  $rootPrefix = $resolvedRoot + [System.IO.Path]::DirectorySeparatorChar
+  if ($resolvedZip.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Release ZIP must be outside the package tree being archived.'
+  }
+  $entryTimestamp = [DateTimeOffset]::FromUnixTimeSeconds($SourceEpoch)
+  $minimumZipTimestamp = [DateTimeOffset]::new(1980, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+  $maximumZipTimestamp = [DateTimeOffset]::new(2107, 12, 31, 23, 59, 58, [TimeSpan]::Zero)
+  if ($entryTimestamp -lt $minimumZipTimestamp -or $entryTimestamp -gt $maximumZipTimestamp) {
+    throw "Release source epoch is outside the ZIP timestamp range: $SourceEpoch"
+  }
+  # ZIP timestamps have two-second resolution. Normalize explicitly so identical inputs produce
+  # identical metadata rather than relying on runtime rounding behavior.
+  $subsecondTicks = $entryTimestamp.Ticks % [TimeSpan]::TicksPerSecond
+  $entryTimestamp = $entryTimestamp.AddSeconds(-($entryTimestamp.Second % 2)).AddTicks(-$subsecondTicks)
+
+  $files = @(Get-ChildItem -LiteralPath $resolvedRoot -File -Recurse -Force)
+  $relativeToFile = [System.Collections.Generic.Dictionary[string, string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($file in $files) {
+    $fullName = [System.IO.Path]::GetFullPath($file.FullName)
+    if (-not $fullName.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Release ZIP input escapes its package root: $fullName"
+    }
+    if ($file.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+      throw "Release ZIP refuses a reparse-point input: $fullName"
+    }
+    $ancestor = $file.Directory
+    while ($null -ne $ancestor -and
+        -not $ancestor.FullName.Equals(
+          $resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+      if ($ancestor.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        throw "Release ZIP refuses a file beneath a reparse-point directory: $fullName"
+      }
+      $ancestor = $ancestor.Parent
+    }
+    if ($null -eq $ancestor) {
+      throw "Release ZIP could not prove the input's directory ancestry: $fullName"
+    }
+    $relative = $fullName.Substring($rootPrefix.Length).Replace('\', '/')
+    if ([string]::IsNullOrWhiteSpace($relative) -or $relativeToFile.ContainsKey($relative)) {
+      throw "Release ZIP input has an invalid or duplicate entry: $relative"
+    }
+    $relativeToFile.Add($relative, $fullName)
+  }
+  $relativePaths = [string[]]@($relativeToFile.Keys)
+  [Array]::Sort($relativePaths, [System.StringComparer]::Ordinal)
+
+  $stream = [System.IO.FileStream]::new(
+    $resolvedZip, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite,
+    [System.IO.FileShare]::None)
+  try {
+    $archive = [System.IO.Compression.ZipArchive]::new(
+      $stream, [System.IO.Compression.ZipArchiveMode]::Create, $true,
+      [System.Text.Encoding]::UTF8)
+    try {
+      foreach ($relative in $relativePaths) {
+        $entry = $archive.CreateEntry(
+          $relative, [System.IO.Compression.CompressionLevel]::Optimal)
+        $entry.LastWriteTime = $entryTimestamp
+        $sourceStream = [System.IO.FileStream]::new(
+          $relativeToFile[$relative], [System.IO.FileMode]::Open,
+          [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        $entryStream = $entry.Open()
+        try {
+          $sourceStream.CopyTo($entryStream)
+        } finally {
+          $entryStream.Dispose()
+          $sourceStream.Dispose()
+        }
+      }
+    } finally {
+      $archive.Dispose()
+    }
+  } finally {
+    $stream.Dispose()
+  }
+
+  $readStream = [System.IO.FileStream]::new(
+    $resolvedZip, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+    [System.IO.FileShare]::Read)
+  try {
+    $readArchive = [System.IO.Compression.ZipArchive]::new(
+      $readStream, [System.IO.Compression.ZipArchiveMode]::Read, $false,
+      [System.Text.Encoding]::UTF8)
+    try {
+      $actualEntries = [string[]]@($readArchive.Entries | ForEach-Object { $_.FullName })
+    } finally {
+      $readArchive.Dispose()
+    }
+  } finally {
+    $readStream.Dispose()
+  }
+  if ($actualEntries.Count -ne $relativePaths.Count) {
+    throw 'Release ZIP entry count changed during deterministic archive creation.'
+  }
+  for ($index = 0; $index -lt $relativePaths.Count; $index++) {
+    if ([string]$actualEntries[$index] -cne [string]$relativePaths[$index]) {
+      throw "Release ZIP central-directory order mismatch at index $index."
+    }
+  }
+  return $actualEntries
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+  Assert-SafeReleaseVersionLeaf -Value $Version
+}
+
+if ($SkipBuild -and -not $AllowDirty) {
+  throw "-SkipBuild is diagnostic-only and requires -AllowDirty; release-grade packages must perform the governed two-cycle firmware proof."
+}
+if ($AllowDirty -and -not $SkipBuild) {
+  throw "-AllowDirty supports diagnostic -SkipBuild packages only; dirty firmware compilation requires a separately governed direct build."
+}
+if ($SkipBuild -and $ObserveCandidateActions) {
+  throw "Diagnostic -SkipBuild packages cannot observe or claim candidate GitHub Actions evidence."
+}
+
+$releaseSystemDirectory = [System.IO.Path]::GetFullPath([Environment]::SystemDirectory).TrimEnd('\', '/')
+if ($env:OS -ne 'Windows_NT' -or -not [System.IO.Path]::IsPathRooted($releaseSystemDirectory)) {
+  throw 'Release packaging requires a validated Windows system executable root.'
+}
+$releasePowerShellExecutable = Join-Path $releaseSystemDirectory 'WindowsPowerShell/v1.0/powershell.exe'
+$releaseSubstExecutable = Join-Path $releaseSystemDirectory 'subst.exe'
+foreach ($systemExecutable in @($releasePowerShellExecutable, $releaseSubstExecutable)) {
+  if (-not (Test-Path -LiteralPath $systemExecutable -PathType Leaf)) {
+    throw "Required Windows system executable is missing: $systemExecutable"
+  }
+  $systemExecutableItem = Get-Item -LiteralPath $systemExecutable -Force
+  if ($systemExecutableItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint -or
+      [string]$systemExecutableItem.Extension -cne '.exe') {
+    throw "Release packaging refuses a redirected or non-EXE system command: $systemExecutable"
+  }
 }
 
 $physicalRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if (-not $SkipBuild) {
+  Assert-ReleaseBootstrapTrust -Root $physicalRepoRoot
+}
 if (
   $env:OS -eq "Windows_NT" -and
-  -not $env:STACKCHAN_RELEASE_SHORT_PATH_ACTIVE -and
+  -not $ReleaseShortPathChild -and
   $physicalRepoRoot.Length -gt 60
 ) {
   $shortDrive = @("R:", "Q:", "P:", "O:") |
@@ -30,36 +418,56 @@ if (
   }
 
   $driveName = $shortDrive.TrimEnd("\")
-  & subst.exe $driveName $physicalRepoRoot
+  & $script:releaseSubstExecutable $driveName $physicalRepoRoot
   if ($LASTEXITCODE -ne 0) { throw "Could not create temporary release path $driveName" }
 
   $childExit = 1
   try {
-    $env:STACKCHAN_RELEASE_SHORT_PATH_ACTIVE = "1"
     $childArgs = @(
       "-NoProfile",
       "-ExecutionPolicy", "Bypass",
-      "-File", "$driveName\tools\package_release.ps1"
+      "-File", "$driveName\tools\package_release.ps1",
+      "-ReleaseShortPathChild"
     )
     if ($Version) { $childArgs += @("-Version", $Version) }
     if ($SkipBuild) { $childArgs += "-SkipBuild" }
     if ($AllowDirty) { $childArgs += "-AllowDirty" }
     if ($ObserveCandidateActions) { $childArgs += "-ObserveCandidateActions" }
-    & powershell.exe @childArgs
+    & $script:releasePowerShellExecutable @childArgs
     $childExit = $LASTEXITCODE
   } finally {
-    Remove-Item Env:\STACKCHAN_RELEASE_SHORT_PATH_ACTIVE -ErrorAction SilentlyContinue
     Set-Location $env:TEMP
-    & subst.exe $driveName /D | Out-Null
+    & $script:releaseSubstExecutable $driveName /D | Out-Null
   }
   exit $childExit
+}
+if ($ReleaseShortPathChild) {
+  $allowedShortRoots = @("R:\", "Q:\", "P:\", "O:\")
+  $currentRoot = [System.IO.Path]::GetPathRoot($physicalRepoRoot)
+  if ($allowedShortRoots -notcontains $currentRoot -or $physicalRepoRoot.Length -gt 60) {
+    throw "-ReleaseShortPathChild is internal and requires the verified short subst checkout."
+  }
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+$releaseGitDisabledHooksPath = Join-Path $repoRoot (
+  "output/private/disabled-release-git-hooks-$PID-" + [guid]::NewGuid().ToString("N"))
+if (Test-Path -LiteralPath $releaseGitDisabledHooksPath) {
+  throw "Release Git disabled-hooks sentinel unexpectedly exists: $releaseGitDisabledHooksPath"
+}
+& $releasePowerShellExecutable -NoProfile -ExecutionPolicy Bypass -File `
+  (Join-Path $PSScriptRoot "test_firmware_reproducible_build_contract.ps1")
+if ($LASTEXITCODE -ne 0) {
+  throw "Firmware reproducible-build contract failed; refusing release packaging."
+}
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 . (Join-Path $PSScriptRoot "preview_python_resolver.ps1")
 . (Join-Path $PSScriptRoot "release_asset_contract.ps1")
+. (Join-Path $PSScriptRoot "firmware_reproducibility_failure.ps1")
+. (Join-Path $PSScriptRoot "release_source_binding.ps1")
+. (Join-Path $PSScriptRoot "release_dependency_evidence.ps1")
+. (Join-Path $PSScriptRoot "release_git_trust.ps1")
 
 $credentialHygieneJson = (& (Join-Path $PSScriptRoot "check_release_credential_hygiene.ps1") -Root $repoRoot -Json | Out-String)
 $credentialHygieneReport = $credentialHygieneJson | ConvertFrom-Json
@@ -90,12 +498,30 @@ function Get-ReleasePlatformioCoreDir {
 function Invoke-StackchanReleasePlatformio {
   param(
     [string]$Environment,
+    [string]$BuildCacheDir,
+    [string]$ExpectedCommit,
+    [string]$ExpectedEpoch,
     [string[]]$Arguments
   )
 
   $previousCoreDir = $env:PLATFORMIO_CORE_DIR
+  $previousBuildCacheDir = $env:PLATFORMIO_BUILD_CACHE_DIR
+  $previousExpectedCommit = $env:STACKCHAN_EXPECTED_BUILD_COMMIT
+  $previousExpectedEpoch = $env:STACKCHAN_EXPECTED_BUILD_EPOCH
   try {
     $env:PLATFORMIO_CORE_DIR = Get-ReleasePlatformioCoreDir -Environment $Environment
+    if (-not [string]::IsNullOrWhiteSpace($BuildCacheDir)) {
+      $env:PLATFORMIO_BUILD_CACHE_DIR = $BuildCacheDir
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedCommit) -or
+        -not [string]::IsNullOrWhiteSpace($ExpectedEpoch)) {
+      if ([string]::IsNullOrWhiteSpace($ExpectedCommit) -or
+          [string]::IsNullOrWhiteSpace($ExpectedEpoch)) {
+        throw "Release build identity lock requires both commit and epoch."
+      }
+      $env:STACKCHAN_EXPECTED_BUILD_COMMIT = $ExpectedCommit
+      $env:STACKCHAN_EXPECTED_BUILD_EPOCH = $ExpectedEpoch
+    }
     Invoke-StackchanPlatformio @Arguments
   } finally {
     if ($null -eq $previousCoreDir) {
@@ -103,11 +529,30 @@ function Invoke-StackchanReleasePlatformio {
     } else {
       $env:PLATFORMIO_CORE_DIR = $previousCoreDir
     }
+    if ($null -eq $previousBuildCacheDir) {
+      Remove-Item Env:\PLATFORMIO_BUILD_CACHE_DIR -ErrorAction SilentlyContinue
+    } else {
+      $env:PLATFORMIO_BUILD_CACHE_DIR = $previousBuildCacheDir
+    }
+    if ($null -eq $previousExpectedCommit) {
+      Remove-Item Env:\STACKCHAN_EXPECTED_BUILD_COMMIT -ErrorAction SilentlyContinue
+    } else {
+      $env:STACKCHAN_EXPECTED_BUILD_COMMIT = $previousExpectedCommit
+    }
+    if ($null -eq $previousExpectedEpoch) {
+      Remove-Item Env:\STACKCHAN_EXPECTED_BUILD_EPOCH -ErrorAction SilentlyContinue
+    } else {
+      $env:STACKCHAN_EXPECTED_BUILD_EPOCH = $previousExpectedEpoch
+    }
   }
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  $Version = (git describe --tags --always --dirty).Trim()
+  $Version = (Invoke-ReleaseGit -Arguments @("describe", "--tags", "--always", "--dirty")).Trim()
+}
+Assert-SafeReleaseVersionLeaf -Value $Version
+if ($SkipBuild -and -not $Version.StartsWith("diagnostic-", [System.StringComparison]::Ordinal)) {
+  throw "Diagnostic -SkipBuild package versions must start with 'diagnostic-'."
 }
 
 $firmwareArtifactNames = @(
@@ -133,44 +578,594 @@ function Copy-BuildArtifacts {
   }
 }
 
-$releaseOutputRoot = Join-Path $repoRoot "output/release"
-Get-ChildItem -LiteralPath $releaseOutputRoot -Directory -Force -Filter ".firmware-build-cache-*" -ErrorAction SilentlyContinue |
-  Remove-Item -Recurse -Force
+$releaseOutputRoot = if ($SkipBuild) {
+  Join-Path $repoRoot "output/diagnostics"
+} else {
+  Join-Path $repoRoot "output/release"
+}
 
 $builtFirmwareCache = $null
-if (-not $SkipBuild) {
-  # These profiles intentionally span the legacy Espressif platform and the
-  # pioarduino/Arduino 3.3.6 platform. Building them in one PlatformIO process
-  # lets the shared framework package name replace the active toolchain. The
-  # replacement can also invalidate prior .pio/build trees, so snapshot every
-  # successful environment before installing the next framework family.
-  $builtFirmwareCache = Join-Path $repoRoot "output/release/.firmware-build-cache-$PID"
-  if (Test-Path -LiteralPath $builtFirmwareCache) {
-    Remove-Item -LiteralPath $builtFirmwareCache -Recurse -Force
+$firmwareBuildCacheRoot = $null
+$firmwareDependencySnapshotRoot = $null
+$releaseSourceRoot = $null
+$releaseSourceWorktreeAdded = $false
+$releaseSourceLocationPushed = $false
+$releaseSourceFailureRecorded = $false
+$firmwareReproducibilityProof = [ordered]@{
+  status = "not-proven-skip-build"
+  minimumClockBoundarySeconds = 65
+  clockBoundarySeconds = 0
+  cycleAStartedUtc = $null
+  cycleBStartedUtc = $null
+  cycleASourceCommit = $null
+  cycleASourceEpoch = $null
+  cycleBSourceCommit = $null
+  cycleBSourceEpoch = $null
+  buildCachePolicy = "not-applicable-skip-build"
+  sourceIsolationPolicy = "not-applicable-skip-build"
+  identityAttestations = @()
+  cycleAArtifacts = @()
+  cycleBArtifacts = @()
+}
+
+function Get-CanonicalReleaseGitIdentity {
+  param([Parameter(Mandatory = $true)][string]$ProjectRoot)
+
+  $identityCommit = (Invoke-ReleaseGit -Arguments @("-C", $ProjectRoot, "rev-parse", "HEAD")).Trim()
+  if ($LASTEXITCODE -ne 0 -or $identityCommit -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "Could not resolve a canonical 40-character Git commit for release provenance."
   }
+  $identityEpoch = (Invoke-ReleaseGit -Arguments @("-C", $ProjectRoot, "show", "-s", "--format=%ct", $identityCommit)).Trim()
+  if ($LASTEXITCODE -ne 0 -or $identityEpoch -notmatch '^[0-9]{1,12}$') {
+    throw "Could not resolve the canonical Git commit epoch for release provenance."
+  }
+  return [ordered]@{
+    commit = $identityCommit.ToLowerInvariant()
+    epoch = $identityEpoch
+  }
+}
+
+function Assert-ReleaseSourceIdentity {
+  param(
+    [Parameter(Mandatory = $true)][string]$ExpectedCommit,
+    [Parameter(Mandatory = $true)][string]$ExpectedEpoch,
+    [Parameter(Mandatory = $true)][string]$Phase,
+    [Parameter(Mandatory = $true)][string]$ProjectRoot,
+    [switch]$RejectIgnored
+  )
+
+  $observedIdentity = Get-CanonicalReleaseGitIdentity -ProjectRoot $ProjectRoot
+  if ($observedIdentity.commit -cne $ExpectedCommit -or
+      $observedIdentity.epoch -cne $ExpectedEpoch) {
+    throw "Release source identity changed during $Phase."
+  }
+  $identityStatusArguments = @(
+    "-C", $ProjectRoot, "status", "--porcelain", "--untracked-files=all")
+  if ($RejectIgnored) {
+    $identityStatusArguments += @("--ignored=matching", "--ignore-submodules=none")
+  }
+  $identityDirty = @(Invoke-ReleaseGit -Arguments $identityStatusArguments)
+  if ($LASTEXITCODE -ne 0 -or $identityDirty.Count -gt 0) {
+    throw "Release source worktree is not clean during $Phase."
+  }
+}
+
+function New-ShortReleaseScratchPath {
+  param([Parameter(Mandatory = $true)][string]$Label)
+
+  if ($Label -notmatch '^[a-z0-9-]{1,16}$') {
+    throw "Invalid release scratch label: $Label"
+  }
+  if ($env:OS -eq "Windows_NT") {
+    $reservedDrives = @("R", "Q", "P", "O", "S", "T", "U")
+    $drive = Get-PSDrive -PSProvider FileSystem |
+      Where-Object {
+        $_.Root -match '^[A-Za-z]:\\$' -and
+        $reservedDrives -notcontains $_.Name -and
+        $null -ne $_.Free
+      } |
+      Sort-Object Free -Descending |
+      Select-Object -First 1
+    if ($null -eq $drive) {
+      throw "Could not locate a fixed drive for a short release build worktree."
+    }
+    $scratch = Join-Path $drive.Root ("sc-$Label-$PID-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+  } else {
+    $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("sc-$Label-$PID-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+  }
+  $scratch = [System.IO.Path]::GetFullPath($scratch)
+  if ($env:OS -eq "Windows_NT" -and $scratch.Length -gt 60) {
+    throw "Release scratch path is not short enough for the embedded toolchain: $scratch"
+  }
+  if (Test-Path -LiteralPath $scratch) {
+    throw "Fresh release scratch path already exists: $scratch"
+  }
+  return $scratch
+}
+
+function Invoke-LoggedReleasePlatformio {
+  param(
+    [Parameter(Mandatory = $true)][string]$Environment,
+    [Parameter(Mandatory = $true)][string]$BuildCacheDir,
+    [Parameter(Mandatory = $true)][string]$ExpectedCommit,
+    [Parameter(Mandatory = $true)][string]$ExpectedEpoch,
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [Parameter(Mandatory = $true)][string]$LogPath,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogPath) | Out-Null
+  $lines = New-Object 'System.Collections.Generic.List[string]'
+  try {
+    Invoke-StackchanReleasePlatformio `
+      -Environment $Environment `
+      -BuildCacheDir $BuildCacheDir `
+      -ExpectedCommit $ExpectedCommit `
+      -ExpectedEpoch $ExpectedEpoch `
+      -Arguments $Arguments 2>&1 | ForEach-Object {
+        $line = [string]$_
+        $lines.Add($line)
+        Write-Host $line
+      }
+    $commandExit = $LASTEXITCODE
+  } catch {
+    $lines.Add([string]$_)
+    $lines | Set-Content -LiteralPath $LogPath -Encoding UTF8
+    throw
+  }
+  $lines | Set-Content -LiteralPath $LogPath -Encoding UTF8
+  if ($commandExit -ne 0) {
+    throw "$Description failed with exit code $commandExit. Log: $LogPath"
+  }
+  return @($lines)
+}
+
+function Copy-DependencySnapshotFiles {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourceRoot,
+    [Parameter(Mandatory = $true)][string]$DestinationRoot
+  )
+
+  if (-not (Test-Path -LiteralPath $SourceRoot -PathType Container)) { return }
+  $sourcePath = (Resolve-Path -LiteralPath $SourceRoot).Path.TrimEnd('\', '/')
+  foreach ($file in Get-ChildItem -LiteralPath $sourcePath -Recurse -File -Force -ErrorAction SilentlyContinue) {
+    if ($file.Name -notmatch '(?i)^(LICENSE|LICENCE|COPYING|NOTICE)(\..*)?$' -and
+        $file.Name -notin @('library.json', 'library.properties', 'package.json', 'platform.json')) {
+      continue
+    }
+    $relative = $file.FullName.Substring($sourcePath.Length + 1)
+    $destination = Join-Path $DestinationRoot $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
+  }
+}
+
+function Save-BuildDependencySnapshot {
+  param(
+    [Parameter(Mandatory = $true)][string]$Environment,
+    [Parameter(Mandatory = $true)][string]$BuildCacheDir,
+    [Parameter(Mandatory = $true)][string]$ExpectedCommit,
+    [Parameter(Mandatory = $true)][string]$ExpectedEpoch,
+    [Parameter(Mandatory = $true)][string]$BuildProjectRoot,
+    [Parameter(Mandatory = $true)][string]$SnapshotRoot
+  )
+
+  $environmentRoot = Join-Path $SnapshotRoot $Environment
+  New-Item -ItemType Directory -Force -Path $environmentRoot | Out-Null
+  $packageListLines = @(Invoke-LoggedReleasePlatformio `
+    -Environment $Environment `
+    -BuildCacheDir $BuildCacheDir `
+    -ExpectedCommit $ExpectedCommit `
+    -ExpectedEpoch $ExpectedEpoch `
+    -Arguments @('pkg', 'list', '-d', $BuildProjectRoot, '-e', $Environment) `
+    -LogPath (Join-Path $environmentRoot 'pkg-list.txt') `
+    -Description "$Environment dependency inventory")
+  $verbosePackageListLines = @(Invoke-LoggedReleasePlatformio `
+    -Environment $Environment `
+    -BuildCacheDir $BuildCacheDir `
+    -ExpectedCommit $ExpectedCommit `
+    -ExpectedEpoch $ExpectedEpoch `
+    -Arguments @('pkg', 'list', '-d', $BuildProjectRoot, '-e', $Environment, '-v') `
+    -LogPath (Join-Path $environmentRoot 'pkg-list-verbose.txt') `
+    -Description "$Environment verbose dependency inventory")
+  Invoke-LoggedReleasePlatformio `
+    -Environment $Environment `
+    -BuildCacheDir $BuildCacheDir `
+    -ExpectedCommit $ExpectedCommit `
+    -ExpectedEpoch $ExpectedEpoch `
+    -Arguments @('--version') `
+    -LogPath (Join-Path $environmentRoot 'platformio-version.txt') `
+    -Description "$Environment PlatformIO version capture" | Out-Null
+
+  Copy-DependencySnapshotFiles `
+    -SourceRoot (Join-Path $BuildProjectRoot ".pio/libdeps/$Environment") `
+    -DestinationRoot (Join-Path $environmentRoot 'libdeps')
+  $coreDir = Get-ReleasePlatformioCoreDir -Environment $Environment
+  $platformSource = Get-StackchanVerbosePlatformSource `
+    -VerbosePackageList ($verbosePackageListLines -join "`n") `
+    -PlatformioCoreDir $coreDir
+  Copy-DependencySnapshotFiles `
+    -SourceRoot $platformSource.sourcePath `
+    -DestinationRoot (Join-Path $environmentRoot ('platform/' + $platformSource.sourceLeaf))
+  $platformSource | ConvertTo-Json | Set-Content `
+    -LiteralPath (Join-Path $environmentRoot 'platform-source.json') -Encoding UTF8
+  $resolvedPackages = @(Convert-StackchanPioPackageList ($packageListLines -join "`n"))
+  $corePackagesRoot = Join-Path $coreDir 'packages'
+  $corePackageNames = @(Get-StackchanResolvedCorePackageNames `
+    -ResolvedPackages $resolvedPackages -CorePackagesRoot $corePackagesRoot)
+  if ($corePackageNames.Count -eq 0) {
+    throw "No resolved PlatformIO core packages were captured for $Environment"
+  }
+  Copy-StackchanResolvedCorePackageEvidence `
+    -CorePackagesRoot $corePackagesRoot `
+    -DestinationRoot (Join-Path $environmentRoot 'packages') `
+    -CorePackageNames $corePackageNames
+  $corePackageNames | ConvertTo-Json | Set-Content `
+    -LiteralPath (Join-Path $environmentRoot 'core-package-names.json') -Encoding UTF8
+}
+
+function Invoke-FirmwareBuildCycle {
+  param(
+    [Parameter(Mandatory = $true)][string]$CycleRoot,
+    [Parameter(Mandatory = $true)][string]$ExpectedCommit,
+    [Parameter(Mandatory = $true)][string]$ExpectedEpoch,
+    [Parameter(Mandatory = $true)][string]$CycleName,
+    [Parameter(Mandatory = $true)][string]$BuildProjectRoot,
+    [string]$DependencySnapshotRoot
+  )
+  New-Item -ItemType Directory -Force -Path $CycleRoot | Out-Null
   foreach ($environment in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")) {
-    $environmentLibdeps = Join-Path $repoRoot ".pio/libdeps/$environment"
+    Assert-ReleaseSourceIdentity `
+      -ExpectedCommit $ExpectedCommit `
+      -ExpectedEpoch $ExpectedEpoch `
+      -Phase "$CycleName/$environment pre-clean" `
+      -ProjectRoot $BuildProjectRoot
+    $environmentBuildCache = Join-Path $CycleRoot "build-cache-$environment"
+    if (Test-Path -LiteralPath $environmentBuildCache) {
+      throw "Fresh release build cache already exists: $environmentBuildCache"
+    }
+    New-Item -ItemType Directory -Path $environmentBuildCache | Out-Null
+    if (@(Get-ChildItem -LiteralPath $environmentBuildCache -Force).Count -ne 0) {
+      throw "Fresh release build cache is not empty: $environmentBuildCache"
+    }
+    $environmentLibdeps = Join-Path $BuildProjectRoot ".pio/libdeps/$environment"
     if (Test-Path -LiteralPath $environmentLibdeps) {
       Remove-Item -LiteralPath $environmentLibdeps -Recurse -Force
     }
-    Invoke-StackchanReleasePlatformio `
+    Invoke-LoggedReleasePlatformio `
       -Environment $environment `
-      -Arguments @("run", "-e", $environment, "-t", "clean")
-    Invoke-StackchanReleasePlatformio `
+      -BuildCacheDir $environmentBuildCache `
+      -ExpectedCommit $ExpectedCommit `
+      -ExpectedEpoch $ExpectedEpoch `
+      -Arguments @("run", "-d", $BuildProjectRoot, "-e", $environment, "-t", "clean") `
+      -LogPath (Join-Path $CycleRoot "logs/$environment-clean.log") `
+      -Description "$CycleName/$environment clean" | Out-Null
+    Assert-ReleaseSourceIdentity `
+      -ExpectedCommit $ExpectedCommit `
+      -ExpectedEpoch $ExpectedEpoch `
+      -Phase "$CycleName/$environment pre-build" `
+      -ProjectRoot $BuildProjectRoot
+    Invoke-LoggedReleasePlatformio `
       -Environment $environment `
-      -Arguments @("run", "-e", $environment)
+      -BuildCacheDir $environmentBuildCache `
+      -ExpectedCommit $ExpectedCommit `
+      -ExpectedEpoch $ExpectedEpoch `
+      -Arguments @("run", "-d", $BuildProjectRoot, "-e", $environment) `
+      -LogPath (Join-Path $CycleRoot "logs/$environment-build.log") `
+      -Description "$CycleName/$environment build" | Out-Null
     Copy-BuildArtifacts `
-      -BuildDir (Join-Path $repoRoot ".pio/build/$environment") `
-      -Destination (Join-Path $builtFirmwareCache $environment)
+      -BuildDir (Join-Path $BuildProjectRoot ".pio/build/$environment") `
+      -Destination (Join-Path $CycleRoot $environment)
+    Assert-ReleaseSourceIdentity `
+      -ExpectedCommit $ExpectedCommit `
+      -ExpectedEpoch $ExpectedEpoch `
+      -Phase "$CycleName/$environment post-snapshot" `
+      -ProjectRoot $BuildProjectRoot
+    $script:firmwareIdentityAttestations += [ordered]@{
+      cycle = $CycleName
+      environment = $environment
+      sourceCommit = $ExpectedCommit
+      sourceEpoch = $ExpectedEpoch
+      preBuildChecked = $true
+      postSnapshotChecked = $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace($DependencySnapshotRoot)) {
+      Save-BuildDependencySnapshot `
+        -Environment $environment `
+        -BuildCacheDir $environmentBuildCache `
+        -ExpectedCommit $ExpectedCommit `
+        -ExpectedEpoch $ExpectedEpoch `
+        -BuildProjectRoot $BuildProjectRoot `
+        -SnapshotRoot $DependencySnapshotRoot
+    }
   }
+}
+
+function Get-FirmwareBuildArtifactRecords {
+  param(
+    [Parameter(Mandatory = $true)][string]$CycleRoot
+  )
+  $records = @()
+  foreach ($environment in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")) {
+    foreach ($artifact in $firmwareArtifactNames) {
+      $path = Join-Path (Join-Path $CycleRoot $environment) $artifact
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "Missing reproducibility artifact: $path"
+      }
+      $item = Get-Item -LiteralPath $path
+      $records += [ordered]@{
+        environment = $environment
+        artifact = $artifact
+        bytes = [long]$item.Length
+        sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToUpperInvariant()
+      }
+    }
+  }
+  return @($records)
+}
+
+function Get-UtcWholeSecond {
+  $now = (Get-Date).ToUniversalTime()
+  return [DateTime]::new(
+    $now.Ticks - ($now.Ticks % [TimeSpan]::TicksPerSecond),
+    [DateTimeKind]::Utc)
+}
+
+function Remove-ReleaseSourceWorktree {
+  if ($script:releaseSourceLocationPushed) {
+    Pop-Location
+    $script:releaseSourceLocationPushed = $false
+  }
+  if (-not $script:releaseSourceWorktreeAdded) {
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace($script:releaseSourceRoot)) {
+    throw "Commit-bound release source root is missing while its worktree is registered; refusing successful cleanup."
+  }
+  if (-not (Test-Path -LiteralPath $script:releaseSourceRoot)) {
+    throw (
+      "Commit-bound release source worktree is missing at " + [string]$script:releaseSourceRoot +
+      "; refusing successful packaging because its final state cannot be audited.")
+  }
+  $releaseSourceDirty = @(
+    Invoke-ReleaseGit -Arguments @(
+      '-C', [string]$script:releaseSourceRoot, 'status', '--porcelain=v1',
+      '--untracked-files=all', '--ignored=matching', '--ignore-submodules=none'))
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not audit the commit-bound release source; leaving its exact worktree attached."
+  }
+  if ($releaseSourceDirty.Count -gt 0) {
+    if (-not $script:releaseSourceFailureRecorded) {
+      $sourceFailureParent = Join-Path $repoRoot 'output/private/package-source-failures'
+      New-Item -ItemType Directory -Force -Path $sourceFailureParent | Out-Null
+      $sourceFailureRoot = Join-Path $sourceFailureParent (
+        (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss') + "-$PID-" + [guid]::NewGuid().ToString('N'))
+      New-Item -ItemType Directory -Path $sourceFailureRoot | Out-Null
+      $releaseSourceDirty | Set-Content -LiteralPath (Join-Path $sourceFailureRoot 'STATUS.txt') -Encoding UTF8
+      Invoke-ReleaseGit -Arguments @(
+        '-C', [string]$script:releaseSourceRoot, 'diff', '--binary', '--no-ext-diff') |
+        Set-Content -LiteralPath (Join-Path $sourceFailureRoot 'TRACKED_CHANGES.patch') -Encoding UTF8
+      [ordered]@{
+        schema = 'stackchan.package-source-failure.v2'
+        status = 'commit-bound-source-drift-full-worktree-preserved'
+        preservationPolicy = 'full-failed-worktree-retained-attached'
+        sourceRoot = [string]$script:releaseSourceRoot
+        sourceCommit = if ($null -eq $canonicalBuildCommit) { $null } else { $canonicalBuildCommit }
+        capturedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+      } | ConvertTo-Json -Depth 3 | Set-Content `
+        -LiteralPath (Join-Path $sourceFailureRoot 'FAILURE_EVIDENCE.json') -Encoding UTF8
+      $script:releaseSourceFailureRecorded = $true
+      Write-Warning (
+        "Commit-bound release source drift was detected. Its complete worktree remains attached at " +
+        [string]$script:releaseSourceRoot + "; evidence: " + $sourceFailureRoot)
+    }
+    throw "Commit-bound release source drift is a package failure; the full worktree remains attached."
+  }
+  Invoke-ReleaseGit -Arguments @(
+    '-C', [string]$repoRoot, 'worktree', 'remove', [string]$script:releaseSourceRoot)
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not remove the commit-bound release source worktree: $($script:releaseSourceRoot)"
+  }
+  $script:releaseSourceWorktreeAdded = $false
+  $script:releaseSourceRoot = $null
+}
+
+$script:releaseSourceCleanupReady = $true
+trap {
+  $packageFailure = $_
+  if ($script:releaseSourceCleanupReady) {
+    try {
+      Remove-ReleaseSourceWorktree
+    } catch {
+      Write-Warning "Could not clean the exact release source worktree; it remains preserved for inspection."
+    }
+  }
+  throw $packageFailure
+}
+
+if (-not $SkipBuild) {
+  # The three profiles span two PlatformIO core roots. Each proof cycle uses a
+  # distinct, short detached worktree, and the compiler hook maps both paths to
+  # one canonical debug/source prefix before bytes are compared.
+  $firmwareBuildCacheRoot = Join-Path $repoRoot (
+    "output/release/.firmware-build-cache-$PID-" + [guid]::NewGuid().ToString("N"))
+  $cycleARoot = Join-Path $firmwareBuildCacheRoot "cycle-a"
+  $cycleBRoot = Join-Path $firmwareBuildCacheRoot "cycle-b"
+  $firmwareDependencySnapshotRoot = Join-Path $firmwareBuildCacheRoot "cycle-b-dependencies"
+  $cycleASourceRoot = New-ShortReleaseScratchPath -Label 'fw-a'
+  $cycleBSourceRoot = New-ShortReleaseScratchPath -Label 'firmware-b'
+  if ($cycleASourceRoot -ceq $cycleBSourceRoot -or
+      $cycleASourceRoot.Length -eq $cycleBSourceRoot.Length) {
+    throw "Firmware reproducibility proof requires distinct source roots with different path lengths."
+  }
+  $activeBuildSourceRoot = $null
+  $activeBuildWorktreeAdded = $false
+  $script:firmwareIdentityAttestations = @()
+  $canonicalBuildIdentity = Get-CanonicalReleaseGitIdentity -ProjectRoot $repoRoot
+  $canonicalBuildCommit = $canonicalBuildIdentity.commit
+  $canonicalBuildEpoch = $canonicalBuildIdentity.epoch
+  Assert-ReleaseSourceIdentity `
+    -ExpectedCommit $canonicalBuildCommit `
+    -ExpectedEpoch $canonicalBuildEpoch `
+    -Phase "reproducibility proof source capture" `
+    -ProjectRoot $repoRoot
+  try {
+    $activeBuildSourceRoot = $cycleASourceRoot
+    Invoke-ReleaseGit -Arguments @(
+      '-C', $repoRoot, 'worktree', 'add', '--detach', $activeBuildSourceRoot, $canonicalBuildCommit)
+    if ($LASTEXITCODE -ne 0) { throw "Could not create the cycle-a detached firmware worktree." }
+    $activeBuildWorktreeAdded = $true
+    Assert-ReleaseSourceIdentity `
+      -ExpectedCommit $canonicalBuildCommit `
+      -ExpectedEpoch $canonicalBuildEpoch `
+      -Phase "cycle-a detached source creation" `
+      -ProjectRoot $activeBuildSourceRoot
+    $cycleAStarted = Get-UtcWholeSecond
+    Invoke-FirmwareBuildCycle `
+      -CycleRoot $cycleARoot `
+      -ExpectedCommit $canonicalBuildCommit `
+      -ExpectedEpoch $canonicalBuildEpoch `
+      -CycleName 'cycle-a' `
+      -BuildProjectRoot $activeBuildSourceRoot
+    $cycleAArtifacts = @(Get-FirmwareBuildArtifactRecords -CycleRoot $cycleARoot)
+    Assert-ReleaseSourceIdentity `
+      -ExpectedCommit $canonicalBuildCommit `
+      -ExpectedEpoch $canonicalBuildEpoch `
+      -Phase "reproducibility proof post-cycle-a" `
+      -ProjectRoot $activeBuildSourceRoot
+    Invoke-ReleaseGit -Arguments @(
+      '-C', $repoRoot, 'worktree', 'remove', '--force', $activeBuildSourceRoot)
+    if ($LASTEXITCODE -ne 0) { throw "Could not remove the cycle-a detached firmware worktree." }
+    $activeBuildWorktreeAdded = $false
+    $activeBuildSourceRoot = $null
+
+    $cycleBNotBefore = $cycleAStarted.AddSeconds(65)
+    while ((Get-Date).ToUniversalTime() -lt $cycleBNotBefore) {
+      $remaining = [int][Math]::Ceiling(($cycleBNotBefore - (Get-Date).ToUniversalTime()).TotalSeconds)
+      Start-Sleep -Seconds ([Math]::Min(10, [Math]::Max(1, $remaining)))
+    }
+    $cycleBStarted = Get-UtcWholeSecond
+    $activeBuildSourceRoot = $cycleBSourceRoot
+    Invoke-ReleaseGit -Arguments @(
+      '-C', $repoRoot, 'worktree', 'add', '--detach', $activeBuildSourceRoot, $canonicalBuildCommit)
+    if ($LASTEXITCODE -ne 0) { throw "Could not create the cycle-b detached firmware worktree." }
+    $activeBuildWorktreeAdded = $true
+    Assert-ReleaseSourceIdentity `
+      -ExpectedCommit $canonicalBuildCommit `
+      -ExpectedEpoch $canonicalBuildEpoch `
+      -Phase "cycle-b detached source creation" `
+      -ProjectRoot $activeBuildSourceRoot
+    Invoke-FirmwareBuildCycle `
+      -CycleRoot $cycleBRoot `
+      -ExpectedCommit $canonicalBuildCommit `
+      -ExpectedEpoch $canonicalBuildEpoch `
+      -CycleName 'cycle-b' `
+      -BuildProjectRoot $activeBuildSourceRoot `
+      -DependencySnapshotRoot $firmwareDependencySnapshotRoot
+    $cycleBArtifacts = @(Get-FirmwareBuildArtifactRecords -CycleRoot $cycleBRoot)
+    Assert-ReleaseSourceIdentity `
+      -ExpectedCommit $canonicalBuildCommit `
+      -ExpectedEpoch $canonicalBuildEpoch `
+      -Phase "reproducibility proof post-cycle-b" `
+      -ProjectRoot $activeBuildSourceRoot
+
+    if ($cycleAArtifacts.Count -ne 12 -or $cycleBArtifacts.Count -ne 12) {
+      throw "Firmware reproducibility proof did not produce all 12 artifacts per cycle."
+    }
+    for ($artifactIndex = 0; $artifactIndex -lt $cycleAArtifacts.Count; $artifactIndex++) {
+      $left = $cycleAArtifacts[$artifactIndex]
+      $right = $cycleBArtifacts[$artifactIndex]
+      if ($left.environment -cne $right.environment -or
+          $left.artifact -cne $right.artifact -or
+          [long]$left.bytes -ne [long]$right.bytes -or
+          $left.sha256 -cne $right.sha256) {
+        throw "Firmware reproducibility mismatch: $($left.environment)/$($left.artifact)"
+      }
+    }
+    $clockBoundarySeconds = [int][Math]::Floor(($cycleBStarted - $cycleAStarted).TotalSeconds)
+    if ($clockBoundarySeconds -lt 65) {
+      throw "Firmware reproducibility cycles did not cross the required 65-second clock boundary."
+    }
+    $firmwareReproducibilityProof = [ordered]@{
+      status = "verified-two-clean-cycles"
+      minimumClockBoundarySeconds = 65
+      clockBoundarySeconds = $clockBoundarySeconds
+      cycleAStartedUtc = $cycleAStarted.ToString("yyyy-MM-ddTHH:mm:ssZ")
+      cycleBStartedUtc = $cycleBStarted.ToString("yyyy-MM-ddTHH:mm:ssZ")
+      cycleASourceCommit = $canonicalBuildCommit
+      cycleASourceEpoch = $canonicalBuildEpoch
+      cycleBSourceCommit = $canonicalBuildCommit
+      cycleBSourceEpoch = $canonicalBuildEpoch
+      buildCachePolicy = "isolated-empty-per-cycle-environment"
+      sourceIsolationPolicy = "distinct-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths"
+      identityAttestations = @($script:firmwareIdentityAttestations)
+      cycleAArtifacts = @($cycleAArtifacts)
+      cycleBArtifacts = @($cycleBArtifacts)
+    }
+    Invoke-ReleaseGit -Arguments @(
+      '-C', $repoRoot, 'worktree', 'remove', '--force', $activeBuildSourceRoot)
+    if ($LASTEXITCODE -ne 0) { throw "Could not remove the cycle-b detached firmware worktree." }
+    $activeBuildWorktreeAdded = $false
+    $activeBuildSourceRoot = $null
+  } catch {
+    $buildFailure = $_
+    $failureParent = Join-Path $repoRoot "output/private/reproducibility-failures"
+    New-Item -ItemType Directory -Force -Path $failureParent | Out-Null
+    $failureName = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss") + "-$PID-" + [guid]::NewGuid().ToString("N")
+    $failureRoot = Join-Path $failureParent $failureName
+    try {
+      $failureEvidence = Save-StackchanFirmwareReproducibilityFailureEvidence `
+        -FailureRoot $failureRoot `
+        -BuildCacheRoot ([string]$firmwareBuildCacheRoot) `
+        -ActiveSourceRoot ([string]$activeBuildSourceRoot) `
+        -WorktreeStillAttached ([bool]$activeBuildWorktreeAdded) `
+        -Failure $buildFailure `
+        -SourceCommit $canonicalBuildCommit `
+        -SourceEpoch $canonicalBuildEpoch
+      $firmwareBuildCacheRoot = $null
+      Write-Warning (
+        "Firmware reproducibility failed. The complete detached worktree remains attached at " +
+        [string]$activeBuildSourceRoot + "; evidence: " + $failureRoot)
+    } catch {
+      Write-Warning "Could not fully copy failed build evidence; leaving the exact failed worktree attached."
+    }
+    throw $buildFailure.Exception
+  }
+  $builtFirmwareCache = $cycleBRoot
+  Assert-ReleaseSourceIdentity `
+    -ExpectedCommit $canonicalBuildCommit `
+    -ExpectedEpoch $canonicalBuildEpoch `
+    -Phase "reproducibility proof before packaging" `
+    -ProjectRoot $repoRoot
+
+  $releaseSourceRoot = New-ShortReleaseScratchPath -Label 'release-src'
+  Invoke-ReleaseGit -Arguments @(
+    '-C', $repoRoot, 'worktree', 'add', '--detach', $releaseSourceRoot, $canonicalBuildCommit)
+  if ($LASTEXITCODE -ne 0) { throw "Could not create the commit-bound release source worktree." }
+  $releaseSourceWorktreeAdded = $true
+  Assert-ReleaseSourceIdentity `
+    -ExpectedCommit $canonicalBuildCommit `
+    -ExpectedEpoch $canonicalBuildEpoch `
+    -Phase "commit-bound package source creation" `
+    -ProjectRoot $releaseSourceRoot `
+    -RejectIgnored
+  Push-Location $releaseSourceRoot
+  $releaseSourceLocationPushed = $true
   $previewPython = Get-StackchanPreviewPython
   & $previewPython tools/render_preview.py
   if ($LASTEXITCODE -ne 0) {
     throw "Preview media generation failed with exit code $LASTEXITCODE"
   }
+  Assert-ReleaseSourceIdentity `
+    -ExpectedCommit $canonicalBuildCommit `
+    -ExpectedEpoch $canonicalBuildEpoch `
+    -Phase "commit-bound preview generation" `
+    -ProjectRoot $releaseSourceRoot `
+    -RejectIgnored
 }
 
-$dirtyFiles = @(git status --porcelain)
+$dirtyFiles = @(Invoke-ReleaseGit -Arguments @(
+  "-C", $repoRoot, "status", "--porcelain"))
 $generatedMediaDirtyFiles = @(
   $dirtyFiles | Where-Object { $_ -match "^\s*(M|\?\?) docs/media/stackchan_alive_(preview\.(gif|mp4|png)|speech_preview\.gif|expression_sheet\.png)$" }
 )
@@ -183,10 +1178,34 @@ if ($sourceDirtyFiles.Count -gt 0 -and -not $AllowDirty) {
   throw "Refusing to package a dirty source worktree. Commit or discard changes first, or pass -AllowDirty for local diagnostic packages. Dirty files:$([Environment]::NewLine)$dirtyList"
 }
 
-$commit = (git rev-parse HEAD).Trim()
-$shortCommit = (git rev-parse --short HEAD).Trim()
-$outDir = Join-Path $repoRoot "output/release/$Version"
-$zipPath = Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
+$observedPackageIdentity = Get-CanonicalReleaseGitIdentity -ProjectRoot $repoRoot
+$commit = $observedPackageIdentity.commit
+$shortCommit = (Invoke-ReleaseGit -Arguments @(
+  "-C", $repoRoot, "rev-parse", "--short", "HEAD")).Trim()
+$commitEpoch = $observedPackageIdentity.epoch
+if (-not $SkipBuild -and
+    ($commit -cne $canonicalBuildCommit -or $commitEpoch -cne $canonicalBuildEpoch)) {
+  throw "Release source identity changed between reproducibility proof and packaging."
+}
+$releaseOutputRootPath = [System.IO.Path]::GetFullPath([string]$releaseOutputRoot).TrimEnd('\', '/')
+$releaseOutputRootPrefix = $releaseOutputRootPath + [System.IO.Path]::DirectorySeparatorChar
+function Join-ContainedReleaseOutputPath {
+  param([Parameter(Mandatory = $true)][string]$Leaf)
+
+  if ([System.IO.Path]::IsPathRooted($Leaf) -or
+      $Leaf.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
+      $Leaf.Contains('/') -or $Leaf.Contains('\')) {
+    throw "Refusing unsafe release output leaf: $Leaf"
+  }
+  $candidate = [System.IO.Path]::GetFullPath((Join-Path $releaseOutputRootPath $Leaf))
+  if (-not $candidate.StartsWith($releaseOutputRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing release output path outside the governed root: $Leaf"
+  }
+  return $candidate
+}
+
+$outDir = Join-ContainedReleaseOutputPath -Leaf $Version
+$zipPath = Join-ContainedReleaseOutputPath -Leaf "stackchan_alive_$Version.zip"
 $zipSidecarPath = "$zipPath.sha256"
 
 if (Test-Path -LiteralPath $outDir) {
@@ -294,10 +1313,6 @@ $firmwareSourceRoot = if ($builtFirmwareCache) {
 Copy-FirmwareSet -BuildDir (Join-Path $firmwareSourceRoot "stackchan") -Destination $displayFirmwareDir
 Copy-FirmwareSet -BuildDir (Join-Path $firmwareSourceRoot "stackchan_servo_calibration") -Destination $servoFirmwareDir
 Copy-FirmwareSet -BuildDir (Join-Path $firmwareSourceRoot "stackchan_release_full") -Destination $fullOnlineFirmwareDir
-if ($builtFirmwareCache -and (Test-Path -LiteralPath $builtFirmwareCache)) {
-  Remove-Item -LiteralPath $builtFirmwareCache -Recurse -Force
-  $builtFirmwareCache = $null
-}
 
 $mediaFiles = @(
   "docs/media/stackchan_alive_preview.png",
@@ -318,11 +1333,10 @@ $diagramFiles = @(
   "docs/media/diagrams/08-io-abstraction-builds.png"
 )
 
-$windowsPowerShell = Join-Path $env:SystemRoot "System32/WindowsPowerShell/v1.0/powershell.exe"
-if (-not (Test-Path -LiteralPath $windowsPowerShell)) {
-  $windowsPowerShell = "powershell.exe"
-}
-& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "render_voice_samples.ps1")
+$windowsPowerShell = $releasePowerShellExecutable
+$releaseToolsRoot = if ($SkipBuild) { $PSScriptRoot } else { Join-Path $releaseSourceRoot 'tools' }
+$packageTrackedSourceRoot = if ($SkipBuild) { [string]$repoRoot } else { [string]$releaseSourceRoot }
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $releaseToolsRoot "render_voice_samples.ps1")
 if ($LASTEXITCODE -ne 0) {
   throw "Voice sample rendering failed."
 }
@@ -377,23 +1391,25 @@ if ($LASTEXITCODE -ne 0) {
 $personaPromptAssets = Get-Content -LiteralPath $personaPromptAssetsPath -Raw | ConvertFrom-Json
 
 foreach ($asset in @($personaPromptAssets.assets)) {
-  $sourcePath = Join-Path $repoRoot ([string]$asset.source_path)
   $packagedSourcePath = Join-ReleasePackagePath ([string]$asset.source_path)
   $promptWavPath = Join-ReleasePackagePath ([string]$asset.wav_path)
   $promptSidecarPath = Join-ReleasePackagePath ([string]$asset.sidecar_path)
-  if (-not (Test-Path -LiteralPath $sourcePath)) {
-    throw "Missing persona packaged prompt source: $sourcePath"
-  }
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $packagedSourcePath), (Split-Path -Parent $promptWavPath), (Split-Path -Parent $promptSidecarPath) | Out-Null
-  Copy-Item -LiteralPath $sourcePath -Destination $packagedSourcePath -Force
-  Copy-Item -LiteralPath $sourcePath -Destination $promptWavPath -Force
-  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "generate_speech_envelope_sidecar.ps1") `
+  Copy-StackchanCommitBoundPackageFile `
+    -PackageSourceRoot $packageTrackedSourceRoot `
+    -RelativePath ([string]$asset.source_path) `
+    -DestinationPath $packagedSourcePath
+  Copy-StackchanCommitBoundPackageFile `
+    -PackageSourceRoot $packageTrackedSourceRoot `
+    -RelativePath ([string]$asset.source_path) `
+    -DestinationPath $promptWavPath
+  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $releaseToolsRoot "generate_speech_envelope_sidecar.ps1") `
     -InputWav $promptWavPath `
     -OutputJson $promptSidecarPath
   if ($LASTEXITCODE -ne 0) {
     throw "Packaged prompt sidecar generation failed for $($asset.wav_path)."
   }
-  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify_speech_envelope_sidecar.ps1") `
+  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $releaseToolsRoot "verify_speech_envelope_sidecar.ps1") `
     -Path $promptSidecarPath
   if ($LASTEXITCODE -ne 0) {
     throw "Packaged prompt sidecar verification failed for $($asset.sidecar_path)."
@@ -416,7 +1432,7 @@ foreach ($file in $voiceMediaFiles) {
   Copy-Item -LiteralPath $file -Destination $voiceMediaDir
 }
 
-& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify_tracked_rvc_assets.ps1") `
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $releaseToolsRoot "verify_tracked_rvc_assets.ps1") `
   -VoiceRoot "media/voice/rvc"
 if ($LASTEXITCODE -ne 0) {
   throw "Tracked RVC audition asset verification failed."
@@ -489,6 +1505,30 @@ Copy-Item -LiteralPath "docs/PRIVACY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ARRIVAL_DAY_RUNBOOK.md" -Destination (Join-Path $outDir "ARRIVAL_DAY_RUNBOOK.md")
 Copy-Item -LiteralPath "docs/RELEASE_QUICKSTART.md" -Destination (Join-Path $outDir "QUICKSTART.md")
+if ($SkipBuild) {
+  $diagnosticBanner = @"
+> [!CAUTION]
+> DIAGNOSTIC-ONLY UNQUALIFIED PACKAGE. RELEASE AND HARDWARE USE ARE FORBIDDEN.
+> This package used ``-SkipBuild -AllowDirty``; firmware provenance and reproducibility are not
+> proven. Do not flash it, run its hardware procedures, publish it, or use it as evidence.
+> Any release or hardware language later in this copied document describes the governed workflow,
+> not this diagnostic archive.
+
+"@
+  foreach ($diagnosticBannerFile in @("README.md", "QUICKSTART.md", "ARRIVAL_DAY_RUNBOOK.md", "docs/README.md")) {
+    $diagnosticBannerPath = Join-Path $outDir $diagnosticBannerFile
+    $diagnosticBanner + [System.IO.File]::ReadAllText($diagnosticBannerPath) |
+      Set-Content -LiteralPath $diagnosticBannerPath -Encoding UTF8
+  }
+  @"
+DIAGNOSTIC-ONLY UNQUALIFIED PACKAGE
+RELEASE AND HARDWARE USE ARE FORBIDDEN
+
+This package used -SkipBuild -AllowDirty. Firmware provenance and reproducibility were not
+proven. Do not flash it, run hardware procedures from it, publish it, or use it as release or
+hardware evidence. Create a governed two-cycle package from a clean immutable commit instead.
+"@ | Set-Content -LiteralPath (Join-Path $outDir "DIAGNOSTIC_PACKAGE_DO_NOT_FLASH.txt") -Encoding UTF8
+}
 Copy-Item -LiteralPath "docs/RELEASE_PROCESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_PERSONALITY.md" -Destination $docsDir
@@ -652,7 +1692,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "Character red-team dry run failed."
 }
 
-& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_voice_source_status.ps1") `
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $releaseToolsRoot "export_voice_source_status.ps1") `
   -VoiceSourceProvenancePath (Join-Path $dataDir "voice_source_provenance.yaml") `
   -VoiceSourceProvenanceDisplayPath "data/voice_source_provenance.yaml" `
   -TemplatePath (Join-Path $docsDir "VOICE_SOURCE_PROVENANCE_TEMPLATE.md") `
@@ -662,7 +1702,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "Voice source status export failed."
 }
 
-& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_rvc_voice_base_status.ps1") `
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $releaseToolsRoot "export_rvc_voice_base_status.ps1") `
   -ManifestPath (Join-Path $dataDir "voice_rvc_base.yaml") `
   -MetadataPath (Join-Path $dataDir "voice_rvc_base_metadata.json") `
   -OutputDir $outDir
@@ -691,6 +1731,18 @@ foreach ($file in $companionEvidenceFiles) {
 }
 
 $releaseTools = @(
+  "tools/package_release.ps1",
+  "tools/firmware_reproducibility_proof.ps1",
+  "tools/test_firmware_reproducibility_proof_contract.ps1",
+  "tools/firmware_reproducibility_failure.ps1",
+  "tools/test_firmware_reproducibility_failure_contract.ps1",
+  "tools/release_source_binding.ps1",
+  "tools/release_dependency_evidence.ps1",
+  "tools/test_release_dependency_evidence_contract.ps1",
+  "tools/release_git_trust.ps1",
+  "tools/test_release_package_verifier_trust_contract.ps1",
+  "tools/test_release_source_binding_contract.ps1",
+  "tools/release_zip_safety.ps1",
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
   "tools/flash_release_firmware.cmd",
@@ -834,6 +1886,8 @@ $releaseTools = @(
   "tools/generate_speech_envelope_sidecar.cmd",
   "tools/generate_speech_envelope_sidecar.ps1",
   "tools/generate_speech_envelope_sidecar.py",
+  "tools/platformio_reproducible_build.py",
+  "tools/test_firmware_reproducible_build_contract.ps1",
   "tools/platformio_generate_persona_assets.py",
   "tools/platformio_generate_voice_assets.py",
   "tools/verify_speech_envelope_sidecar.cmd",
@@ -1018,28 +2072,28 @@ $releaseTools = @(
   "tools/test_android_wifi_evidence_contract.cmd",
   "tools/test_android_wifi_evidence_contract.ps1",
   "tools/check_voice_source_readiness.ps1",
-  "tools/test_voice_source_readiness_contract.ps1"
+  "tools/test_voice_source_readiness_contract.ps1",
+  "tools/searxng/compose.yaml",
+  "tools/searxng/settings.yml"
 )
 
 foreach ($file in $releaseTools) {
   if (-not (Test-Path -LiteralPath $file)) {
     throw "Missing release tool: $file"
   }
-  Copy-Item -LiteralPath $file -Destination $toolsDir
-}
-
-$searxngToolsDir = Join-Path $toolsDir "searxng"
-New-Item -ItemType Directory -Force -Path $searxngToolsDir | Out-Null
-foreach ($file in @("tools/searxng/compose.yaml", "tools/searxng/settings.yml")) {
-  if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-    throw "Missing local research configuration: $file"
+  $relativeToolPath = $file.Substring("tools/".Length).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+  $toolDestination = Join-Path $toolsDir $relativeToolPath
+  $toolDestinationParent = Split-Path -Parent $toolDestination
+  if (-not (Test-Path -LiteralPath $toolDestinationParent -PathType Container)) {
+    New-Item -ItemType Directory -Force -Path $toolDestinationParent | Out-Null
   }
-  Copy-Item -LiteralPath $file -Destination $searxngToolsDir
+  Copy-Item -LiteralPath $file -Destination $toolDestination
 }
 
 Copy-Item -LiteralPath "platformio.ini" -Destination $provenanceDir
 Copy-Item -LiteralPath "partitions_esp_sr_16.csv" -Destination $provenanceDir
 Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
+Copy-Item -LiteralPath "requirements-firmware-release.txt" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/pages.yml" -Destination $provenanceDir
@@ -1111,32 +2165,6 @@ function Get-DeclaredLibDeps {
   return @($libDeps)
 }
 
-function Convert-PioPackageList {
-  param([string]$Text)
-
-  $entries = @()
-  foreach ($line in ($Text -split "`r?`n")) {
-    $clean = ($line -replace "^[^A-Za-z0-9]+", "").Trim()
-    if ($clean -match "^Platform\s+(.+?)\s+@\s+([^\s]+)\s+\(required:\s*(.+)\)$") {
-      $entries += [ordered]@{
-        kind = "platform"
-        name = $Matches[1]
-        version = $Matches[2]
-        required = $Matches[3]
-      }
-    } elseif ($clean -match "^(.+?)\s+@\s+([^\s]+)\s+\(required:\s*(.+)\)$") {
-      $entries += [ordered]@{
-        kind = "package"
-        name = $Matches[1]
-        version = $Matches[2]
-        required = $Matches[3]
-      }
-    }
-  }
-
-  return @($entries)
-}
-
 function Copy-LicenseEvidenceTree {
   param(
     [string]$SourceRoot,
@@ -1165,24 +2193,47 @@ function Copy-LicenseEvidenceTree {
 function Copy-EnvironmentLicenseEvidence {
   param(
     [string]$Environment,
-    [object[]]$ResolvedPackages
+    [object[]]$ResolvedPackages,
+    [string]$PlatformSourceLeaf,
+    [string]$DependencySnapshotRoot
   )
 
   $destination = Join-Path $thirdPartyLicensesDir $Environment
   New-Item -ItemType Directory -Force -Path $destination | Out-Null
+  if (-not [string]::IsNullOrWhiteSpace($DependencySnapshotRoot)) {
+    $exactEnvironmentRoot = Join-Path $DependencySnapshotRoot $Environment
+    if (-not (Test-Path -LiteralPath $exactEnvironmentRoot -PathType Container)) {
+      throw "Missing exact cycle-b dependency snapshot for $Environment"
+    }
+    Get-ChildItem -LiteralPath $exactEnvironmentRoot -Force | Where-Object {
+      $_.Name -notin @(
+        'pkg-list.txt', 'pkg-list-verbose.txt', 'platformio-version.txt',
+        'core-package-names.json', 'platform-source.json')
+    } | ForEach-Object {
+      Copy-Item -LiteralPath $_.FullName -Destination $destination -Recurse -Force
+    }
+    return @(
+      Get-ChildItem -LiteralPath $destination -Recurse -File -Force |
+        Where-Object { $_.Name -match '(?i)^(LICENSE|LICENCE|COPYING|NOTICE)(\..*)?$' }
+    ).Count
+  }
+
   $count = Copy-LicenseEvidenceTree `
     -SourceRoot (Join-Path $repoRoot ".pio/libdeps/$Environment") `
     -DestinationRoot (Join-Path $destination "libdeps")
 
   $coreDir = Get-ReleasePlatformioCoreDir -Environment $Environment
-  $platformRoot = Join-Path $coreDir "platforms/espressif32"
+  if ($PlatformSourceLeaf -notmatch '^[A-Za-z0-9][A-Za-z0-9._@-]*$') {
+    throw "Unsafe PlatformIO platform source leaf for $Environment`: $PlatformSourceLeaf"
+  }
+  $platformRoot = Join-Path $coreDir "platforms/$PlatformSourceLeaf"
   $count += Copy-LicenseEvidenceTree `
     -SourceRoot $platformRoot `
-    -DestinationRoot (Join-Path $destination "platform/espressif32")
+    -DestinationRoot (Join-Path $destination "platform/$PlatformSourceLeaf")
   foreach ($metadataName in @("platform.json", "package.json")) {
     $metadataPath = Join-Path $platformRoot $metadataName
     if (Test-Path -LiteralPath $metadataPath -PathType Leaf) {
-      $metadataDestination = Join-Path $destination "platform/espressif32/$metadataName"
+      $metadataDestination = Join-Path $destination "platform/$PlatformSourceLeaf/$metadataName"
       New-Item -ItemType Directory -Force -Path (Split-Path -Parent $metadataDestination) | Out-Null
       Copy-Item -LiteralPath $metadataPath -Destination $metadataDestination -Force
     }
@@ -1299,30 +2350,100 @@ function Get-DependencyAudit {
   }
 }
 
-$platformioVersion = Invoke-CapturedText {
-  Invoke-StackchanReleasePlatformio -Environment "stackchan" -Arguments @("--version")
+$platformioVersion = if ($SkipBuild) {
+  Invoke-CapturedText {
+    Invoke-StackchanReleasePlatformio -Environment "stackchan" -Arguments @("--version")
+  }
+} else {
+  (Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan/platformio-version.txt') -Raw).Trim()
 }
-$displayDeps = Invoke-CapturedText {
-  Invoke-StackchanReleasePlatformio -Environment "stackchan" -Arguments @("pkg", "list", "-e", "stackchan")
+$displayDeps = if ($SkipBuild) {
+  Invoke-CapturedText {
+    Invoke-StackchanReleasePlatformio -Environment "stackchan" -Arguments @("pkg", "list", "-e", "stackchan")
+  }
+} else {
+  Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan/pkg-list.txt') -Raw
 }
-$displayResolvedPackages = Convert-PioPackageList $displayDeps
+$displayResolvedPackages = Convert-StackchanPioPackageList $displayDeps
+$displayPlatformSourceLeaf = if ($SkipBuild) {
+  $verbose = Invoke-CapturedText {
+    Invoke-StackchanReleasePlatformio -Environment 'stackchan' `
+      -Arguments @('pkg', 'list', '-e', 'stackchan', '-v')
+  }
+  (Get-StackchanVerbosePlatformSource -VerbosePackageList $verbose `
+    -PlatformioCoreDir (Get-ReleasePlatformioCoreDir -Environment 'stackchan')).sourceLeaf
+} else {
+  [string](Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan/platform-source.json') -Raw | ConvertFrom-Json).sourceLeaf
+}
+$displayCorePackageNames = if ($SkipBuild) {
+  @(Get-StackchanResolvedCorePackageNames -ResolvedPackages $displayResolvedPackages `
+    -CorePackagesRoot (Join-Path (Get-ReleasePlatformioCoreDir -Environment 'stackchan') 'packages'))
+} else {
+  @(Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan/core-package-names.json') -Raw | ConvertFrom-Json)
+}
 $displayLicenseCount = Copy-EnvironmentLicenseEvidence `
   -Environment "stackchan" `
-  -ResolvedPackages $displayResolvedPackages
-$servoDeps = Invoke-CapturedText {
-  Invoke-StackchanReleasePlatformio -Environment "stackchan_servo_calibration" -Arguments @("pkg", "list", "-e", "stackchan_servo_calibration")
+  -ResolvedPackages $displayResolvedPackages `
+  -PlatformSourceLeaf $displayPlatformSourceLeaf `
+  -DependencySnapshotRoot $firmwareDependencySnapshotRoot
+$servoDeps = if ($SkipBuild) {
+  Invoke-CapturedText {
+    Invoke-StackchanReleasePlatformio -Environment "stackchan_servo_calibration" -Arguments @("pkg", "list", "-e", "stackchan_servo_calibration")
+  }
+} else {
+  Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan_servo_calibration/pkg-list.txt') -Raw
 }
-$servoResolvedPackages = Convert-PioPackageList $servoDeps
+$servoResolvedPackages = Convert-StackchanPioPackageList $servoDeps
+$servoPlatformSourceLeaf = if ($SkipBuild) {
+  $verbose = Invoke-CapturedText {
+    Invoke-StackchanReleasePlatformio -Environment 'stackchan_servo_calibration' `
+      -Arguments @('pkg', 'list', '-e', 'stackchan_servo_calibration', '-v')
+  }
+  (Get-StackchanVerbosePlatformSource -VerbosePackageList $verbose `
+    -PlatformioCoreDir (Get-ReleasePlatformioCoreDir -Environment 'stackchan_servo_calibration')).sourceLeaf
+} else {
+  [string](Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan_servo_calibration/platform-source.json') -Raw | ConvertFrom-Json).sourceLeaf
+}
+$servoCorePackageNames = if ($SkipBuild) {
+  @(Get-StackchanResolvedCorePackageNames -ResolvedPackages $servoResolvedPackages `
+    -CorePackagesRoot (Join-Path (Get-ReleasePlatformioCoreDir -Environment 'stackchan_servo_calibration') 'packages'))
+} else {
+  @(Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan_servo_calibration/core-package-names.json') -Raw | ConvertFrom-Json)
+}
 $servoLicenseCount = Copy-EnvironmentLicenseEvidence `
   -Environment "stackchan_servo_calibration" `
-  -ResolvedPackages $servoResolvedPackages
-$fullDeps = Invoke-CapturedText {
-  Invoke-StackchanReleasePlatformio -Environment "stackchan_release_full" -Arguments @("pkg", "list", "-e", "stackchan_release_full")
+  -ResolvedPackages $servoResolvedPackages `
+  -PlatformSourceLeaf $servoPlatformSourceLeaf `
+  -DependencySnapshotRoot $firmwareDependencySnapshotRoot
+$fullDeps = if ($SkipBuild) {
+  Invoke-CapturedText {
+    Invoke-StackchanReleasePlatformio -Environment "stackchan_release_full" -Arguments @("pkg", "list", "-e", "stackchan_release_full")
+  }
+} else {
+  Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan_release_full/pkg-list.txt') -Raw
 }
-$fullResolvedPackages = Convert-PioPackageList $fullDeps
+$fullResolvedPackages = Convert-StackchanPioPackageList $fullDeps
+$fullPlatformSourceLeaf = if ($SkipBuild) {
+  $verbose = Invoke-CapturedText {
+    Invoke-StackchanReleasePlatformio -Environment 'stackchan_release_full' `
+      -Arguments @('pkg', 'list', '-e', 'stackchan_release_full', '-v')
+  }
+  (Get-StackchanVerbosePlatformSource -VerbosePackageList $verbose `
+    -PlatformioCoreDir (Get-ReleasePlatformioCoreDir -Environment 'stackchan_release_full')).sourceLeaf
+} else {
+  [string](Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan_release_full/platform-source.json') -Raw | ConvertFrom-Json).sourceLeaf
+}
+$fullCorePackageNames = if ($SkipBuild) {
+  @(Get-StackchanResolvedCorePackageNames -ResolvedPackages $fullResolvedPackages `
+    -CorePackagesRoot (Join-Path (Get-ReleasePlatformioCoreDir -Environment 'stackchan_release_full') 'packages'))
+} else {
+  @(Get-Content -LiteralPath (Join-Path $firmwareDependencySnapshotRoot 'stackchan_release_full/core-package-names.json') -Raw | ConvertFrom-Json)
+}
 $fullLicenseCount = Copy-EnvironmentLicenseEvidence `
   -Environment "stackchan_release_full" `
-  -ResolvedPackages $fullResolvedPackages
+  -ResolvedPackages $fullResolvedPackages `
+  -PlatformSourceLeaf $fullPlatformSourceLeaf `
+  -DependencySnapshotRoot $firmwareDependencySnapshotRoot
 $visionLicenseDir = Join-Path $thirdPartyLicensesDir "models/opencv-zoo-yunet"
 New-Item -ItemType Directory -Force -Path $visionLicenseDir | Out-Null
 Copy-Item -LiteralPath "bridge/models/LICENSE" -Destination (Join-Path $visionLicenseDir "LICENSE") -Force
@@ -1384,7 +2505,11 @@ Version: $Version
 Commit: $commit
 Generated UTC: $((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))
 
-This report records the dependency state used to generate this prerelease package. The source configuration files are copied under ``provenance/``.
+$(if ($SkipBuild) {
+  'This diagnostic report inventories the current local dependency state only. It is unbound to the copied firmware and cannot authorize release or hardware use.'
+} else {
+  'This report records the exact cycle-B dependency inventory and license metadata captured from the build worktree that generated the proved firmware. The commit-bound source configuration is copied under ``provenance/``.'
+})
 
 ## Tooling
 
@@ -1436,6 +2561,9 @@ $dependencyLock = [ordered]@{
   version = $Version
   commit = $commit
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  dependencyEvidencePolicy = if ($SkipBuild) { "diagnostic-current-state-unbound" } else { "exact-cycle-b-build-snapshot" }
+  dependencySourceCommit = if ($SkipBuild) { $null } else { $canonicalBuildCommit }
+  dependencySourceEpoch = if ($SkipBuild) { $null } else { $canonicalBuildEpoch }
   platformioCore = $platformioVersion
   previewRequirements = @($previewRequirementEntries)
   declaredLibDeps = @($declaredLibDeps)
@@ -1444,35 +2572,128 @@ $dependencyLock = [ordered]@{
       board = "m5stack-cores3"
       framework = "arduino"
       platform = "espressif32@7.0.1"
+      platformSourceLeaf = $displayPlatformSourceLeaf
       resolvedPackages = @($displayResolvedPackages)
+      corePackageNames = @($displayCorePackageNames)
     }
     stackchan_servo_calibration = [ordered]@{
       board = "m5stack-cores3"
       framework = "arduino"
       platform = "espressif32@7.0.1"
+      platformSourceLeaf = $servoPlatformSourceLeaf
       resolvedPackages = @($servoResolvedPackages)
+      corePackageNames = @($servoCorePackageNames)
     }
     stackchan_release_full = [ordered]@{
       board = "m5stack-cores3"
       framework = "arduino"
       platform = "pioarduino/platform-espressif32@55.03.36"
+      platformSourceLeaf = $fullPlatformSourceLeaf
       resolvedPackages = @($fullResolvedPackages)
+      corePackageNames = @($fullCorePackageNames)
     }
   }
   dependencyAudit = $dependencyAudit
 }
 $dependencyLock | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "dependency_lock.json") -Encoding UTF8
 
+function ConvertTo-CanonicalPackageInventory {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$PackagePaths,
+    [Parameter(Mandatory = $true)][ValidateSet("tools", "provenance")][string]$RequiredPrefix
+  )
+
+  $canonicalPaths = [System.Collections.Generic.List[string]]::new()
+  $caseInsensitivePaths = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($packagePath in $PackagePaths) {
+    $normalized = ([string]$packagePath).Replace('\', '/')
+    $segments = @($normalized.Split('/'))
+    if ([string]::IsNullOrWhiteSpace($normalized) -or
+        [System.IO.Path]::IsPathRooted($normalized) -or
+        $normalized.StartsWith('/') -or
+        $segments.Count -lt 2 -or
+        $segments[0] -cne $RequiredPrefix -or
+        @($segments | Where-Object { [string]::IsNullOrWhiteSpace($_) -or $_ -in @('.', '..') }).Count -ne 0) {
+      throw "Package inventory contains an invalid $RequiredPrefix path: $packagePath"
+    }
+    if (-not $caseInsensitivePaths.Add($normalized)) {
+      throw "Package inventory contains a duplicate or case-colliding path: $normalized"
+    }
+    $canonicalPaths.Add($normalized)
+  }
+
+  $result = [string[]]$canonicalPaths.ToArray()
+  [Array]::Sort($result, [System.StringComparer]::Ordinal)
+  return @($result)
+}
+
+function Get-CanonicalPackageFileInventory {
+  param(
+    [Parameter(Mandatory = $true)][string]$Directory,
+    [Parameter(Mandatory = $true)][ValidateSet("tools", "provenance")][string]$PackagePrefix
+  )
+
+  $resolvedDirectory = (Resolve-Path -LiteralPath $Directory).Path.TrimEnd('\', '/')
+  $directoryPrefix = $resolvedDirectory + [System.IO.Path]::DirectorySeparatorChar
+  $packagePaths = @(
+    Get-ChildItem -LiteralPath $resolvedDirectory -File -Recurse -Force | ForEach-Object {
+      $fullPath = [System.IO.Path]::GetFullPath($_.FullName)
+      if (-not $fullPath.StartsWith($directoryPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Packaged file escaped its inventory root: $fullPath"
+      }
+      $relativePath = $fullPath.Substring($directoryPrefix.Length).Replace('\', '/')
+      "$PackagePrefix/$relativePath"
+    }
+  )
+  return @(ConvertTo-CanonicalPackageInventory -PackagePaths $packagePaths -RequiredPrefix $PackagePrefix)
+}
+
+$includedToolsInventory = @(Get-CanonicalPackageFileInventory -Directory $toolsDir -PackagePrefix "tools")
+$provenanceFileInventory = @(Get-CanonicalPackageFileInventory -Directory $provenanceDir -PackagePrefix "provenance")
+
 $manifest = [ordered]@{
   version = $Version
   commit = $commit
+  commitRole = if ($SkipBuild) { "package-source-only-not-firmware-identity" } else { "package-and-firmware-source" }
   shortCommit = $shortCommit
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   board = "m5stack-cores3"
   defaultEnvironment = "stackchan"
   includedEnvironments = @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")
-  servoDefault = "display-only and calibration flows remain safety-gated; the production full firmware starts without requesting motion or autonomous refresh; physical servo rail and torque state require fresh /debug verification"
-  status = "test-ready prerelease; hardware validation pending"
+  firmwareReproducibility = [ordered]@{
+    mechanism = if ($SkipBuild) { "unbound-preexisting-artifacts" } else { "git-commit-epoch-builtins-v1" }
+    sourceCommit = if ($SkipBuild) { $null } else { $commit }
+    sourceEpoch = if ($SkipBuild) { $null } else { $commitEpoch }
+    hook = "tools/platformio_reproducible_build.py"
+    contract = "tools/test_firmware_reproducible_build_contract.ps1"
+    hookCoverage = if ($SkipBuild) { "not-run-skip-build" } else { "exactly-one-effective-hook" }
+    releaseOverridePolicy = if ($SkipBuild) { "diagnostic-artifacts-unbound" } else { "release-overrides-fail-closed" }
+    scope = if ($SkipBuild) {
+      "unknown/unbound-skip-build; copied pre-existing outputs whose source identity is not established"
+    } else {
+      "same host/core paths and clean commit across distinct prefix-mapped project roots, canonical recorded PlatformIO toolchain/configuration, and no listed ambient build overrides"
+    }
+    proof = $firmwareReproducibilityProof
+  }
+  servoDefault = if ($SkipBuild) {
+    "boot and motion state unverified; copied firmware identity is unknown; do not flash"
+  } else {
+    "display-only and calibration flows remain safety-gated; the production full firmware starts without requesting motion or autonomous refresh; physical servo rail and torque state require fresh /debug verification"
+  }
+  status = if ($SkipBuild) {
+    "diagnostic-only; reproducibility not proven; release and hardware validation forbidden"
+  } else {
+    "test-ready prerelease; hardware validation pending"
+  }
+  diagnosticPackage = [bool]$SkipBuild
+  packageSourceIsolationPolicy = if ($SkipBuild) { "diagnostic-mutable-source-unbound" } else { "detached-clean-worktree-pinned-to-package-commit" }
+  packageSourceCommit = if ($SkipBuild) { $null } else { $canonicalBuildCommit }
+  packageSourceEpoch = if ($SkipBuild) { $null } else { $canonicalBuildEpoch }
+  releaseEligible = (-not $SkipBuild)
+  hardwareValidationEligible = (-not $SkipBuild)
+  distributionEligible = (-not $SkipBuild)
+  flashEligible = (-not $SkipBuild)
   dirty = ($sourceDirtyFiles.Count -gt 0)
   dirtyFiles = @($sourceDirtyFiles)
   generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
@@ -1619,458 +2840,11 @@ $manifest = [ordered]@{
     "media/voice/rvc/model.pth",
     "media/voice/rvc/model.index"
   )
-  includedTools = @(
-    "tools/flash_device.cmd",
-    "tools/flash_device.ps1",
-    "tools/flash_release_firmware.cmd",
-    "tools/flash_release_firmware.ps1",
-    "tools/flash_wifi_bridge.cmd",
-    "tools/flash_wifi_bridge.ps1",
-    "tools/platformio_apply_wifi_bridge_env.py",
-    "tools/prepare_desktop_python_runtime.cmd",
-    "tools/prepare_desktop_python_runtime.ps1",
-    "tools/check_desktop_python_runtime_payload.cmd",
-    "tools/check_desktop_python_runtime_payload.ps1",
-    "tools/test_desktop_python_runtime_payload_contract.cmd",
-    "tools/test_desktop_python_runtime_payload_contract.ps1",
-    "tools/export_desktop_package_evidence.cmd",
-    "tools/export_desktop_package_evidence.ps1",
-    "tools/test_desktop_package_launch.cmd",
-    "tools/test_desktop_package_launch.ps1",
-    "tools/test_desktop_package_evidence_contract.cmd",
-    "tools/test_desktop_package_evidence_contract.ps1",
-    "tools/check_desktop_release_signing_readiness.cmd",
-    "tools/check_desktop_release_signing_readiness.ps1",
-    "tools/test_desktop_release_signing_readiness_contract.ps1",
-    "tools/install_desktop_companion_package.cmd",
-    "tools/install_desktop_companion_package.ps1",
-    "tools/check_desktop_target_install_evidence.cmd",
-    "tools/check_desktop_target_install_evidence.ps1",
-    "tools/test_desktop_target_install_evidence_contract.cmd",
-    "tools/test_desktop_target_install_evidence_contract.ps1",
-    "tools/check_desktop_v1_evidence_bundle.cmd",
-    "tools/check_desktop_v1_evidence_bundle.ps1",
-    "tools/test_desktop_v1_evidence_bundle_contract.cmd",
-    "tools/test_desktop_v1_evidence_bundle_contract.ps1",
-    "tools/check_companion_v1_evidence_bundle.cmd",
-    "tools/check_companion_v1_evidence_bundle.ps1",
-    "tools/test_companion_v1_evidence_bundle_contract.cmd",
-    "tools/test_companion_v1_evidence_bundle_contract.ps1",
-    "tools/platformio_resolver.ps1",
-    "tools/check_native_toolchain.cmd",
-    "tools/check_native_toolchain.ps1",
-    "tools/check_android_toolchain.cmd",
-    "tools/check_android_toolchain.ps1",
-    "tools/check_android_play_release_readiness.cmd",
-    "tools/check_android_play_release_readiness.ps1",
-    "tools/check_privacy_policy_deployment.cmd",
-    "tools/check_privacy_policy_deployment.ps1",
-    "tools/test_privacy_policy_deployment_contract.cmd",
-    "tools/test_privacy_policy_deployment_contract.ps1",
-    "tools/test_android_upload_signing_contract.cmd",
-    "tools/test_android_upload_signing_contract.ps1",
-    "tools/test_android_emulator_launch.cmd",
-    "tools/test_android_emulator_launch.ps1",
-    "tools/check_android_emulator_release_evidence.cmd",
-    "tools/check_android_emulator_release_evidence.ps1",
-    "tools/test_android_emulator_release_evidence_contract.cmd",
-    "tools/test_android_emulator_release_evidence_contract.ps1",
-    "tools/check_android_play_store_evidence.cmd",
-    "tools/check_android_play_store_evidence.ps1",
-    "tools/check_android_v1_evidence_bundle.cmd",
-    "tools/check_android_v1_evidence_bundle.ps1",
-    "tools/check_android_diagnostics_export_evidence.cmd",
-    "tools/check_android_diagnostics_export_evidence.ps1",
-    "tools/check_companion_v1_readiness.cmd",
-    "tools/check_companion_v1_readiness.ps1",
-    "tools/check_companion_release_version.cmd",
-    "tools/check_companion_release_version.ps1",
-    "tools/test_companion_release_version_contract.cmd",
-    "tools/test_companion_release_version_contract.ps1",
-    "tools/export_companion_release_evidence.cmd",
-    "tools/export_companion_release_evidence.ps1",
-    "tools/preview_python_resolver.ps1",
-    "tools/render_preview.py",
-    "tools/render_rvc_auditions.ps1",
-    "tools/audit_published_release.cmd",
-    "tools/audit_published_release.ps1",
-    "tools/publish_release.cmd",
-    "tools/publish_release.ps1",
-    "tools/release_asset_contract.ps1",
-    "tools/verify_release_asset_contract.cmd",
-    "tools/verify_release_asset_contract.ps1",
-    "tools/export_github_actions_status.cmd",
-    "tools/export_github_actions_status.ps1",
-    "tools/new_ci_account_block_exception.cmd",
-    "tools/new_ci_account_block_exception.ps1",
-    "tools/export_voice_source_status.cmd",
-    "tools/export_voice_source_status.ps1",
-    "tools/export_rvc_voice_base_status.cmd",
-    "tools/export_rvc_voice_base_status.ps1",
-    "tools/export_rollout_status.cmd",
-    "tools/export_rollout_status.ps1",
-    "tools/open_voice_audition.cmd",
-    "tools/open_voice_audition.ps1",
-    "tools/render_rvc_audition_mp3s.cmd",
-    "tools/render_rvc_audition_mp3s.ps1",
-    "tools/generate_speech_envelope_sidecar.cmd",
-    "tools/generate_speech_envelope_sidecar.ps1",
-    "tools/generate_speech_envelope_sidecar.py",
-    "tools/platformio_generate_persona_assets.py",
-    "tools/platformio_generate_voice_assets.py",
-    "tools/verify_speech_envelope_sidecar.cmd",
-    "tools/verify_speech_envelope_sidecar.ps1",
-    "tools/generate_synthetic_hardware_evidence.cmd",
-    "tools/generate_synthetic_hardware_evidence.ps1",
-    "tools/add_hardware_evidence_media.cmd",
-    "tools/add_hardware_evidence_media.ps1",
-    "tools/check_hardware_evidence_progress.cmd",
-    "tools/check_hardware_evidence_progress.ps1",
-    "tools/test_android_apk_install_evidence_contract.cmd",
-    "tools/test_android_apk_install_evidence_contract.ps1",
-    "tools/test_android_probe_evidence_progress_contract.cmd",
-    "tools/test_android_probe_evidence_progress_contract.ps1",
-    "tools/test_android_rollout_status_contract.cmd",
-    "tools/test_android_rollout_status_contract.ps1",
-    "tools/test_android_logcat_capture_contract.cmd",
-    "tools/test_android_logcat_capture_contract.ps1",
-    "tools/test_android_evidence_packet_contract.cmd",
-    "tools/test_android_evidence_packet_contract.ps1",
-    "tools/test_strict_android_apk_evidence_contract.cmd",
-    "tools/test_strict_android_apk_evidence_contract.ps1",
-    "tools/test_strict_android_dashboard_evidence_contract.cmd",
-    "tools/test_strict_android_dashboard_evidence_contract.ps1",
-    "tools/test_strict_android_probe_evidence_contract.cmd",
-    "tools/test_strict_android_probe_evidence_contract.ps1",
-    "tools/test_android_play_store_evidence_contract.cmd",
-    "tools/test_android_play_store_evidence_contract.ps1",
-    "tools/test_android_gemma_evidence_contract.cmd",
-    "tools/test_android_gemma_evidence_contract.ps1",
-    "tools/test_android_v1_evidence_bundle_contract.cmd",
-    "tools/test_android_v1_evidence_bundle_contract.ps1",
-    "tools/prepare_device_arrival.cmd",
-    "tools/prepare_device_arrival.ps1",
-    "tools/run_device_preflight.cmd",
-    "tools/run_device_preflight.ps1",
-    "tools/run_character_harness_tests.cmd",
-    "tools/run_character_harness_tests.ps1",
-    "tools/run_character_red_team.cmd",
-    "tools/run_character_red_team.ps1",
-    "tools/run_bridge_reference_tests.cmd",
-    "tools/run_bridge_reference_tests.ps1",
-    "tools/run_engine_probe.cmd",
-    "tools/run_engine_probe.ps1",
-    "tools/run_litert_lm_smoke.cmd",
-    "tools/run_litert_lm_smoke.ps1",
-    "tools/run_lan_smoke.cmd",
-    "tools/run_lan_smoke.ps1",
-    "tools/start_pc_brain.cmd",
-    "tools/start_pc_brain.ps1",
-    "tools/start_pc_brain_directml.ps1",
-    "tools/test_start_pc_brain_directml_contract.ps1",
-    "tools/check_local_research.ps1",
-    "tools/start_local_research.ps1",
-    "tools/test_local_research_runtime_contract.ps1",
-    "tools/searxng/compose.yaml",
-    "tools/searxng/settings.yml",
-    "tools/start_local_vision.cmd",
-    "tools/start_local_vision.ps1",
-    "tools/test_start_local_vision_contract.ps1",
-    "tools/start_whisper_server.ps1",
-    "tools/test_start_whisper_server_contract.ps1",
-    "tools/start_bridge_ai_supervised_qualification.ps1",
-    "tools/complete_bridge_ai_supervised_qualification.ps1",
-    "tools/test_bridge_ai_supervised_qualification_contract.ps1",
-    "tools/start_stackchan_dashboard.cmd",
-    "tools/start_stackchan_dashboard.ps1",
-    "tools/install_stackchan_dashboard_shortcut.ps1",
-    "tools/test_stackchan_dashboard_launcher_contract.cmd",
-    "tools/test_stackchan_dashboard_launcher_contract.ps1",
-    "tools/start_rvc_worker.ps1",
-    "tools/setup_voice_v2_directml.ps1",
-    "tools/voice_v2_directml_constraints.txt",
-    "tools/start_voice_v2_directml_worker.ps1",
-    "tools/run_voice_v2_directml_benchmark.ps1",
-    "tools/run_voice_v2_wire_benchmark.ps1",
-    "tools/start_voice_v2_supervised_validation.ps1",
-    "tools/check_voice_v2_supervised_evidence.ps1",
-    "tools/complete_voice_v2_supervised_validation.ps1",
-    "tools/restore_voice_v2_production.ps1",
-    "tools/test_voice_v2_supervised_evidence_contract.ps1",
-    "tools/run_pc_brain_probe.cmd",
-    "tools/collect_pc_brain_deploy_evidence.cmd",
-    "tools/collect_pc_brain_deploy_evidence.ps1",
-    "tools/check_pc_brain_deploy_evidence.cmd",
-    "tools/check_pc_brain_deploy_evidence.ps1",
-    "tools/run_pc_brain_quiet_soak.cmd",
-    "tools/run_pc_brain_quiet_soak.ps1",
-    "tools/check_pc_brain_quiet_soak_evidence.cmd",
-    "tools/check_pc_brain_quiet_soak_evidence.ps1",
-    "tools/run_selected_voice_once.cmd",
-    "tools/run_selected_voice_once.ps1",
-    "tools/run_android_companion_probe.cmd",
-    "tools/run_android_companion_probe.ps1",
-    "tools/run_android_companion_soak.cmd",
-    "tools/run_android_companion_soak.ps1",
-    "tools/run_android_udp_beacon_probe.cmd",
-    "tools/run_android_udp_beacon_probe.ps1",
-    "tools/install_android_companion_apk.cmd",
-    "tools/install_android_companion_apk.ps1",
-    "tools/capture_android_companion_logcat.cmd",
-    "tools/capture_android_companion_logcat.ps1",
-    "tools/run_prearrival_sim_check.cmd",
-    "tools/run_prearrival_sim_check.ps1",
-    "tools/run_hardware_simulation.cmd",
-    "tools/run_hardware_simulation.ps1",
-    "tools/send_speech_mouth_demo.cmd",
-    "tools/send_speech_mouth_demo.ps1",
-    "tools/send_speak_all_intents_demo.cmd",
-    "tools/send_speak_all_intents_demo.ps1",
-    "tools/send_bridge_replay_demo.cmd",
-    "tools/send_bridge_replay_demo.ps1",
-    "tools/share_release.cmd",
-    "tools/share_release.ps1",
-    "tools/start_hardware_evidence.cmd",
-    "tools/start_hardware_evidence.ps1",
-    "tools/stop_share.cmd",
-    "tools/stop_share.ps1",
-    "tools/verify_hardware_evidence.cmd",
-    "tools/verify_hardware_evidence.ps1",
-    "tools/verify_consumer_promotion.cmd",
-    "tools/verify_consumer_promotion.ps1",
-    "tools/test_consumer_promotion_contract.ps1",
-    "tools/verify_published_release.cmd",
-    "tools/verify_published_release.ps1",
-    "tools/verify_architecture.cmd",
-    "tools/verify_architecture.ps1",
-    "tools/verify_preview_media.cmd",
-    "tools/verify_preview_media.ps1",
-    "tools/verify_face_phase_a.cmd",
-    "tools/verify_face_phase_a.ps1",
-    "tools/verify_face_phase_b.cmd",
-    "tools/verify_face_phase_b.ps1",
-    "tools/verify_face_phase_c.cmd",
-    "tools/verify_face_phase_c.ps1",
-    "tools/verify_face_phase_d.cmd",
-    "tools/verify_face_phase_d.ps1",
-    "tools/verify_face_phase_e.cmd",
-    "tools/verify_face_phase_e.ps1",
-    "tools/verify_rvc_auditions.cmd",
-    "tools/verify_rvc_auditions.ps1",
-    "tools/verify_tracked_rvc_assets.cmd",
-    "tools/verify_tracked_rvc_assets.ps1",
-    "tools/verify_rvc_voice_base.cmd",
-    "tools/verify_rvc_voice_base.ps1",
-    "tools/verify_release_package.cmd",
-    "tools/verify_release_package.ps1",
-    "tools/verify_share_release.cmd",
-    "tools/verify_share_release.ps1",
-    "tools/provision_stackchan_wifi.cmd",
-    "tools/provision_stackchan_wifi.ps1",
-    "tools/check_android_controls_evidence.cmd",
-    "tools/check_android_controls_evidence.ps1",
-    "tools/check_android_gemma_evidence.cmd",
-    "tools/check_android_gemma_evidence.ps1",
-    "tools/check_android_pairing_evidence.cmd",
-    "tools/check_android_pairing_evidence.ps1",
-    "tools/check_android_screen_off_soak_evidence.cmd",
-    "tools/check_android_screen_off_soak_evidence.ps1",
-    "tools/check_android_speech_evidence.cmd",
-    "tools/check_android_speech_evidence.ps1",
-    "tools/check_android_wifi_evidence.cmd",
-    "tools/check_android_wifi_evidence.ps1",
-    "tools/test_android_controls_evidence_contract.cmd",
-    "tools/test_android_controls_evidence_contract.ps1",
-    "tools/test_android_diagnostics_export_evidence_contract.cmd",
-    "tools/test_android_diagnostics_export_evidence_contract.ps1",
-    "tools/test_android_pairing_evidence_contract.cmd",
-    "tools/test_android_pairing_evidence_contract.ps1",
-    "tools/test_android_screen_off_soak_evidence_contract.cmd",
-    "tools/test_android_screen_off_soak_evidence_contract.ps1",
-    "tools/test_android_speech_evidence_contract.cmd",
-    "tools/test_android_speech_evidence_contract.ps1",
-    "tools/test_android_wifi_evidence_contract.cmd",
-    "tools/test_android_wifi_evidence_contract.ps1",
-    "tools/check_voice_source_readiness.ps1",
-    "tools/test_voice_source_readiness_contract.ps1",
-    "tools/compare_hardware_sim_baseline.cmd",
-    "tools/compare_hardware_sim_baseline.ps1",
-    "tools/create_persona_pack.cmd",
-    "tools/create_persona_pack.ps1",
-    "tools/create_persona_pack.py",
-    "tools/build_persona_index.cmd",
-    "tools/build_persona_index.ps1",
-    "tools/build_persona_index.py",
-    "tools/export_persona_prompt_assets.py",
-    "tools/render_voice_samples.cmd",
-    "tools/render_voice_samples.ps1",
-    "tools/setup_voice_tools.cmd",
-    "tools/setup_voice_tools.ps1",
-    "tools/setup_whisper_cpp.cmd",
-    "tools/setup_whisper_cpp.ps1",
-    "tools/verify_persona_pack.cmd",
-    "tools/verify_persona_pack.ps1",
-    "tools/verify_persona_pack.py",
-    "tools/verify_voice_samples.cmd",
-    "tools/verify_voice_samples.ps1"
-  )
-  provenanceFiles = @(
-    "provenance/platformio.ini",
-    "provenance/partitions_esp_sr_16.csv",
-    "provenance/requirements-preview.txt",
-    "provenance/bridge/README.md",
-    "provenance/bridge/export_protocol_fixtures.py",
-    "provenance/bridge/test_protocol_fixtures.py",
-    "provenance/bridge/persona_pack.py",
-    "provenance/bridge/test_persona_pack.py",
-    "provenance/bridge/character_red_team.py",
-    "provenance/bridge/test_character_red_team.py",
-    "provenance/bridge/reference_bridge.py",
-    "provenance/bridge/test_reference_bridge.py",
-    "provenance/bridge/bridge_memory.py",
-    "provenance/bridge/test_bridge_memory.py",
-    "provenance/bridge/test_bridge_memory_v4.py",
-    "provenance/bridge/memory_maintenance.py",
-    "provenance/bridge/test_memory_maintenance.py",
-    "provenance/bridge/episode_distillation.py",
-    "provenance/bridge/test_episode_distillation.py",
-    "provenance/bridge/memory_probe.py",
-    "provenance/bridge/test_memory_probe.py",
-    "provenance/bridge/memory_prefill_probe.py",
-    "provenance/bridge/local_runner.py",
-    "provenance/bridge/test_local_runner.py",
-    "provenance/bridge/litert_lm_stackchan_wrapper.py",
-    "provenance/bridge/test_litert_lm_stackchan_wrapper.py",
-    "provenance/bridge/litert_lm_contract_smoke.py",
-    "provenance/bridge/test_litert_lm_contract_smoke.py",
-    "provenance/bridge/engine_probe.py",
-    "provenance/bridge/test_engine_probe.py",
-    "provenance/bridge/model_benchmark.py",
-    "provenance/bridge/test_model_benchmark.py",
-    "provenance/bridge/utterance_text.py",
-    "provenance/bridge/stt_normalization.py",
-    "provenance/bridge/stt_adapter.py",
-    "provenance/bridge/stt_supervisor.py",
-    "provenance/bridge/windows_speech_stt.py",
-    "provenance/bridge/whisper_cpp_stt.py",
-    "provenance/bridge/whisper_server_stt.py",
-    "provenance/bridge/test_stt_adapter.py",
-    "provenance/bridge/test_stt_supervisor.py",
-    "provenance/bridge/test_whisper_server_stt.py",
-    "provenance/bridge/tts_adapter.py",
-    "provenance/bridge/test_tts_adapter.py",
-    "provenance/bridge/conversation_session.py",
-    "provenance/bridge/test_conversation_session.py",
-    "provenance/bridge/conversation_latency.py",
-    "provenance/bridge/test_conversation_latency.py",
-    "provenance/bridge/conversation_latency_report.py",
-    "provenance/bridge/test_conversation_latency_report.py",
-    "provenance/bridge/initiative_policy.py",
-    "provenance/bridge/test_initiative_policy.py",
-    "provenance/bridge/room_context.py",
-    "provenance/bridge/test_room_context.py",
-    "provenance/bridge/ollama_room_vision.py",
-    "provenance/bridge/test_ollama_room_vision.py",
-    "provenance/bridge/lan_service.py",
-    "provenance/bridge/test_lan_service.py",
-    "provenance/bridge/bridge_ai_qualification.py",
-    "provenance/bridge/test_bridge_ai_qualification.py",
-    "provenance/bridge/dashboard_service.py",
-    "provenance/bridge/test_dashboard_service.py",
-    "provenance/bridge/dashboard/index.html",
-    "provenance/bridge/dashboard/styles.css",
-    "provenance/bridge/dashboard/app.js",
-    "provenance/bridge/ollama_stackchan_runner.py",
-    "provenance/bridge/test_ollama_stackchan_runner.py",
-    "provenance/bridge/windows_speech_tts.py",
-    "provenance/bridge/rvc_tts.py",
-    "provenance/bridge/rvc_tts_client.py",
-    "provenance/bridge/rvc_worker_service.py",
-    "provenance/bridge/rvc_directml_tts_client.py",
-    "provenance/bridge/rvc_directml_worker_service.py",
-    "provenance/bridge/voice_v2_directml_runtime.py",
-    "provenance/bridge/voice_v2_directml_benchmark.py",
-    "provenance/bridge/voice_v2_wire_benchmark.py",
-    "provenance/bridge/voice_device_truth.py",
-    "provenance/bridge/test_voice_device_truth.py",
-    "provenance/bridge/research_broker.py",
-    "provenance/bridge/test_research_broker.py",
-    "provenance/bridge/research_acceptance.py",
-    "provenance/bridge/fixtures/memory_probe.json",
-    "provenance/bridge/fixtures/searxng_search_response.json",
-    "provenance/bridge/lan_smoke.py",
-    "provenance/bridge/test_lan_smoke.py",
-    "provenance/bridge/hardware_simulator.py",
-    "provenance/bridge/test_hardware_simulator.py",
-    "provenance/bridge/prearrival_sim_check.py",
-    "provenance/bridge/test_prearrival_sim_check.py",
-    "provenance/protocol-fixtures/endpoint_hello.json",
-    "provenance/protocol-fixtures/owner_status.json",
-    "provenance/protocol-fixtures/settings_get.json",
-    "provenance/protocol-fixtures/settings_set.json",
-    "provenance/protocol-fixtures/invalid/missing_type.json",
-    "provenance/protocol-fixtures/invalid/wrong_protocol.json",
-    "provenance/firmware.yml",
-    "provenance/release.yml",
-    "provenance/companion-signing-readiness.yml",
-    "provenance/data/commands.yaml",
-    "provenance/personas/spark/pack.yaml",
-    "provenance/personas/spark/character.yaml",
-    "provenance/personas/spark/prompt.md",
-    "provenance/personas/spark/behavior.yaml",
-    "provenance/personas/spark/expressions.yaml",
-    "provenance/personas/spark/earcons.yaml",
-    "provenance/personas/spark/voice.yaml",
-    "provenance/personas/glow/pack.yaml",
-    "provenance/personas/glow/character.yaml",
-    "provenance/personas/glow/prompt.md",
-    "provenance/personas/glow/behavior.yaml",
-    "provenance/personas/glow/expressions.yaml",
-    "provenance/personas/glow/earcons.yaml",
-    "provenance/personas/glow/voice.yaml",
-    "provenance/src/main.cpp",
-    "provenance/src/persona/SpeechPlanner.hpp",
-    "provenance/src/persona/SpeechPlanner.cpp",
-    "provenance/src/persona/CommandMap.hpp",
-    "provenance/src/persona/CommandMap.cpp",
-    "provenance/src/persona/GazeTracker.hpp",
-    "provenance/src/persona/GazeTracker.cpp",
-    "provenance/src/persona/EarconSynth.hpp",
-    "provenance/src/persona/EarconSynth.cpp",
-    "provenance/src/io/CameraAdapter.hpp",
-    "provenance/src/io/CameraAdapter.cpp",
-    "provenance/src/io/BridgeClient.hpp",
-    "provenance/src/io/BridgeClient.cpp",
-    "provenance/src/io/BridgeNetworkSession.hpp",
-    "provenance/src/io/BridgeNetworkSession.cpp",
-    "provenance/src/io/BridgeSocketWriter.hpp",
-    "provenance/src/io/BridgeSocketWriter.cpp",
-    "provenance/src/io/BridgeWiFiClientSocket.hpp",
-    "provenance/src/io/BridgeWiFiClientSocket.cpp",
-    "provenance/src/io/BridgeWiFiProvisioner.hpp",
-    "provenance/src/io/BridgeWiFiProvisioner.cpp",
-    "provenance/src/io/AudioCaptureAdapter.hpp",
-    "provenance/src/io/AudioCaptureAdapter.cpp",
-    "provenance/src/io/BridgeAudioDownlink.hpp",
-    "provenance/src/io/BridgeAudioDownlink.cpp",
-    "provenance/src/io/BridgeAudioUplink.hpp",
-    "provenance/src/io/BridgeAudioUplink.cpp",
-    "provenance/src/io/BridgeWakeGate.hpp",
-    "provenance/src/io/BridgeWakeGate.cpp",
-    "provenance/src/io/AudioOut.hpp",
-    "provenance/src/io/AudioOut.cpp",
-    "provenance/src/io/SpeechPromptBank.hpp",
-    "provenance/src/io/SpeechPromptBank.cpp",
-    "provenance/src/io/SpeechAdapter.hpp",
-    "provenance/src/io/SpeechAdapter.cpp",
-    "provenance/test/fixtures/audio/speech_right.wav",
-    "provenance/test/fixtures/audio/speech_left.wav",
-    "provenance/test/fixtures/audio/music_center.wav",
-    "provenance/test/fixtures/audio/fan_noise.wav"
-  )
+  includedTools = @($includedToolsInventory)
+  provenanceFiles = @($provenanceFileInventory)
 }
 
-$manifest | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outDir "release_manifest.json") -Encoding UTF8
+$manifest | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "release_manifest.json") -Encoding UTF8
 
 $ciStatus = [ordered]@{
   schema = "stackchan.github-actions-status.v1"
@@ -2078,17 +2852,38 @@ $ciStatus = [ordered]@{
   commit = $commit
   repo = "RobVanProd/stackchan_alive"
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  status = "post-push-check-required"
+  status = if ($SkipBuild) { "diagnostic-not-applicable" } else { "post-push-check-required" }
   promotionReady = $false
   firmwareCandidateReady = $false
   externalBlock = $false
-  interpretation = "This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run tools/export_github_actions_status.cmd to replace this placeholder with the observed GitHub Actions result."
-  requiredWorkflows = @("Firmware", "Release")
-  missingRequiredWorkflows = @("Firmware", "Release")
+  interpretation = if ($SkipBuild) {
+    "GitHub Actions candidate evidence is not applicable to an unqualified diagnostic archive. Do not push a tag or treat these files as a firmware candidate."
+  } else {
+    "This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run tools/export_github_actions_status.cmd to replace this placeholder with the observed GitHub Actions result."
+  }
+  requiredWorkflows = @(if ($SkipBuild) { @() } else { @("Firmware", "Release") })
+  missingRequiredWorkflows = @(if ($SkipBuild) { @() } else { @("Firmware", "Release") })
   workflows = @()
 }
 $ciStatus | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "github_actions_status.json") -Encoding UTF8
 
+if ($SkipBuild) {
+@"
+# GitHub Actions Status -- Diagnostic Only
+
+Diagnostic package: $Version
+Package-source commit only: $commit
+Repository: RobVanProd/stackchan_alive
+Status: diagnostic-not-applicable
+Firmware candidate ready: False
+Promotion ready: False
+
+GitHub Actions candidate evidence is not applicable to this unqualified diagnostic archive.
+Do not push a release tag or treat the copied firmware files as a candidate.
+
+Machine-readable status: ``github_actions_status.json``
+"@ | Set-Content -Path (Join-Path $outDir "GITHUB_ACTIONS_STATUS.md") -Encoding UTF8
+} else {
 @"
 # GitHub Actions Status
 
@@ -2107,9 +2902,10 @@ If GitHub reports that jobs did not start because of account billing or spending
 
 Machine-readable status: ``github_actions_status.json``
 "@ | Set-Content -Path (Join-Path $outDir "GITHUB_ACTIONS_STATUS.md") -Encoding UTF8
+}
 
 if ($ObserveCandidateActions) {
-  $actionsExporter = Join-Path $PSScriptRoot "export_github_actions_status.ps1"
+  $actionsExporter = Join-Path $releaseToolsRoot "export_github_actions_status.ps1"
   $actionsOutput = @(
     & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File $actionsExporter `
       -Repo "RobVanProd/stackchan_alive" `
@@ -2142,9 +2938,13 @@ $readinessReport = [ordered]@{
   schema = "stackchan.readiness-report.v1"
   version = $Version
   commit = $commit
+  commitRole = if ($SkipBuild) { "package-source-only-not-firmware-identity" } else { "package-and-firmware-source" }
+  firmwareIdentity = if ($SkipBuild) { "unknown-unbound-preexisting-outputs" } else { $commit }
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  status = "test-ready-prerelease"
-  consumerRollout = "blocked-pending-hardware-validation"
+  status = if ($SkipBuild) { "diagnostic-only-unqualified" } else { "test-ready-prerelease" }
+  consumerRollout = if ($SkipBuild) { "forbidden-diagnostic-package" } else { "blocked-pending-hardware-validation" }
+  diagnosticPackage = [bool]$SkipBuild
+  releaseAndHardwareUse = if ($SkipBuild) { "forbidden" } else { "pending-source-matched-qualification" }
   noHardwareProof = @(
     [ordered]@{ gate = "release-package-created"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ gate = "firmware-binaries-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
@@ -2173,8 +2973,29 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
     [ordered]@{ gate = "production-voice-assets"; status = "pass"; requiredEvidence = "media/voice/rvc/model.pth and model.index match the pinned production SHA-256 values" }
   )
-  promotionRule = "Promotion requires source-matched supervised hardware qualification, bridge AI qualification, the required soak, successful release checks, and explicit owner approval."
-  nextOperatorCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
+  promotionRule = if ($SkipBuild) {
+    "Diagnostic packages cannot be promoted, flashed, or used as hardware evidence. Create a governed two-cycle package from a clean immutable commit."
+  } else {
+    "Promotion requires source-matched supervised hardware qualification, bridge AI qualification, the required soak, successful release checks, and explicit owner approval."
+  }
+  nextOperatorCommand = if ($SkipBuild) {
+    $null
+  } else {
+    ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
+  }
+}
+
+if ($SkipBuild) {
+  foreach ($gate in @($readinessReport.noHardwareProof)) {
+    $gate["status"] = "not-qualified-diagnostic"
+    $gate["evidence"] = "Present only for diagnostic inspection; not accepted as release evidence"
+  }
+  $readinessReport.noHardwareProof[0]["gate"] = "diagnostic-archive-created"
+  $readinessReport.noHardwareProof[1]["gate"] = "unbound-preexisting-firmware-files-present"
+  foreach ($gate in @($readinessReport.hardwareGates)) {
+    $gate["status"] = "forbidden-diagnostic"
+    $gate["requiredEvidence"] = "Create and verify a governed two-cycle clean package before any hardware use"
+  }
 }
 
 $readinessReport | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "readiness_report.json") -Encoding UTF8
@@ -2183,10 +3004,13 @@ $acceptanceChecklist = [ordered]@{
   schema = "stackchan.release-acceptance.v1"
   version = $Version
   commit = $commit
+  commitRole = if ($SkipBuild) { "package-source-only-not-firmware-identity" } else { "package-and-firmware-source" }
+  firmwareIdentity = if ($SkipBuild) { "unknown-unbound-preexisting-outputs" } else { $commit }
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  releaseClass = "test-ready-prerelease"
-  currentDecision = "test-ready-for-device-arrival"
-  consumerRolloutDecision = "blocked-pending-hardware-validation"
+  releaseClass = if ($SkipBuild) { "diagnostic-only-unqualified" } else { "test-ready-prerelease" }
+  currentDecision = if ($SkipBuild) { "release-and-hardware-use-forbidden" } else { "test-ready-for-device-arrival" }
+  consumerRolloutDecision = if ($SkipBuild) { "forbidden-diagnostic-package" } else { "blocked-pending-hardware-validation" }
+  diagnosticPackage = [bool]$SkipBuild
   noHardwareAcceptance = @(
     [ordered]@{ requirement = "clean-release-package"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ requirement = "firmware-artifacts-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
@@ -2215,11 +3039,47 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
     [ordered]@{ requirement = "production-voice-assets"; status = "pass"; requiredEvidence = "bundled model and index match the pinned production SHA-256 values" }
   )
-  promotionRule = "This candidate remains blocked until source-matched supervised hardware qualification, bridge AI qualification, the required soak, successful release checks, and explicit owner approval."
+  promotionRule = if ($SkipBuild) {
+    "This diagnostic artifact cannot be promoted, flashed, or used as release or hardware evidence."
+  } else {
+    "This candidate remains blocked until source-matched supervised hardware qualification, bridge AI qualification, the required soak, successful release checks, and explicit owner approval."
+  }
+}
+
+if ($SkipBuild) {
+  foreach ($requirement in @($acceptanceChecklist.noHardwareAcceptance)) {
+    $requirement["status"] = "not-accepted-diagnostic"
+    $requirement["evidence"] = "Present only for diagnostic inspection; not accepted as release evidence"
+  }
+  $acceptanceChecklist.noHardwareAcceptance[0]["requirement"] = "diagnostic-archive-structure-present"
+  $acceptanceChecklist.noHardwareAcceptance[1]["requirement"] = "unbound-preexisting-firmware-files-present"
+  foreach ($requirement in @($acceptanceChecklist.hardwareAcceptanceRequired)) {
+    $requirement["status"] = "forbidden-diagnostic"
+    $requirement["requiredEvidence"] = "Create and verify a governed two-cycle clean package before any hardware use"
+  }
 }
 
 $acceptanceChecklist | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "release_acceptance.json") -Encoding UTF8
 
+if ($SkipBuild) {
+@"
+# Diagnostic Package -- No Release Acceptance
+
+Diagnostic package: $Version
+Commit: $commit
+Decision: release and hardware use forbidden
+Consumer rollout: forbidden diagnostic package
+
+This package was created with ``-SkipBuild -AllowDirty``. Firmware provenance and
+reproducibility were not proven. Nothing in this package is accepted as release evidence.
+Do not flash it, run its hardware tools, qualify a robot with it, or publish it as a candidate.
+
+Create a governed package from a clean immutable commit and pass its two independent clean
+firmware build cycles before beginning any hardware qualification.
+
+Machine-readable checklist: ``release_acceptance.json``
+"@ | Set-Content -Path (Join-Path $outDir "RELEASE_ACCEPTANCE.md") -Encoding UTF8
+} else {
 @"
 # Release Acceptance Checklist
 
@@ -2269,7 +3129,25 @@ source-matched physical qualification and release checks are complete.
 
 Machine-readable checklist: ``release_acceptance.json``
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_ACCEPTANCE.md") -Encoding UTF8
+}
 
+if ($SkipBuild) {
+@"
+# Diagnostic Readiness Report
+
+Diagnostic package: $Version
+Commit: $commit
+Status: diagnostic-only unqualified
+Consumer rollout: forbidden diagnostic package
+Release and hardware use: forbidden
+
+This package copied pre-existing outputs whose source identity is not established because
+``-SkipBuild`` was selected. It proves no firmware identity, reproducibility, release readiness,
+or physical readiness.
+Do not flash it or use it as evidence. The only valid next step is to create a governed two-cycle
+package from a clean immutable commit.
+"@ | Set-Content -Path (Join-Path $outDir "READINESS_REPORT.md") -Encoding UTF8
+} else {
 @"
 # Readiness Report
 
@@ -2318,7 +3196,22 @@ Recommended arrival command from the extracted package:
 
     $($readinessReport.nextOperatorCommand)
 "@ | Set-Content -Path (Join-Path $outDir "READINESS_REPORT.md") -Encoding UTF8
+}
 
+if ($SkipBuild) {
+@"
+# Stackchan: Alive $Version -- Diagnostic Package
+
+Commit: $commit
+
+This artifact was generated with ``-SkipBuild -AllowDirty``. Its firmware provenance and
+reproducibility are not proven. It is not a prerelease candidate, is not publicly shareable as a
+release, and must not be flashed, run on hardware, or used as qualification evidence.
+
+Create a governed two-cycle package from a clean immutable commit before any release or hardware
+workflow.
+"@ | Set-Content -Path (Join-Path $outDir "RELEASE_NOTES.md") -Encoding UTF8
+} else {
 @"
 # Stackchan: Alive $Version
 
@@ -2373,6 +3266,7 @@ Package and recipient gates:
 
 See ``docs/DEVICE_BRINGUP.md`` and ``docs/PRODUCTION_READINESS.md``.
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_NOTES.md") -Encoding UTF8
+}
 
 $packageRootPrefix = $outDir.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
 function Get-PackageRelativePath {
@@ -2443,6 +3337,20 @@ function Assert-NoRestrictedVoicePayload {
 
 Assert-NoRestrictedVoicePayload -RootPath $outDir
 
+if (-not $SkipBuild) {
+  Assert-ReleaseSourceIdentity `
+    -ExpectedCommit $canonicalBuildCommit `
+    -ExpectedEpoch $canonicalBuildEpoch `
+    -Phase "final release checkout audit" `
+    -ProjectRoot $repoRoot
+  Assert-ReleaseSourceIdentity `
+    -ExpectedCommit $canonicalBuildCommit `
+    -ExpectedEpoch $canonicalBuildEpoch `
+    -Phase "final commit-bound package source staging" `
+    -ProjectRoot $releaseSourceRoot `
+    -RejectIgnored
+}
+
 $hashLines = Get-ChildItem -LiteralPath $outDir -File -Recurse |
   Where-Object { $_.Name -ne "SHA256SUMS.txt" } |
   Sort-Object FullName |
@@ -2457,14 +3365,8 @@ $hashLines | Set-Content -Path (Join-Path $outDir "SHA256SUMS.txt") -Encoding AS
 if (Test-Path -LiteralPath $zipPath) {
   Remove-Item -LiteralPath $zipPath -Force
 }
-& tar.exe -a -cf $zipPath -C $outDir .
-if ($LASTEXITCODE -ne 0) {
-  throw "Release ZIP creation failed with exit code $LASTEXITCODE"
-}
-$zipEntries = @(& tar.exe -tf $zipPath)
-if ($LASTEXITCODE -ne 0) {
-  throw "Release ZIP inspection failed with exit code $LASTEXITCODE"
-}
+$zipEntries = @(New-StackchanDeterministicReleaseZip `
+  -RootPath $outDir -ZipPath $zipPath -SourceEpoch $commitEpoch)
 $restrictedZipEntries = @($zipEntries | Where-Object {
   $allowedVisionModel = $_ -match '(?i)(^|/)(provenance/)?bridge/models/face_detection_yunet_2023mar\.onnx$'
   $allowedProductionVoice = $_ -match '(?i)(^|/)media/voice/rvc/(model\.pth|model\.index)$'
@@ -2487,20 +3389,45 @@ $packageVerifyArgs = @(
   "-File", (Join-Path $PSScriptRoot "verify_release_package.ps1"),
   "-Version", $Version,
   "-ZipPath", $zipPath,
-  "-ExpectedCommit", $commit
+  "-ExpectedCommit", $commit,
+  "-ExpectedSourceEpoch", $commitEpoch
 )
 if ($AllowDirty) {
   $packageVerifyArgs += "-AllowDirtyPackage"
 }
-$packageVerifyOutput = @(& $windowsPowerShell @packageVerifyArgs 2>&1)
-$packageVerifyExit = $LASTEXITCODE
+if (-not $SkipBuild) {
+  $packageVerifyArgs += "-RequireReleaseEligible"
+}
+$previousVerifyErrorPreference = $ErrorActionPreference
+try {
+  $ErrorActionPreference = "Continue"
+  $packageVerifyOutput = @(& $windowsPowerShell @packageVerifyArgs 2>&1)
+  $packageVerifyExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousVerifyErrorPreference
+}
 $packageVerifyOutput | ForEach-Object { [string]$_ } |
   Set-Content -LiteralPath $packageVerifyLog -Encoding UTF8
 if ($packageVerifyExit -ne 0) {
-  throw "Release ZIP verification failed with exit code $packageVerifyExit. See $packageVerifyLog"
+  throw "Package ZIP verification failed with exit code $packageVerifyExit. See $packageVerifyLog"
 }
 
-Write-Host "Release package:"
+if (-not $SkipBuild) {
+  Remove-ReleaseSourceWorktree
+  if (-not [string]::IsNullOrWhiteSpace($firmwareBuildCacheRoot) -and
+      (Test-Path -LiteralPath $firmwareBuildCacheRoot -PathType Container)) {
+    Remove-Item -LiteralPath $firmwareBuildCacheRoot -Recurse -Force
+  }
+  $builtFirmwareCache = $null
+  $firmwareBuildCacheRoot = $null
+  $firmwareDependencySnapshotRoot = $null
+}
+
+if ($SkipBuild) {
+  Write-Host "Diagnostic archive only -- release and hardware use forbidden:"
+} else {
+  Write-Host "Release package:"
+}
 Write-Host $outDir
 Write-Host $zipPath
 Write-Host $zipSidecarPath

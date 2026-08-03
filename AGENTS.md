@@ -64,6 +64,7 @@ Run the narrow tests for the code touched, then the relevant broad gates:
 pio test -e native_logic
 python -m unittest discover -s bridge -p "test_*.py"
 python bridge/trusted_facts_smoke.py --memory-file output/pc-brain/latest/memory.json --json
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_firmware_reproducible_build_contract.ps1
 pio run -e stackchan_release_full
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_full_system_soak_evidence_contract.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_current_lead_reproducibility_contract.ps1
@@ -82,6 +83,21 @@ robot failure; use repeated endpoint, process, bridge-socket, and runtime eviden
 `stackchan_release_full` is the secret-free public build. Per-device `stackchan_camera_probe` or
 `stackchan_release_forensics` builds require explicit private OTA/pairing configuration and must
 never be substituted into a public package or GitHub release asset.
+Firmware reproducibility is narrowly scoped to the same clean Git commit, operating system,
+dependency/toolchain bytes, canonical recorded PlatformIO configuration, and no listed ambient
+build overrides. The hook maps lexical/resolved project and core paths to stable prefixes. Every
+Arduino firmware environment must inherit exactly one `platformio_reproducible_build.py` pre-hook;
+`native_logic` must inherit none.
+Release packages must use two distinct short detached build roots, isolated empty per-cycle build
+caches, exact cycle-B dependency snapshots, and a separate clean commit-pinned source worktree for
+all tracked package inputs. Dependency evidence must select the exact verbose-resolved platform and
+only resolved shared-core packages. Failed logs are moved to private evidence while the complete
+failed detached worktree remains attached for inspection. The trusted checkout verifier must never
+execute package-contained code, repository-local Git hooks, or fsmonitor configuration.
+A `diagnostic-*` package is inspection-only: its firmware and dependency identity are unbound, it
+must not be flashed/published or used as evidence, and `-AllowDirtyPackage` never grants that authority.
+Matching rebuild hashes prove build determinism only. They do not transfer physical qualification,
+soak, stability, or safety evidence between different SHA-256 binaries.
 
 ## Change Discipline
 

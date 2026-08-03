@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-13 15:53 America/New_York
+Status timestamp: 2026-08-03 America/New_York
 
 ## Current SEC-002 Qualification Hold (2026-08-03)
 
@@ -12,13 +12,30 @@ planned exact-image no-motion qualification. This corrects the package's former 
 rewriting its historical hash or claiming that it was deployed.
 
 The replacement source profile inherits motion-off-at-boot, explicitly keeps autonomous refresh
-off, and updates the package statement and release contracts accordingly. Source tests and one
-dirty-tree compile have passed, but no clean reproducible replacement package, installation,
-physical qualification, or soak exists yet. The current live application, motion request, servo
-rail, and torque state remain unknown because repeated bounded `/debug` probes were unavailable.
-Ping reachability alone is not a robot-health or actuator-state proof. Hold all flashing and
-physical promotion until reproducible-build closure, an OTA-selector-safe installer, a reviewed
-rollback path, exact package verification, and a fresh passive no-motion preflight are complete.
+off, and is committed as `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. The later M0 governance
+worktree can create and verify diagnostic-only packages, but release-grade packaging and
+`RequireReleaseEligible` verification intentionally fail closed because no reviewed exact
+toolchain allowlist exists. No clean reproducible replacement package, installation, physical
+qualification, or soak exists yet. The current live application, motion request, servo rail, and
+torque state remain unknown because repeated bounded `/debug` probes were unavailable. USB or ping
+reachability alone is not a robot-health or actuator-state proof. Hold all flashing and physical
+promotion until reproducible-build and toolchain-trust closure, an OTA-selector-safe installer, a
+reviewed rollback path, exact clean package verification, and a fresh passive no-motion preflight
+are complete.
+
+A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
+`output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
+`036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that
+`app0` was selected at backup time; its application image-file SHA-256 is
+`BB8311FFD1DFB059561697242E0C87ED45D38BDBEB0B8CEB32937089314621B1`, with source mapping unknown.
+The whole-flash hash is not an application hash. This backup does not prove the current live slot,
+current bytes, release identity, or automatic restore authority, and it must never be published.
+
+Bounded read-only update on 2026-08-03: the matching CoreS3 USB PnP identity is present on COM4;
+the unrelated CH340 remains separate on COM3. Neither port was opened. Three `/debug` requests to
+`192.168.1.238:8789` timed out and no local bridge/RVC/debug listener was present on ports 8765,
+5059, or 8789. This records endpoint/service unavailability only; it is not evidence of a freeze,
+reset, blackout, USB fault, board fault, or power root cause.
 
 ## Last Owner-Accepted Physical Lead — Historical Evidence; Current Installation Unknown
 
@@ -641,9 +658,11 @@ Open before calling the full system final:
 - Current robot-mic/uplink validation status: gated, not physically validated after servo bring-up
 - Rollback firmware environment: `stackchan_wifi`
 
-## Recovery Decision
+## Historical Recovery Decision (2026-07-07)
 
-The robot was restored to the smooth face/bridge-only baseline after the bad full-online attempt. Treat this as the known-good physical baseline.
+At that historical checkpoint, the robot was restored to the smooth face/bridge-only baseline
+after the bad full-online attempt. It was the known-good physical baseline for that dated sequence,
+not a statement about the current installation.
 
 Do not jump directly from this baseline to motor-enabled full-online firmware. The safer sequence is:
 
@@ -656,7 +675,7 @@ Do not jump directly from this baseline to motor-enabled full-online firmware. T
 7. Only after visual face stability and voice-gate behavior are confirmed on staged firmware, consider `stackchan_full_online`.
 8. Flash `stackchan_full_online` only through the guarded wrapper with operator present, body clear, and explicit servo-risk confirmation. Do not remove the successful servo guardrails from `stackchan_wake_mww_uplink_servos`: motion disabled at boot, servo attach fail-closed, write rate limiting, and session auto-stop.
 
-## Validated After Recovery
+## Historical Validation After Recovery (2026-07-07)
 
 - User visually confirmed the face is smooth after unplug/reboot.
 - `stackchan_wifi` was reflashed on `COM4` and reconnected from stored Wi-Fi provisioning.

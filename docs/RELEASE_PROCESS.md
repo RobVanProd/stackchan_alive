@@ -20,9 +20,62 @@ with a portable SHA-256 index; copied build inputs; flash helpers;
 promotion verifiers; a manifest that names the readiness/media/voice/persona/companion
 evidence artifacts; and SHA256 checksums.
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
+Before any release build or cache work, packaging also rejects the presence of
+`PLATFORMIO_BUILD_FLAGS`, `STACKCHAN_BUILD_EPOCH`, `SOURCE_DATE_EPOCH`,
+`STACKCHAN_BUILD_STAMP`, `STACKCHAN_DISABLE_REPRODUCIBLE_BUILD`, persona/credential build inputs,
+all ambient `PLATFORMIO_*` variables, and all ambient `GIT_*` variables. Every Arduino firmware
+environment inherits exactly one reproducibility pre-hook, which derives fixed-width `__DATE__`
+and `__TIME__` strings plus `SOURCE_DATE_EPOCH` from the clean Git commit timestamp. Release builds
+also pass a captured commit/epoch identity lock to that hook. Run:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File tools\test_firmware_reproducible_build_contract.ps1
+```
+
+The guarantee is deliberately narrow: the same clean commit, operating system, dependency and
+toolchain bytes, canonical recorded PlatformIO configuration, and no listed ambient build override
+must produce the same firmware artifacts from different project roots while each environment keeps
+the same resolved PlatformIO core, dependency, and toolchain paths. The compiler hook maps lexical
+and resolved local roots to synthetic stable prefixes; this is
+not a claim that arbitrary operating systems or different toolchain/dependency bytes are identical.
+A release-grade package performs two clean cycles for all three public environments,
+waits for at least a 65-second start-time boundary, compares the firmware BIN and ELF, bootloader,
+and partition-table hashes, and packages only the verified second-cycle artifacts. The cycles use
+different short detached clean worktree paths of different lengths, pinned to the captured commit,
+plus a distinct initially empty PlatformIO compiled-artifact cache per cycle/environment. The proof
+records six identity attestations and binds both cycles to the manifest commit and epoch. Exact
+cycle-B package inventories, license files, and package metadata are captured before that build
+worktree is removed. The captured platform directory is the exact path reported by verbose
+PlatformIO resolution, and shared-core package evidence is limited to resolved package names;
+unrelated installed packages are excluded. Release dependency provenance never falls back to the
+main checkout's ignored `.pio` state. All tracked package inputs and content-generating helpers come from a third clean,
+commit-pinned detached source worktree retained through final ZIP verification. Failed build logs,
+prior snapshots, and failure metadata are moved under ignored
+`output/private/reproducibility-failures/`; the complete failed detached worktree, including
+`.pio/build`, `.pio/libdeps`, and generated state, remains attached at its recorded path. A later
+attempt must not delete it. ZIP hashes may
+differ because generated reports and archive metadata are time-bearing. `-SkipBuild` is allowed only
+with `-AllowDirty` for a diagnostic package that is explicitly barred from release and hardware
+validation; its version must start with `diagnostic-` and it is written under
+`output/diagnostics/`. Its copied firmware identity is explicitly unknown/unbound, every root
+operator document carries a do-not-flash banner, and the flash, device-arrival, hardware-evidence,
+and publish tools require release eligibility even if `-AllowDirtyPackage` is supplied.
+`-AllowDirty` no longer authorizes firmware compilation. A direct diagnostic firmware
+build may set a strict decimal `STACKCHAN_BUILD_EPOCH`, but packaging rejects it. Reproducible bytes
+are not hardware stability or qualification evidence, and they do not allow evidence to transfer
+to a different binary SHA-256.
 After creating the ZIP and SHA-256 sidecar, the command runs the complete package verifier against
-that exact ZIP and writes `output/release/<version>-package-verify.log`. Package creation fails if
-the verifier fails; a ZIP existing on disk is not by itself a successful package result.
+that exact ZIP and writes `output/release/<version>-package-verify.log` for release candidates or
+`output/diagnostics/<version>-package-verify.log` for diagnostics. Diagnostic verification proves
+archive integrity for inspection only and emits no release-success marker. Package creation fails if
+the verifier fails; a ZIP existing on disk is not by itself a successful package result. The trusted
+checkout verifier treats packaged `.ps1`, `.py`, `.cmd`, and module files as data and never executes
+or imports them. Trusted Git operations disable repository-local hooks, fsmonitor, maintenance, and
+untracked-cache behavior. A bounded single-open extractor rejects unsafe, duplicate, link, and
+oversized ZIP entries before writing any file, avoiding a validate-then-reopen race.
+Operational eligibility additionally requires the trusted checkout to be clean and exactly at the
+expected package commit; a package's own copied verifier cannot authorize flashing or promotion.
 Package generation records a test-ready prerelease state and keeps consumer rollout blocked
 pending source-matched hardware validation. It never records owner approval automatically.
 Promotion is a separate evidence-bound decision made only after the required supervised hardware,
@@ -201,7 +254,7 @@ If the native logic test step reports missing `gcc`/`g++`, run `.\tools\check_na
 Verify the package before sharing it:
 
 ```powershell
-.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip
+.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -RequireReleaseEligible
 .\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_<version>.zip
 ```
 
@@ -273,13 +326,13 @@ preserve upstream notices; they do not choose a license for Stackchan: Alive its
 Dry-run the release-binary flasher before connecting hardware:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -DryRun -Monitor -Port COM3
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware display_only -DryRun -Monitor -Port COM3
 ```
 
 Create a hardware evidence packet when testing a physical device:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 Packet creation copies the tested ZIP and records `logs/package_verify.log`. Promotion evidence must include that successful package-verification transcript unless the verifier is run with `-AllowMissingPackage` for a diagnostic-only packet.
@@ -296,7 +349,7 @@ Synthetic packets are written under `output/hardware-evidence-diagnostic/`, incl
 To prepare the release for arrival-day testing in one no-hardware-safe step:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 If you only have an extracted release ZIP, run the same helper from inside the extracted package folder:
@@ -448,10 +501,11 @@ If GitHub Actions cannot run, the manual helper remains available for a firmware
 publication:
 
 ```powershell
-.\tools\publish_release.cmd -Version <version> -CreateTag -PushCurrentBranch -PushTag
+.\tools\publish_release.cmd -Version <version> -Repo RobVanProd/stackchan_alive -CreateTag -PushCurrentBranch -PushTag
 ```
 
-The manual helper verifies the local ZIP, uploads the firmware package assets, downloads the
+The manual helper requires an explicit `owner/name` repository target, verifies the local ZIP,
+uploads the firmware package assets, downloads the
 GitHub-hosted ZIP plus ZIP SHA256 sidecar, and verifies that remote copy against the tag commit.
 It does not cross-build or upload companion packages and therefore cannot satisfy the full
 companion release asset contract by itself.
@@ -491,7 +545,9 @@ For same-network phone/laptop review without Cloudflare, add `-Lan`. The helper 
 It also writes `OPEN_LOCAL_SHARE.cmd`, `LAN_TROUBLESHOOTING.md`, and `share_probe_report.json` with adapter metadata, virtual/VPN/no-gateway notes, and host-side reachability probes for the loopback and LAN candidate URLs. If a phone cannot open a LAN URL, first run `OPEN_LOCAL_SHARE.cmd` on the Windows host to prove the server is alive, then use the troubleshooting file and try a non-virtual candidate on the same Wi-Fi/LAN before falling back to Cloudflare.
 If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for remote review. The script writes the static share folder under `output/share/<version>/`.
 If `cloudflared` is not installed, add `-DownloadCloudflared` to place a local copy under `output/tools/` before starting the tunnel.
-From an extracted release package, `tools/share_release.cmd` can infer the version from `release_manifest.json` and creates a temporary ZIP under `output/share/<version>/`.
+Run `tools/share_release.cmd` from the trusted source checkout. Version and commit authority come
+from explicit arguments or trusted Git state, never from an unverified package manifest; the tool
+verifies release eligibility before creating the temporary ZIP under `output/share/<version>/`.
 When the quick tunnel URL is available, the script prints the public `trycloudflare.com` URL, writes it to `output/share/<version>/PUBLIC_URL.txt`, writes process and URL state to `share_status.json`, and keeps the local server plus tunnel running in hidden background processes. For `-Lan`, use the first printed same-network URL unless the machine is on a VPN-only or isolated network. A local-only share is acceptable for same-machine or LAN review after `verify_share_release.cmd` passes; the evidence packet writes the pinned URL to `share/VERIFIED_URL.txt`.
 For a no-server static integrity check, run `tools/verify_share_release.cmd -Version <version> -Offline` after `tools/share_release.cmd -Version <version> -NoServe`. This writes `share_static_verification_report.json` with an `offline-static:` URL marker; it proves the share folder contents and hashes, but it is not hosted-media evidence because no URL was probed.
 Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending a public

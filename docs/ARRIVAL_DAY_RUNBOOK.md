@@ -4,11 +4,11 @@ Use this when bringing up a physical Stackchan device from the public `v0.2.0` r
 locally rebuilt or post-release firmware as a new candidate until its applicable evidence gates
 below are complete.
 
-Repository-truth warning (2026-08-02): the currently installed firmware SHA is unknown. Dated
+Repository-truth warning (2026-08-03): the currently installed firmware SHA is unknown. Dated
 “installed,” “current,” and “live” notes below are historical evidence and cannot replace discovery,
 exact source/binary identity, or qualification of the image actually under test.
 
-Current control-containment warning (2026-08-02): the SEC-002 source candidate is
+Current control-containment warning (2026-08-03): the committed SEC-002 source policy is
 `emergency_stop_only`. Its dashboard and legacy motion/wake runners refuse Resume, wake-reset, and
 tone before starting processes or evidence runs. Historical `/motion-resume`, `/recover`,
 `/reboot`, `/wake-reset`, tone, and wake-WAV commands below describe older evidence only and are
@@ -19,13 +19,26 @@ required before any physical promotion.
 
 SEC-002 package correction (2026-08-03): do not flash the preserved `4d31de41` public full image
 SHA-256 `4256F2E5...B31055` for a no-motion gate. That exact image was built with motion request and
-autonomous refresh enabled at boot. A source correction now makes the public full profile inherit
-motion-off and explicitly disables autonomous boot refresh, but the replacement is not an install
-candidate until it is committed, built reproducibly twice, packaged and verified from that clean
-commit, and reviewed. The release installer must also deterministically write the packaged OTA
-selector at `0xE000`; do not assume the live selector points to the application written at
-`0x10000`. Until those gates and a fresh `/debug` motion-off snapshot succeed, the physical step is
-`HOLD`, not a reason to reuse an older package or infer state from ping.
+autonomous refresh enabled at boot. The source correction now makes the public full profile inherit
+motion-off, explicitly disables autonomous boot refresh, and is committed as
+`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. It is still not an install candidate until release
+command/toolchain trust is independently closed, two clean builds match for all three packaged
+environments, and the resulting exact package is verified and reviewed. Release-grade packaging
+currently refuses to run because no reviewed exact toolchain allowlist exists; diagnostic packages
+are never flash or qualification inputs. The release installer must also deterministically write
+the packaged OTA selector at `0xE000`; do not assume the live selector points to the application
+written at `0x10000`. Until those gates and a fresh `/debug` motion-off snapshot succeed, the
+physical step is `HOLD`, not a reason to reuse an older package or infer state from USB or ping.
+
+Private recovery evidence (2026-08-02): a verified three-read 16 MiB SPI-flash backup is preserved
+only under ignored `output/private/firmware-backups/20260802-233346-COM4`, with whole-flash SHA-256
+`036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows
+backup-time `app0` selection and application image-file SHA-256
+`BB8311FFD1DFB059561697242E0C87ED45D38BDBEB0B8CEB32937089314621B1`; source mapping is unknown.
+This is recovery evidence only. It is not current firmware identity, an application release asset,
+a device-cloning package, or automatic restore authorization. Never commit, upload, publish, or
+send the backup. A restore requires a separately reviewed exact-target procedure and fresh
+post-restore identity/no-motion evidence.
 
 ## 0. Bench Setup
 
@@ -36,7 +49,8 @@ selector at `0xE000`; do not assume the live selector points to the application 
 - Use diffuse room light for face detection. Never aim a bright lamp, phone light, work light, or
   exposed high-output LED into the operator's eyes. Stop immediately for discomfort or afterimages;
   camera validation can wait.
-- Know the serial port, for example `COM3`.
+- Know the exact serial port and verify its PnP identity before use. The preserved CoreS3 backup
+  used `VID_303A&PID_1001&MI_00` on COM4; a port number alone is not device identity.
 
 Historical exact-image release record (2026-07-12): the installed-at-that-checkpoint private paired firmware is source
 commit `a7532f61cc7e5161ce5e65d05675c37bd7941e7c`, SHA-256
@@ -1369,13 +1383,15 @@ the 30-second runtime-health window with motion, servo rail, and torque off. Use
 `docs\LAN_OTA.md` and the private build token; never expose port 8790 outside the trusted LAN.
 
 Later final-integration testing intentionally placed the oriented camera diagnostic on `app0` and
-restored the archived production image on `app1`. The current production SHA256 is
+restored the archived production image on `app1`. At that 2026-07-11 checkpoint, the restored
+production SHA256 was
 `875FE2DE5FB93BECEF6C72C08C1951326439CDCAE299528970C28D43CF115CFB`; restore evidence is
 `output\hardware-evidence\final-integration\production-voice-restore-20260711-141611`. Do not
-assume both slots contain production during this supervised camera phase. The camera slot is
-diagnostic-only and must be replaced before release promotion.
+assume that hash is current or that both slots still contain those images. The camera slot was
+diagnostic-only and required replacement before that release promotion.
 
-The live host memory store was also migrated from `stackchan.bridge-memory.v2` to v3 with an atomic
+At that historical checkpoint, the live host memory store was also migrated from
+`stackchan.bridge-memory.v2` to v3 with an atomic
 backup. v3 drops legacy model-authored robot-state residue, permits character memory only in
 approved `user.*` and `project.*` namespaces, and reserves expiring `robot.*` context for typed
 runtime telemetry. This prevents stale remembered state from contradicting the current heartbeat.

@@ -660,12 +660,16 @@ Require-PolicyAssertion (([regex]::Matches(
 $candidatePlatformioAtFrozenMotionPolicy = $normalizedCandidatePlatformio.Replace(
   $candidatePublicReleaseMotion,
   $baselinePublicReleaseMotion)
+$candidatePlatformioWithoutReproducibilityHook = [regex]::Replace(
+  $candidatePlatformioAtFrozenMotionPolicy,
+  '(?m)^[^\S\r\n]*pre:tools/platformio_reproducible_build\.py[^\S\r\n]*\n?',
+  '')
 $candidatePlatformioWithoutPolicy = ([regex]::Replace(
-    $candidatePlatformioAtFrozenMotionPolicy,
+    $candidatePlatformioWithoutReproducibilityHook,
     '(?m)^[^\S\r\n]*\+<io/BridgeDebugHttpPolicy\.cpp>[^\S\r\n]*\n?',
     '')).TrimEnd()
 Require-PolicyAssertion (-not [string]::IsNullOrEmpty($baselinePlatformioText) -and
-    $candidatePlatformioWithoutPolicy -ceq $baselinePlatformioText) "profile: platformio.ini changed beyond the preregistered policy source-filter and exact public no-motion boot stanzas"
+    $candidatePlatformioWithoutPolicy -ceq $baselinePlatformioText) "profile: platformio.ini changed beyond the preregistered policy source-filter, exact public no-motion boot stanza, and independently governed reproducibility hooks"
 
 $allowedChangedFiles = @(
   'INITIAL_RISK_REGISTER.md', 'PROJECT_STATE.md', 'TASK_LEDGER.md', 'platformio.ini',

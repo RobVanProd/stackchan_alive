@@ -71,10 +71,11 @@ foreach ($staleClaim in @(
   }
 }
 
-$packageOverrideGuard = 'if (Test-Path Env:\PLATFORMIO_BUILD_FLAGS)'
-$guardIndex = $packageRelease.IndexOf($packageOverrideGuard)
+$guardIndex = $packageRelease.IndexOf('"PLATFORMIO_BUILD_FLAGS"')
+$presenceGuardIndex = $packageRelease.IndexOf('Test-Path ("Env:\" + $releaseOverrideName)')
 $pathWorkIndex = $packageRelease.IndexOf('$physicalRepoRoot =')
-if ($guardIndex -lt 0 -or $pathWorkIndex -lt 0 -or $guardIndex -gt $pathWorkIndex) {
+if ($guardIndex -lt 0 -or $presenceGuardIndex -lt 0 -or $pathWorkIndex -lt 0 -or
+    $guardIndex -gt $pathWorkIndex -or $presenceGuardIndex -gt $pathWorkIndex) {
   throw "Release packaging must reject PLATFORMIO_BUILD_FLAGS before path, cache, build, or package work."
 }
 

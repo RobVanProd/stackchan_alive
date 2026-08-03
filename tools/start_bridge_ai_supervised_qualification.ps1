@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$PackageZip,
+  [string]$PackageVersion = "",
   [Parameter(Mandatory = $true)]
   [ValidatePattern("^[0-9a-fA-F]{64}$")]
   [string]$ExpectedFirmwareSha256,
@@ -28,22 +29,50 @@ if (-not $OperatorPresent -or -not $ConfirmMotionOff) {
   throw "Qualification requires -OperatorPresent -ConfirmMotionOff."
 }
 if ($MinReplyWindows -lt 1) { throw "MinReplyWindows must be positive." }
+$SourceCommit = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+  -c maintenance.auto=false -c core.untrackedCache=false rev-parse HEAD).Trim().ToLowerInvariant()
+if ($LASTEXITCODE -ne 0 -or $SourceCommit -notmatch "^[0-9a-f]{40}$") {
+  throw "Could not resolve source commit."
+}
+$SourceDirty = @(& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+  -c maintenance.auto=false -c core.untrackedCache=false `
+  status --porcelain).Count -gt 0
+$ExpectedFirmwareSha256 = $ExpectedFirmwareSha256.ToLowerInvariant()
+$ExpectedFirmwareSourceCommit = $ExpectedFirmwareSourceCommit.ToLowerInvariant()
+$PackageZipPath = (Resolve-Path $PackageZip).Path
+
+if ([string]::IsNullOrWhiteSpace($PackageVersion)) {
+  $zipName = [System.IO.Path]::GetFileName($PackageZipPath)
+  if ($zipName -notmatch "^stackchan_alive_(.+)\.zip$") {
+    throw "Pass -PackageVersion when -PackageZip does not match stackchan_alive_<version>.zip"
+  }
+  $PackageVersion = $Matches[1]
+}
+
+$previousErrorPreference = $ErrorActionPreference
+try {
+  $ErrorActionPreference = "Continue"
+  $PackageVerifyOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
+    -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
+    -Version $PackageVersion -ZipPath $PackageZipPath -ExpectedCommit $SourceCommit `
+    -RequireReleaseEligible 2>&1)
+  $PackageVerifyExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorPreference
+}
+if ($PackageVerifyExit -ne 0) {
+  throw "Release ZIP verification failed before qualification evidence creation: $(($PackageVerifyOutput | Out-String).Trim())"
+}
+
 if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
   $EvidenceRoot = "output\pc-brain\bridge-ai-supervised-" + (Get-Date -Format "yyyyMMdd-HHmmss")
 }
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 $EvidencePath = (Resolve-Path $EvidenceRoot).Path
+$PackageVerifyLog = Join-Path $EvidencePath "package-verify.log"
+$PackageVerifyOutput | Set-Content -LiteralPath $PackageVerifyLog -Encoding UTF8
 $DebugUrl = "http://$DeviceHost`:8789/debug"
 $DashboardUrl = "http://127.0.0.1`:$DashboardPort/api/status"
-
-$SourceCommit = (& git rev-parse HEAD).Trim().ToLowerInvariant()
-if ($LASTEXITCODE -ne 0 -or $SourceCommit -notmatch "^[0-9a-f]{40}$") {
-  throw "Could not resolve source commit."
-}
-$SourceDirty = @(& git status --porcelain).Count -gt 0
-$ExpectedFirmwareSha256 = $ExpectedFirmwareSha256.ToLowerInvariant()
-$ExpectedFirmwareSourceCommit = $ExpectedFirmwareSourceCommit.ToLowerInvariant()
-$PackageZipPath = (Resolve-Path $PackageZip).Path
 $PackageSha256 = (Get-FileHash -LiteralPath $PackageZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -54,10 +83,21 @@ try {
     $ManifestEntry = $Archive.GetEntry("./release_manifest.json")
   }
   if (-not $ManifestEntry) { throw "Release ZIP is missing release_manifest.json." }
+  if ($ManifestEntry.Length -gt 1MB) {
+    throw "Release ZIP manifest exceeds the 1 MiB qualification read limit."
+  }
 
   $ManifestReader = [IO.StreamReader]::new($ManifestEntry.Open(), [Text.Encoding]::UTF8, $true)
   try {
-    $PackageManifest = $ManifestReader.ReadToEnd() | ConvertFrom-Json
+    $manifestBuilder = [Text.StringBuilder]::new()
+    $manifestBuffer = [char[]]::new(4096)
+    while (($manifestRead = $ManifestReader.ReadBlock($manifestBuffer, 0, $manifestBuffer.Length)) -gt 0) {
+      [void]$manifestBuilder.Append($manifestBuffer, 0, $manifestRead)
+      if ($manifestBuilder.Length -gt 1MB) {
+        throw "Release ZIP manifest exceeds the 1 MiB qualification character limit."
+      }
+    }
+    $PackageManifest = $manifestBuilder.ToString() | ConvertFrom-Json
   } finally {
     $ManifestReader.Dispose()
   }
@@ -65,22 +105,14 @@ try {
   $Archive.Dispose()
 }
 
-$PackageVersion = [string]$PackageManifest.version
 $PackageCommit = ([string]$PackageManifest.commit).ToLowerInvariant()
+if ([string]$PackageManifest.version -ne $PackageVersion) {
+  throw "Release ZIP manifest version does not match trusted package version $PackageVersion."
+}
 if ($PackageCommit -notmatch "^[0-9a-f]{40}$") { throw "Release ZIP manifest commit is invalid." }
 if ($PackageCommit -ne $SourceCommit) {
   throw "Release ZIP commit $PackageCommit does not match source commit $SourceCommit."
 }
-$PackageVerifyLog = Join-Path $EvidencePath "package-verify.log"
-$PackageVerifyOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
-  -Version $PackageVersion -ZipPath $PackageZipPath -ExpectedCommit $SourceCommit 2>&1
-$PackageVerifyExit = $LASTEXITCODE
-$PackageVerifyOutput | Set-Content -LiteralPath $PackageVerifyLog -Encoding UTF8
-if ($PackageVerifyExit -ne 0) {
-  throw "Release ZIP verification failed. See $PackageVerifyLog"
-}
-
 $FirmwareInputPaths = @(
   "platformio.ini",
   "partitions_esp_sr_16.csv",

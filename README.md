@@ -332,7 +332,7 @@ Create a verified prerelease package:
 
 ```powershell
 .\tools\package_release.cmd -Version <version>
-.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip
+.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -RequireReleaseEligible
 ```
 
 Share the package locally or through a tunnel:
@@ -346,14 +346,14 @@ Share the package locally or through a tunnel:
 Publish a verified prerelease manually when hosted Actions cannot run:
 
 ```powershell
-.\tools\publish_release.cmd -Version <version> -CreateTag -PushCurrentBranch -PushTag
+.\tools\publish_release.cmd -Version <version> -Repo RobVanProd/stackchan_alive -CreateTag -PushCurrentBranch -PushTag
 .\tools\audit_published_release.cmd -Version <version>
 ```
 
 Start a hardware evidence packet when the device is connected:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 Evidence packets include `RUN_HARDWARE_SIM_BASELINE.cmd` for the pre-arrival virtual

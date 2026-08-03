@@ -2,6 +2,7 @@ param(
   [string]$ReleaseTag = "",
   [string]$PackageZip = "",
   [string]$PackageRoot = "",
+  [string]$ExpectedCommit = "",
   [string]$Port = "",
   [string]$Operator = "",
   [string]$DeviceId = "",
@@ -15,13 +16,13 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
-. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 
 function Invoke-GitText {
   param([string[]]$Arguments)
 
   try {
-    $output = & git @Arguments 2>$null
+    $output = & git -c core.hooksPath=NUL -c core.fsmonitor=false `
+      -c maintenance.auto=false -c core.untrackedCache=false @Arguments 2>$null
   } catch {
     return ""
   }
@@ -72,7 +73,7 @@ function Copy-AcceptanceArtifactsFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     Copy-AcceptanceArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -181,7 +182,7 @@ function Copy-VoiceLeadArtifactsFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     return Copy-VoiceLeadArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -237,7 +238,7 @@ function Copy-VoiceGateStatusFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     return Copy-VoiceGateStatusFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -449,41 +450,88 @@ function Write-EvidenceChecklist {
   $annotated | Set-Content -Path $DestinationPath -Encoding UTF8
 }
 
-$rootManifest = Get-ReleaseManifest $repoRoot
+if (-not [string]::IsNullOrWhiteSpace($PackageRoot) -and
+    -not [string]::IsNullOrWhiteSpace($PackageZip)) {
+  throw "Pass only one of -PackageZip or -PackageRoot."
+}
 
 if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
-  if ($null -ne $rootManifest) {
-    $ReleaseTag = [string]$rootManifest.version
+  if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+    $zipName = [System.IO.Path]::GetFileName($PackageZip)
+    if ($zipName -notmatch "^stackchan_alive_(.+)\.zip$") {
+      throw "Pass -ReleaseTag when -PackageZip does not match stackchan_alive_<version>.zip"
+    }
+    $ReleaseTag = $Matches[1]
   } else {
-    $ReleaseTag = Invoke-GitText @("describe", "--tags", "--always", "--dirty")
+    $ReleaseTag = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+      -c maintenance.auto=false -c core.untrackedCache=false `
+      describe --tags --always 2>$null | Out-String).Trim()
   }
 }
-
-if ([string]::IsNullOrWhiteSpace($PackageRoot) -and [string]::IsNullOrWhiteSpace($PackageZip) -and $null -ne $rootManifest) {
-  $PackageRoot = $repoRoot
+if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
+  throw "Pass -ReleaseTag because it could not be resolved from trusted Git state."
 }
 
-$packageRootManifest = $null
-if (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
-  if (-not (Test-Path -LiteralPath $PackageRoot)) {
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+  $ExpectedCommit = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    rev-parse HEAD 2>$null | Out-String).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit) -or
+    $ExpectedCommit -notmatch "^[0-9a-fA-F]{40}$") {
+  throw "Pass a 40-hex -ExpectedCommit or run from a trusted Git checkout."
+}
+$commit = $ExpectedCommit.ToLowerInvariant()
+
+$packageVerifyOutput = @()
+$packageVerifyExitCode = 0
+if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+  if (-not (Test-Path -LiteralPath $PackageZip -PathType Leaf)) {
+    throw "Missing package ZIP: $PackageZip"
+  }
+  $PackageZip = (Resolve-Path -LiteralPath $PackageZip).Path
+  $verifyArgs = @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+    "-Version", $ReleaseTag, "-ZipPath", $PackageZip,
+    "-ExpectedCommit", $commit, "-RequireReleaseEligible"
+  )
+  if ($AllowDirtyPackage) { $verifyArgs += "-AllowDirtyPackage" }
+  $previousErrorPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $packageVerifyOutput = @(& powershell.exe @verifyArgs 2>&1)
+    $packageVerifyExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorPreference
+  }
+} elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  if (-not (Test-Path -LiteralPath $PackageRoot -PathType Container)) {
     throw "Missing package root: $PackageRoot"
   }
-  $PackageRoot = (Resolve-Path $PackageRoot).Path
-  $packageRootManifest = Get-ReleaseManifest $PackageRoot
+  $PackageRoot = (Resolve-Path -LiteralPath $PackageRoot).Path
+  $verifyArgs = @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+    "-Version", $ReleaseTag, "-PackageRoot", $PackageRoot,
+    "-ExpectedCommit", $commit, "-RequireReleaseEligible"
+  )
+  if ($AllowDirtyPackage) { $verifyArgs += "-AllowDirtyPackage" }
+  $previousErrorPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $packageVerifyOutput = @(& powershell.exe @verifyArgs 2>&1)
+    $packageVerifyExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorPreference
+  }
+}
+if ($packageVerifyExitCode -ne 0) {
+  throw "Operational release package verification failed before evidence creation: $(($packageVerifyOutput | Out-String).Trim())"
 }
 
-$commit = ""
-if ($null -ne $rootManifest) {
-  $commit = [string]$rootManifest.commit
-} elseif ($null -ne $packageRootManifest) {
-  $commit = [string]$packageRootManifest.commit
-}
-if ([string]::IsNullOrWhiteSpace($commit)) {
-  $commit = Invoke-GitText @("rev-parse", "HEAD")
-}
-if ([string]::IsNullOrWhiteSpace($commit)) {
-  throw "Could not determine release commit from git or package manifest."
-}
+. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
+. (Join-Path $PSScriptRoot "release_zip_safety.ps1")
 
 if (-not $AllowIncompleteMetadata) {
   $missingMetadata = @()
@@ -532,9 +580,6 @@ $requiredLogs = @(
   "logs/soak_serial.log"
 )
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
-  if (-not (Test-Path -LiteralPath $PackageZip)) {
-    throw "Missing package ZIP: $PackageZip"
-  }
   $packageItem = Get-Item -LiteralPath $PackageZip
   $packageHash = Get-FileHash -Algorithm SHA256 -LiteralPath $packageItem.FullName
   Copy-Item -LiteralPath $packageItem.FullName -Destination $packageDir
@@ -546,28 +591,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   }
 
   $packageVerifyLog = Join-Path $logsDir "package_verify.log"
-  $verifyArgs = @(
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
-    "-Version",
-    $ReleaseTag,
-    "-ZipPath",
-    $packageItem.FullName,
-    "-ExpectedCommit",
-    $commit
-  )
-  if ($AllowDirtyPackage) {
-    $verifyArgs += "-AllowDirtyPackage"
-  }
-  $verifyOutput = & powershell.exe @verifyArgs 2>&1
-  $verifyExitCode = $LASTEXITCODE
-  $verifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
-  if ($verifyExitCode -ne 0) {
-    throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
-  }
+  $packageVerifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
   $packageVerified = $true
   Copy-AcceptanceArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
@@ -581,28 +605,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   }
 
   $packageVerifyLog = Join-Path $logsDir "package_verify.log"
-  $verifyArgs = @(
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
-    "-Version",
-    $ReleaseTag,
-    "-PackageRoot",
-    $packageRootItem.FullName,
-    "-ExpectedCommit",
-    $commit
-  )
-  if ($AllowDirtyPackage) {
-    $verifyArgs += "-AllowDirtyPackage"
-  }
-  $verifyOutput = & powershell.exe @verifyArgs 2>&1
-  $verifyExitCode = $LASTEXITCODE
-  $verifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
-  if ($verifyExitCode -ne 0) {
-    throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
-  }
+  $packageVerifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
   $packageVerified = $true
   Copy-AcceptanceArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
@@ -782,7 +785,7 @@ $speakAllCommand = "& '.\tools\send_speak_all_intents_demo.ps1'$portArg 2>&1 | T
 $bridgeReplayCommand = "& '.\tools\send_bridge_replay_demo.ps1'$portArg 2>&1 | Tee-Object -FilePath $bridgeReplayLog"
 $hardwareSimBaselineCommand = "& '.\tools\run_hardware_simulation.ps1' -OutputDir $hardwareSimBaselineDir -Json 2>&1 | Tee-Object -FilePath $hardwareSimBaselineLog"
 $simHardwareCompareCommand = "& '.\tools\compare_hardware_sim_baseline.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
-$verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit)"
+$verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit) -RequireReleaseEligible"
 if ($AllowDirtyPackage) {
   $verifyCommand += " -AllowDirtyPackage"
 }

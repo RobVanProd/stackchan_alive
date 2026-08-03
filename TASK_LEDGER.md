@@ -88,30 +88,45 @@ Ledger timestamp: 2026-08-03 America/New_York
   release build in the documented core.
 - **Priority:** P0 Milestone 0 candidate.
 - **Dependencies:** M0-003 audit reconciliation; clean task preregistration.
-- **Owner:** One future implementation owner, with separate verification owner.
-- **Allowed files:** Tentatively `platformio.ini`, a single reproducible-build pre-script, one
-  focused contract test, `AGENTS.md`, and the relevant release/build documentation. Final scope
-  must be frozen before implementation.
+- **Owner:** `/root`, with separate Luna implementation and read-only verification owners.
+- **Allowed files:** The initial tentative scope was insufficient once package/source binding,
+  dependency identity, command trust, ZIP safety, publication ordering, and every release consumer
+  had to fail closed as one contract. The expanded slice is frozen to `platformio.ini`, `AGENTS.md`,
+  exact firmware-release requirements, the firmware/release workflows, package/verifier/
+  publication/share/audit consumers, reproducibility/dependency/source/Git/toolchain/ZIP helpers,
+  their focused contracts, and directly coupled release/status/runbook documentation. The pending
+  commit's exact path inventory is the authority. Firmware `src/`, bridge runtime, personas,
+  private evidence, and unrelated feature work remain outside scope.
 - **Frozen systems:** Firmware behavior, face timing, actuator/power authority, bridge runtime,
   package secret policy, hardware, and unrelated LAN tests.
 - **Acceptance tests:** Failing effective-config coverage test first; exactly one effective
-  pre-script for every firmware/release environment; sanitized/fail-closed overrides and release
-  packaging governance; current gates; two clean exact-image builds across a clock boundary for
-  all three public packaged environments (`stackchan`, `stackchan_servo_calibration`, and
+  pre-script for every firmware/release environment; sanitized/fail-closed overrides; exact source,
+  dependency, toolchain, command, package, ZIP, and publication governance; current regression and
+  evidence-contract gates; two clean exact-image builds across a clock boundary for all three
+  public packaged environments (`stackchan`, `stackchan_servo_calibration`, and
   `stackchan_release_full`) plus classified private evidence-bearing domains, with identical
-  SHA-256; explicit documented PlatformIO core.
+  SHA-256; explicit documented PlatformIO core. Until an independently reviewed allowlist can meet
+  the complete gate, release-grade packaging and `RequireReleaseEligible` must refuse before Git,
+  Python, or PlatformIO execution while diagnostic packages remain ineligible.
 - **Stop conditions:** Ordinary current-main build becomes red; a release environment cannot be
   classified; identical clean builds differ; implementation needs unrelated source changes.
 - **Result:** In progress. Two same-input clean `stackchan_release_full` builds produced different
   firmware binaries, with 69 differing bytes including embedded wall-clock time and downstream
   digest regions; this is the accepted expected-red evidence. PR #218 was reviewed read-only and
   will not be merged or cherry-picked because its hook inheritance, override handling, dirty-tree
-  detection, and unrelated bridge-test change do not meet this gate. A hardened, fail-closed
-  implementation is preregistered after the public boot-motion correction is committed. No
-  reproducibility claim or hardware evidence is earned yet.
-- **Commit:** Expected-red and preregistration are recorded in the public boot-motion correction
-  slice; the implementation commit is still pending.
-- **Decision:** Selected as the next atomic slice after the boot-motion correction is committed.
+  detection, and unrelated bridge-test change do not meet this gate. The public boot-motion
+  prerequisite is now committed at `b5ea5c5f`. The dirty working tree implements deterministic
+  inputs, source/dependency/toolchain analysis, safe packaging/verification, and hardened
+  publication paths. Diagnostic v8 is expressly dirty, diagnostic-only, non-release-eligible,
+  non-flashable, and not reproducibility proof. No reviewed toolchain allowlist exists; fresh
+  canonical dependency evidence covers only `stackchan`; PostBuild/candidate generation and every
+  release-grade/eligibility path therefore remain fail closed. No reproducibility or hardware
+  claim is earned yet.
+- **Commit:** Boot-motion prerequisite `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`;
+  M0-004 implementation commit pending final verification and state reconciliation.
+- **Decision:** Continue the atomic governance slice, but do not mark it complete or generate an
+  eligible package until command/toolchain authority, all three clean environments, and independent
+  review are actually closed.
 
 ## M0-005 — Reconcile Stale Status Documents
 
@@ -142,6 +157,37 @@ Ledger timestamp: 2026-08-03 America/New_York
   control baseline`).
 - **Decision:** Accepted by the final independent documentation review; no historical evidence was
   strengthened or transferred. Complete.
+
+## M0-STATE-TRUTH — Reconcile Governance And Recovery Evidence
+
+- **Problem:** The committed boot-motion correction, dirty M0 implementation, diagnostic package,
+  private firmware backup, and historical deployment prose could be read as one transferable
+  release or physical identity.
+- **User-facing consequence:** A diagnostic ZIP or backup-time observation could be flashed,
+  published, or cited as current qualification without a clean source/toolchain/device binding.
+- **Evidence:** HEAD `b5ea5c5f`; dirty M0 worktree; diagnostic v8 manifest with release/flash/
+  hardware eligibility false; verified private three-read backup; backup-time `app0` selection with
+  unknown source mapping; repeated `/debug` timeouts; matching CoreS3 PnP identity present on COM4
+  without opening serial.
+- **Priority:** P0 documentation and recovery truth before commit.
+- **Owner:** `/root`, with independent read-only Luna state audit.
+- **Allowed files:** `PROJECT_STATE.md`, `TASK_LEDGER.md`, `docs/FIRST_DEPLOY_STATUS.md`, and
+  `docs/ARRIVAL_DAY_RUNBOOK.md` only.
+- **Frozen systems:** Firmware, robot, serial ports, live services, backup bytes, private values,
+  evidence archives, remote release state, and historical measured results.
+- **Acceptance tests:** Current committed/uncommitted/package/backup/live identities are separated;
+  the whole-flash hash is not called an app hash; historical current/live language is dated; no
+  physical, reproducibility, restore, or release claim is transferred; documentation review and
+  whitespace checks pass.
+- **Stop conditions:** Any update would expose private backup content, infer a current application
+  from USB/network absence or presence, strengthen historical evidence, or authorize restore/flash.
+- **Result:** Complete. State reconciliation records the committed correction, fail-closed M0
+  status, verified backup limits, current COM4 enumeration, continued debug unavailability, and no
+  serial/control/flash/motion action. Independent read-only review found no remaining identity,
+  qualification, historical-evidence, or recovery-authority contradiction.
+- **Commit:** Pending with the atomic M0 governance slice.
+- **Decision:** Accept the reconciliation while keeping release and hardware promotion on hold;
+  the backup remains recovery evidence only.
 
 ## UX-001 — Expire Stale Dashboard Robot Readiness
 
@@ -473,10 +519,13 @@ Ledger timestamp: 2026-08-03 America/New_York
   raw-audio request, reboot, flash, OTA, or hardware exercise occurred; physical gates remain
   unearned. A 2026-08-03 qualification audit found that the exact public full image had motion and
   autonomous motion enabled at boot, so it is explicitly rejected as the no-motion qualification
-  candidate. The replacement source profile keeps both off at boot, but it remains source-only and
-  unqualified at the time of this ledger update and does not inherit the old package evidence.
+  candidate. The replacement source profile keeps both off at boot and is committed as
+  `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`, but it remains source-only and unqualified at the
+  time of this ledger update. Neither the dirty M0 governance worktree nor any diagnostic package
+  inherits the old package or physical evidence.
 - **Commit:** Frozen preregistration `d75c62f3`; package prerequisite `2ed5bb6a`; atomic
-  implementation `4d31de414f5f2279b4c423ac3dfd7e940bb540d9`.
+  implementation `4d31de414f5f2279b4c423ac3dfd7e940bb540d9`; public boot-motion correction
+  `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`.
 - **Decision:** Stop-ship. Existing supervised Resume/motion-soak tooling has no approved authority
   after containment; keep the robot on a trusted isolated LAN or powered off until qualification.
 

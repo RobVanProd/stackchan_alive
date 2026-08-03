@@ -90,7 +90,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
 
       - name: Install bridge test dependencies
         run: |
@@ -467,7 +467,7 @@ jobs:
       - uses: actions/setup-python@v6
         if: matrix.setup_desktop_runtime
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
 
       - uses: actions/setup-java@v5
         with:
@@ -502,7 +502,7 @@ jobs:
         run: |
           $runtimeRoot = Join-Path "${{ github.workspace }}" "output/desktop-python-runtime/${{ matrix.desktop_platform }}"
           ./tools/prepare_desktop_python_runtime.ps1 `
-            -SourcePython (Get-Command python).Source `
+            -SourcePython (Get-Command python -CommandType Application -ErrorAction Stop).Source `
             -RuntimeRoot $runtimeRoot `
             -SourceName "github-actions-pr-${{ runner.os }}-${{ runner.arch }}-python-3.12" `
             -Force `
@@ -694,10 +694,10 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
 
       - name: Install PlatformIO
-        run: python -m pip install --upgrade pip platformio
+        run: python -m pip install --upgrade pip -r requirements-firmware-release.txt
 
       - name: Run native logic tests
         run: pio test -e native_logic
@@ -716,7 +716,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
 
       - name: Verify Windows bridge launch contracts
         shell: pwsh
@@ -726,10 +726,27 @@ jobs:
           ./tools/test_stackchan_dashboard_launcher_contract.ps1
 
       - name: Install PlatformIO
-        run: python -m pip install --upgrade pip platformio
+        run: python -m pip install --upgrade pip -r requirements-firmware-release.txt
+
+      - name: Run firmware reproducibility contract
+        shell: pwsh
+        run: ./tools/test_firmware_reproducible_build_contract.ps1
 
       - name: Build firmware
         run: pio run -e stackchan -e stackchan_servo_calibration
+
+      - name: Build secret-free public full firmware
+        shell: pwsh
+        run: |
+          $env:PLATFORMIO_CORE_DIR = Join-Path $env:RUNNER_TEMP "stackchan-pioarduino"
+          pio run -e stackchan_release_full
+
+      - name: Probe installed firmware compilers for path normalization
+        shell: pwsh
+        run: |
+          ./tools/test_firmware_reproducible_build_contract.ps1
+          $env:PLATFORMIO_CORE_DIR = Join-Path $env:RUNNER_TEMP "stackchan-pioarduino"
+          ./tools/test_firmware_reproducible_build_contract.ps1
 
       - name: Build unit-test firmware
         run: pio test -e stackchan --without-uploading --without-testing
@@ -743,3 +760,7 @@ jobs:
             .pio/build/stackchan/firmware.elf
             .pio/build/stackchan/partitions.bin
             .pio/build/stackchan/bootloader.bin
+            .pio/build/stackchan_release_full/firmware.bin
+            .pio/build/stackchan_release_full/firmware.elf
+            .pio/build/stackchan_release_full/partitions.bin
+            .pio/build/stackchan_release_full/bootloader.bin

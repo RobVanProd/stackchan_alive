@@ -63,6 +63,8 @@ if ($platformioText -notmatch '(?ms)\[env:stackchan_release_forensics\].*?upload
 }
 
 $packageText = Get-Content -LiteralPath "tools\package_release.ps1" -Raw
+$failureHelperText = Get-Content -LiteralPath "tools\firmware_reproducibility_failure.ps1" -Raw
+$failureGovernanceText = $packageText + "`n" + $failureHelperText
 if ($packageText -match 'run\s+-e\s+stackchan\s+-e\s+stackchan_servo_calibration') {
   throw "Release packaging must not mix legacy and pioarduino environments in one PlatformIO process."
 }
@@ -71,7 +73,7 @@ foreach ($environment in @("stackchan", "stackchan_servo_calibration", "stackcha
     throw "Release packaging is missing firmware environment: $environment"
   }
 }
-foreach ($required in @("firmware-build-cache", "Copy-BuildArtifacts", 'Join-Path $builtFirmwareCache $environment')) {
+foreach ($required in @("firmware-build-cache", "Copy-BuildArtifacts", '$firmwareSourceRoot', 'cycle-b')) {
   if (-not $packageText.Contains($required)) {
     throw "Release packaging is missing mixed-toolchain artifact preservation: $required"
   }
@@ -84,10 +86,13 @@ foreach ($required in @("PLATFORMIO_CORE_DIR", "Get-ReleasePlatformioCoreDir", '
 if (-not $packageText.Contains('GetPathRoot($env:SystemRoot)')) {
   throw "Release packaging must anchor the short pioarduino core to the physical Windows system drive."
 }
-$staleCacheCleanupIndex = $packageText.IndexOf('Get-ChildItem -LiteralPath $releaseOutputRoot')
-$currentCacheCreateIndex = $packageText.IndexOf('$builtFirmwareCache = Join-Path')
-if ($staleCacheCleanupIndex -lt 0 -or $currentCacheCreateIndex -lt 0 -or $staleCacheCleanupIndex -gt $currentCacheCreateIndex) {
-  throw "Release packaging must remove stale firmware caches before creating the current build cache."
+foreach ($required in @("[guid]::NewGuid()", "output/private/reproducibility-failures", "failed-full-worktree-preserved", 'Move-Item -LiteralPath $BuildCacheRoot')) {
+  if (-not $failureGovernanceText.Contains($required)) {
+    throw "Release packaging must preserve failed reproducibility artifacts without colliding with another run: $required"
+  }
+}
+if ($packageText.Contains('.firmware-build-cache-*')) {
+  throw "Release packaging must not wildcard-delete prior or concurrent firmware build evidence."
 }
 
 $releaseVerifierText = Get-Content -LiteralPath "tools\verify_release_package.ps1" -Raw
@@ -96,9 +101,8 @@ foreach ($required in @(
   '^55\.3\.36\+sha\.aa6e97c$',
   '^3\.3\.6$',
   'toolchain-xtensa-esp-elf',
-  'knownFullOnlineM5Gfx',
-  '0.2.24',
-  '0.2.25'
+  'knownPinnedM5GfxWithTransitiveCopy',
+  '0.2.24'
 )) {
   if (-not $releaseVerifierText.Contains($required)) {
     throw "Release verifier is missing mixed-toolchain lock coverage: $required"
@@ -108,7 +112,7 @@ foreach ($required in @(
   'verify_release_package.ps1',
   'package-verify.log',
   'AllowDirtyPackage',
-  'Release ZIP verification failed'
+  'Package ZIP verification failed'
 )) {
   if (-not $packageText.Contains($required)) {
     throw "Release packaging is missing mandatory post-build package verification: $required"

@@ -422,26 +422,54 @@ function Get-RolloutNextAction {
 }
 
 try {
-  if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
-    if (-not (Test-Path -LiteralPath $PackageZip)) {
-      throw "Missing package ZIP: $PackageZip"
-    }
-    $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-rollout-status"
-    $cleanupDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Force -Path $cleanupDir | Out-Null
-    Expand-Archive -LiteralPath $PackageZip -DestinationPath $cleanupDir
-    $PackageRoot = $cleanupDir
-  }
-
   if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = (git describe --tags --always --dirty).Trim()
   }
   if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
     $ExpectedCommit = (git rev-parse HEAD).Trim()
   }
-  if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
+  if ($ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "ExpectedCommit must be a full 40-character hexadecimal Git commit."
+  }
+  if ([string]::IsNullOrWhiteSpace($PackageRoot) -and
+      [string]::IsNullOrWhiteSpace($PackageZip)) {
     $PackageRoot = Join-Path $repoRoot "output/release/$Version"
   }
+
+  $packageVerifyArguments = @(
+    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+    "-Version", $Version,
+    "-ExpectedCommit", $ExpectedCommit,
+    "-RequireReleaseEligible"
+  )
+  if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+    if (-not (Test-Path -LiteralPath $PackageZip)) {
+      throw "Missing package ZIP: $PackageZip"
+    }
+    $packageVerifyArguments += @("-ZipPath", $PackageZip)
+  } else {
+    if (-not (Test-Path -LiteralPath $PackageRoot)) {
+      throw "Missing package root: $PackageRoot"
+    }
+    $packageVerifyArguments += @("-PackageRoot", $PackageRoot)
+  }
+  $packageVerification = Invoke-ToolCapture $packageVerifyArguments
+
+  if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+    if ($packageVerification.exitCode -ne 0) {
+      throw (
+        "Release ZIP eligibility verification failed before rollout extraction. Output:" +
+        [Environment]::NewLine + $packageVerification.text)
+    }
+    . (Join-Path $PSScriptRoot "release_zip_safety.ps1")
+    $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-rollout-status"
+    $cleanupDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $cleanupDir | Out-Null
+    Expand-StackchanReleaseZipSafely `
+      -ZipPath $PackageZip -DestinationPath $cleanupDir
+    $PackageRoot = $cleanupDir
+  }
+
   if (-not (Test-Path -LiteralPath $PackageRoot)) {
     throw "Missing package root: $PackageRoot"
   }
@@ -468,19 +496,23 @@ try {
   $voice = Read-JsonFile (Join-ResolvedPath $packageRootPath "voice_source_status.json")
   $rvcVoiceBase = Read-JsonFile (Join-ResolvedPath $packageRootPath "rvc_voice_base_status.json")
 
-  if ($null -ne $manifest) {
-    $Version = [string]$manifest.version
-    $ExpectedCommit = [string]$manifest.commit
-  }
-
   $gates = New-Object System.Collections.Generic.List[object]
   $blockers = New-Object System.Collections.Generic.List[string]
 
-  if ($null -ne $manifest -and $manifest.commit -eq $ExpectedCommit) {
-    Add-Gate $gates "release-package-manifest" "pass" "release_manifest.json commit matches $ExpectedCommit"
+  if ($packageVerification.exitCode -eq 0) {
+    Add-Gate $gates "release-package-eligibility" "pass" "Trusted verifier accepted the exact release package"
   } else {
-    Add-Gate $gates "release-package-manifest" "blocked" "release_manifest.json is missing or does not match $ExpectedCommit"
-    $blockers.Add("Release package manifest is missing or commit-mismatched.") | Out-Null
+    Add-Gate $gates "release-package-eligibility" "blocked" $packageVerification.text
+    $blockers.Add("Release package did not pass trusted operational eligibility verification.") | Out-Null
+  }
+
+  if ($null -ne $manifest -and
+      [string]$manifest.version -ceq $Version -and
+      [string]$manifest.commit -ceq $ExpectedCommit) {
+    Add-Gate $gates "release-package-manifest" "pass" "release_manifest.json version and commit match $Version / $ExpectedCommit"
+  } else {
+    Add-Gate $gates "release-package-manifest" "blocked" "release_manifest.json is missing or does not match $Version / $ExpectedCommit"
+    $blockers.Add("Release package manifest is missing or version/commit-mismatched.") | Out-Null
   }
 
   if ($null -ne $readiness -and $readiness.consumerRollout -eq "blocked-pending-hardware-validation") {

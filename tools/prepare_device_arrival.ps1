@@ -2,6 +2,7 @@ param(
   [string]$ReleaseTag = "",
   [string]$PackageZip = "",
   [string]$PackageRoot = "",
+  [string]$ExpectedCommit = "",
   [string]$Port = "",
   [string]$Operator = "",
   [string]$DeviceId = "",
@@ -15,71 +16,43 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
-function Invoke-GitText {
-  param([string[]]$Arguments)
-
-  try {
-    $output = & git @Arguments 2>$null
-  } catch {
-    return ""
-  }
-  if ($LASTEXITCODE -ne 0) {
-    return ""
-  }
-  return ($output | Out-String).Trim()
+if (-not [string]::IsNullOrWhiteSpace($PackageZip) -and
+    -not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  throw "Pass only one of -PackageZip or -PackageRoot."
 }
-
-function Get-ManifestFromPackageRoot {
-  param([string]$RootPath)
-
-  if ([string]::IsNullOrWhiteSpace($RootPath)) {
-    return $null
-  }
-
-  $manifestPath = Join-Path $RootPath "release_manifest.json"
-  if (-not (Test-Path -LiteralPath $manifestPath)) {
-    return $null
-  }
-
-  return Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-}
-
-function Get-ManifestFromPackageZip {
-  param([string]$ZipPath)
-
-  if ([string]::IsNullOrWhiteSpace($ZipPath) -or -not (Test-Path -LiteralPath $ZipPath)) {
-    return $null
-  }
-
-  $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-arrival-manifest"
-  $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
-  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
-  try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
-    return Get-ManifestFromPackageRoot $extractDir
-  } finally {
-    if (Test-Path -LiteralPath $extractDir) {
-      Remove-Item -LiteralPath $extractDir -Recurse -Force
-    }
-  }
-}
-
-$rootManifest = Get-ManifestFromPackageRoot $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
-  if ($null -ne $rootManifest) {
-    $ReleaseTag = [string]$rootManifest.version
+  if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+    $zipName = [System.IO.Path]::GetFileName($PackageZip)
+    if ($zipName -notmatch "^stackchan_alive_(.+)\.zip$") {
+      throw "Pass -ReleaseTag when -PackageZip does not match stackchan_alive_<version>.zip"
+    }
+    $ReleaseTag = $Matches[1]
   } else {
-    $ReleaseTag = Invoke-GitText @("describe", "--tags", "--always", "--dirty")
+    $ReleaseTag = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+      -c maintenance.auto=false -c core.untrackedCache=false `
+      describe --tags --always 2>$null | Out-String).Trim()
   }
 }
+if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
+  throw "Pass -ReleaseTag because it could not be resolved from trusted Git state."
+}
 
-if ([string]::IsNullOrWhiteSpace($PackageZip) -and [string]::IsNullOrWhiteSpace($PackageRoot) -and $null -ne $rootManifest) {
-  $PackageRoot = $repoRoot
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+  $ExpectedCommit = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    rev-parse HEAD 2>$null | Out-String).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+  throw "Pass -ExpectedCommit because it could not be resolved from trusted Git state."
 }
 
 if ([string]::IsNullOrWhiteSpace($PackageZip) -and [string]::IsNullOrWhiteSpace($PackageRoot)) {
-  $PackageZip = Join-Path $repoRoot "output/release/stackchan_alive_$ReleaseTag.zip"
+  if (Test-Path -LiteralPath (Join-Path $repoRoot "release_manifest.json") -PathType Leaf) {
+    $PackageRoot = $repoRoot
+  } else {
+    $PackageZip = Join-Path $repoRoot "output/release/stackchan_alive_$ReleaseTag.zip"
+  }
 }
 
 if (-not [string]::IsNullOrWhiteSpace($PackageZip) -and -not (Test-Path -LiteralPath $PackageZip)) {
@@ -90,28 +63,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageRoot) -and -not (Test-Path -Litera
   throw "Missing package root: $PackageRoot"
 }
 
-$packageManifest = $rootManifest
-if ($null -eq $packageManifest -and -not [string]::IsNullOrWhiteSpace($PackageZip)) {
-  $packageManifest = Get-ManifestFromPackageZip $PackageZip
-}
-if ($null -eq $packageManifest -and -not [string]::IsNullOrWhiteSpace($PackageRoot)) {
-  $packageManifest = Get-ManifestFromPackageRoot $PackageRoot
-}
-
-if ([string]::IsNullOrWhiteSpace($ReleaseTag) -and $null -ne $packageManifest) {
-  $ReleaseTag = [string]$packageManifest.version
-}
-
-$commit = ""
-if ($null -ne $packageManifest) {
-  $commit = [string]$packageManifest.commit
-}
-if ([string]::IsNullOrWhiteSpace($commit)) {
-  $commit = Invoke-GitText @("rev-parse", "HEAD")
-}
-if ([string]::IsNullOrWhiteSpace($commit)) {
-  throw "Could not determine release commit from git or package manifest."
-}
+$commit = $ExpectedCommit.ToLowerInvariant()
 
 if (-not $AllowIncompleteMetadata) {
   $missingMetadata = @()
@@ -140,16 +92,19 @@ Write-Host "==> Verify release package"
 $verifyScript = Join-Path $PSScriptRoot "verify_release_package.ps1"
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($AllowDirtyPackage) {
-    & $verifyScript -Version $ReleaseTag -ZipPath $PackageZip -ExpectedCommit $commit -AllowDirtyPackage
+    & $verifyScript -Version $ReleaseTag -ZipPath $PackageZip -ExpectedCommit $commit -AllowDirtyPackage -RequireReleaseEligible
   } else {
-    & $verifyScript -Version $ReleaseTag -ZipPath $PackageZip -ExpectedCommit $commit
+    & $verifyScript -Version $ReleaseTag -ZipPath $PackageZip -ExpectedCommit $commit -RequireReleaseEligible
   }
 } else {
   if ($AllowDirtyPackage) {
-    & $verifyScript -Version $ReleaseTag -PackageRoot $PackageRoot -ExpectedCommit $commit -AllowDirtyPackage
+    & $verifyScript -Version $ReleaseTag -PackageRoot $PackageRoot -ExpectedCommit $commit -AllowDirtyPackage -RequireReleaseEligible
   } else {
-    & $verifyScript -Version $ReleaseTag -PackageRoot $PackageRoot -ExpectedCommit $commit
+    & $verifyScript -Version $ReleaseTag -PackageRoot $PackageRoot -ExpectedCommit $commit -RequireReleaseEligible
   }
+}
+if ($LASTEXITCODE -ne 0) {
+  throw "Operational release package verification failed before device-arrival preparation."
 }
 
 Write-Host ""
@@ -157,9 +112,11 @@ Write-Host "==> Dry-run display-only release flash"
 $flashScript = Join-Path $PSScriptRoot "flash_release_firmware.ps1"
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($AllowDirtyPackage) {
-    & $flashScript -PackageZip $PackageZip -Firmware display_only -DryRun -Monitor -Port $Port -AllowDirtyPackage
+    & $flashScript -PackageZip $PackageZip -Firmware display_only -Version $ReleaseTag `
+      -ExpectedCommit $commit -DryRun -Monitor -Port $Port -AllowDirtyPackage
   } else {
-    & $flashScript -PackageZip $PackageZip -Firmware display_only -DryRun -Monitor -Port $Port
+    & $flashScript -PackageZip $PackageZip -Firmware display_only -Version $ReleaseTag `
+      -ExpectedCommit $commit -DryRun -Monitor -Port $Port
   }
 } else {
   if ($AllowDirtyPackage) {
@@ -181,15 +138,21 @@ if (-not [string]::IsNullOrWhiteSpace($ShareRoot)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($AllowDirtyPackage) {
-    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageZip $PackageZip -Port $Port -Operator $Operator -DeviceId $DeviceId -AllowDirtyPackage @metadataArgs
+    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageZip $PackageZip `
+      -ExpectedCommit $commit -Port $Port -Operator $Operator -DeviceId $DeviceId `
+      -AllowDirtyPackage @metadataArgs
   } else {
-    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageZip $PackageZip -Port $Port -Operator $Operator -DeviceId $DeviceId @metadataArgs
+    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageZip $PackageZip `
+      -ExpectedCommit $commit -Port $Port -Operator $Operator -DeviceId $DeviceId @metadataArgs
   }
 } else {
   if ($AllowDirtyPackage) {
-    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageRoot $PackageRoot -Port $Port -Operator $Operator -DeviceId $DeviceId -AllowDirtyPackage @metadataArgs
+    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageRoot $PackageRoot `
+      -ExpectedCommit $commit -Port $Port -Operator $Operator -DeviceId $DeviceId `
+      -AllowDirtyPackage @metadataArgs
   } else {
-    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageRoot $PackageRoot -Port $Port -Operator $Operator -DeviceId $DeviceId @metadataArgs
+    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageRoot $PackageRoot `
+      -ExpectedCommit $commit -Port $Port -Operator $Operator -DeviceId $DeviceId @metadataArgs
   }
 }
 $evidenceOutput | Write-Host

@@ -12,6 +12,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+. (Join-Path $PSScriptRoot "release_zip_safety.ps1")
 
 function Quote-PowerShellArgument {
   param([string]$Value)
@@ -43,7 +44,7 @@ function Copy-AcceptanceArtifactsFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     Copy-AcceptanceArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -152,7 +153,7 @@ function Copy-VoiceLeadArtifactsFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     return Copy-VoiceLeadArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -208,7 +209,7 @@ function Copy-VoiceGateStatusFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     return Copy-VoiceGateStatusFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue

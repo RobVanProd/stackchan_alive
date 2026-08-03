@@ -10,6 +10,22 @@ function Format-StackchanCommand {
   }) -join " "
 }
 
+function Resolve-StackchanExactApplicationExecutable {
+  param([Parameter(Mandatory = $true)][string]$Candidate)
+
+  if ([string]::IsNullOrWhiteSpace($Candidate) -or
+      -not (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
+    return $null
+  }
+  $item = Get-Item -LiteralPath $Candidate -Force -ErrorAction SilentlyContinue
+  if ($null -eq $item -or
+      ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+      ($env:OS -eq 'Windows_NT' -and [string]$item.Extension -cne '.exe')) {
+    return $null
+  }
+  return [System.IO.Path]::GetFullPath($item.FullName)
+}
+
 function Get-StackchanPlatformioCandidates {
   $candidates = @()
 
@@ -19,7 +35,7 @@ function Get-StackchanPlatformioCandidates {
 
   foreach ($commandName in @("platformio", "pio")) {
     $candidates += @(
-      Get-Command $commandName -All -ErrorAction SilentlyContinue |
+      Get-Command $commandName -All -CommandType Application -ErrorAction SilentlyContinue |
         Select-Object -ExpandProperty Source
     )
   }
@@ -52,14 +68,17 @@ function Get-StackchanPlatformioCandidates {
 
 function Get-StackchanPlatformioCommand {
   if (-not [string]::IsNullOrWhiteSpace($script:StackchanPlatformioCommand)) {
-    return $script:StackchanPlatformioCommand
+    $validatedCachedCommand = Resolve-StackchanExactApplicationExecutable `
+      -Candidate $script:StackchanPlatformioCommand
+    if ($null -eq $validatedCachedCommand) {
+      throw "Previously selected PlatformIO executable is no longer one exact trusted application file: $script:StackchanPlatformioCommand"
+    }
+    return $validatedCachedCommand
   }
 
   foreach ($candidate in Get-StackchanPlatformioCandidates) {
-    $commandPath = $candidate
-    if (Test-Path -LiteralPath $candidate) {
-      $commandPath = (Resolve-Path $candidate).Path
-    }
+    $commandPath = Resolve-StackchanExactApplicationExecutable -Candidate $candidate
+    if ($null -eq $commandPath) { continue }
 
     try {
       $version = & $commandPath --version 2>$null

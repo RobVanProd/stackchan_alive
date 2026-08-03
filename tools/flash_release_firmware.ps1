@@ -17,7 +17,6 @@ $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $root
-. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 
 function Assert-File {
   param([string]$Path)
@@ -116,6 +115,74 @@ function Get-EsptoolInvocation {
   throw "No usable esptool runtime found. Install PlatformIO and run a firmware build once so tool-esptoolpy is installed, or install esptool into a real Python 3 environment."
 }
 
+if (-not [string]::IsNullOrWhiteSpace($PackageZip) -and
+    -not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  throw "Pass only one of -PackageZip or -PackageRoot."
+}
+
+if (-not [string]::IsNullOrWhiteSpace($PackageZip) -and
+    [string]::IsNullOrWhiteSpace($Version)) {
+  $zipName = [System.IO.Path]::GetFileName($PackageZip)
+  if ($zipName -notmatch "^stackchan_alive_(.+)\.zip$") {
+    throw "Pass -Version when -PackageZip does not match stackchan_alive_<version>.zip"
+  }
+  $Version = $Matches[1]
+}
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  $Version = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    describe --tags --always 2>$null | Out-String).Trim()
+  if ([string]::IsNullOrWhiteSpace($Version)) {
+    throw "Pass -Version because it could not be resolved from trusted Git state."
+  }
+}
+
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+  $ExpectedCommit = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    rev-parse HEAD 2>$null | Out-String).Trim()
+  if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+    throw "Pass -ExpectedCommit because it could not be resolved from trusted Git state."
+  }
+}
+
+if ([string]::IsNullOrWhiteSpace($PackageZip) -and
+    [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  $candidateManifest = Join-Path $root "release_manifest.json"
+  if (Test-Path -LiteralPath $candidateManifest -PathType Leaf) {
+    $PackageRoot = $root
+  } else {
+    $PackageRoot = Join-Path $root "output/release/$Version"
+  }
+}
+
+$verifyScript = Join-Path $PSScriptRoot "verify_release_package.ps1"
+$verifyArgs = @(
+  "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $verifyScript,
+  "-Version", $Version, "-ExpectedCommit", $ExpectedCommit,
+  "-RequireReleaseEligible"
+)
+if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+  Assert-File $PackageZip
+  $PackageZip = (Resolve-Path -LiteralPath $PackageZip).Path
+  $verifyArgs += @("-ZipPath", $PackageZip)
+} else {
+  Assert-File $PackageRoot
+  $PackageRoot = (Resolve-Path -LiteralPath $PackageRoot).Path
+  $verifyArgs += @("-PackageRoot", $PackageRoot)
+}
+if ($AllowDirtyPackage) {
+  $verifyArgs += "-AllowDirtyPackage"
+}
+& powershell.exe @verifyArgs
+if ($LASTEXITCODE -ne 0) {
+  throw "Operational release package verification failed before flash preparation."
+}
+
+. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
+. (Join-Path $PSScriptRoot "release_zip_safety.ps1")
+
 if ($Firmware -in @("servo_calibration", "full_online")) {
   Write-Warning "$Firmware firmware contains motor support. Keep the body clear and powered safely."
   if (-not $ConfirmServoRisk) {
@@ -126,33 +193,12 @@ if ($Firmware -in @("servo_calibration", "full_online")) {
 $cleanupDir = $null
 try {
   if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
-    Assert-File $PackageZip
-    if ([string]::IsNullOrWhiteSpace($Version)) {
-      $zipName = [System.IO.Path]::GetFileName($PackageZip)
-      if ($zipName -match "^stackchan_alive_(.+)\.zip$") {
-        $Version = $Matches[1]
-      } else {
-        throw "Pass -Version when -PackageZip does not match stackchan_alive_<version>.zip"
-      }
-    }
-
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-release-flash"
     $cleanupDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $cleanupDir | Out-Null
-    Expand-Archive -LiteralPath $PackageZip -DestinationPath $cleanupDir
+    Expand-StackchanReleaseZipSafely `
+      -ZipPath $PackageZip -DestinationPath $cleanupDir
     $PackageRoot = $cleanupDir
-  }
-
-  if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
-    $candidateManifest = Join-Path $root "release_manifest.json"
-    if (Test-Path -LiteralPath $candidateManifest) {
-      $PackageRoot = $root
-    } else {
-      if ([string]::IsNullOrWhiteSpace($Version)) {
-        $Version = (git describe --tags --always --dirty).Trim()
-      }
-      $PackageRoot = Join-Path $root "output/release/$Version"
-    }
   }
 
   Assert-File $PackageRoot
@@ -160,19 +206,9 @@ try {
   Assert-File $manifestPath
   $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
-  if ([string]::IsNullOrWhiteSpace($Version)) {
-    $Version = [string]$manifest.version
-  }
-
-  if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
-    $ExpectedCommit = [string]$manifest.commit
-  }
-
-  $verifyScript = Join-Path $PSScriptRoot "verify_release_package.ps1"
-  if ($AllowDirtyPackage) {
-    & $verifyScript -Version $Version -PackageRoot $PackageRoot -ExpectedCommit $ExpectedCommit -AllowDirtyPackage
-  } else {
-    & $verifyScript -Version $Version -PackageRoot $PackageRoot -ExpectedCommit $ExpectedCommit
+  if ([string]$manifest.version -ne $Version -or
+      ([string]$manifest.commit).ToLowerInvariant() -ne $ExpectedCommit.ToLowerInvariant()) {
+    throw "Verified package identity changed before flash preparation."
   }
 
   $firmwareDir = Join-Path $PackageRoot "firmware/$Firmware"

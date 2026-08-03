@@ -4,8 +4,9 @@ State timestamp: 2026-08-03 America/New_York
 
 ## Current Objective
 
-Keep stop-ship security work ahead of aliveness features. Milestone 0 and the independently
-verified `SEC-001` host admission repair are committed. `SEC-001` remains contained and undeployed.
+Keep stop-ship security and release-truth work ahead of aliveness features. Milestone 0, the
+independently verified `SEC-001` host admission repair, and the public boot-motion correction are
+committed. `SEC-001` remains contained and undeployed.
 `SEC-002`/`PRIV-001` is implemented and committed as `4d31de41`: public firmware HTTP may serve
 bounded operational status and emergency stops, while every other mutating control fails closed
 before side effects. Independent policy, security, and documentation reviewers accepted the source
@@ -17,11 +18,14 @@ Qualification audit found that the preserved `4d31de41` public full image
 `4256F2E5...B31055` is not a no-motion candidate: its effective configuration requests motion and
 autonomous refresh at boot. That package remains immutable historical evidence and is superseded
 for physical qualification. The selected correction keeps the public full profile motion-off at
-boot and explicitly disables autonomous boot refresh. It remains a source/build candidate only;
-the clean reproducible replacement image, OTA-selector-safe install path, passive no-motion
-runner, rollback proof, and physical qualification are still pending. Repeated bounded live
-`/debug` probes were unavailable, so current actuator state and installed application identity are
-unknown; ping response is recorded separately and does not close that gap.
+boot and explicitly disables autonomous boot refresh; it is committed as
+`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. Release-governance changes after that commit remain an
+uncommitted working-tree experiment. Diagnostic packaging is available, but release-grade
+packaging and release-eligible verification currently fail closed because no reviewed exact
+toolchain allowlist exists. The clean reproducible replacement image, OTA-selector-safe install
+path, passive no-motion runner, rollback proof, and physical qualification are still pending.
+Repeated bounded live `/debug` probes were unavailable, so current actuator state and installed
+application identity are unknown; USB enumeration and ping observations do not close that gap.
 
 The requested human/dog/cat following, natural naming/removal, and personality-shaped emotional
 motion work is now a separate design-only lane in
@@ -35,8 +39,10 @@ dimensional projection behind controlled-source final-actuator and physical-safe
 
 - Repository: `RobVanProd/stackchan_alive`
 - Working branch: `codex/aliveness-repository-truth`
-- Current firmware/source implementation commit before this documentation-only future-lane update:
-  `4d31de414f5f2279b4c423ac3dfd7e940bb540d9`
+- Current committed firmware/source correction: `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`
+  (`fix: keep public release motion off at boot`).
+- Current release-governance/toolchain worktree: dirty and uncommitted; it must not be described as
+  the identity of a clean package or installed image.
 - HTTP-containment contract-scope maintenance commit (test file only):
   `aa7dfb9ca077704dca84bc5635fbb2142e13e47c`
 - Separate package prerequisite commit:
@@ -58,34 +64,38 @@ switched because live services use that checkout. Milestone 0 work uses the isol
 
 ## Active Hypothesis
 
-Selected experiment: `SEC-002`, fixed emergency-stop-only admission on the firmware debug HTTP
-server, plus `PRIV-001` denial of its unauthenticated wake-microphone PCM export.
+Selected experiment: `M0-004`, exact-source reproducible firmware and release-command governance.
 
-- **Observed behavior:** Port 8789 ignores the HTTP method, defaults malformed requests to `/`,
-  dispatches camera paths before any common admission decision, applies tone/wake-reset/motion-
-  enable/recovery/reboot effects before responding, returns generic status for unknown paths, and
-  echoes the raw request target. `/wake.wav` and `/wake-pcm.wav` return recent microphone-ring PCM
-  without the camera pairing gate. These are source observations; unsafe routes and PCM were not
-  exercised on hardware.
-- **Primary hypothesis:** One Arduino-free, exhaustive request-line/route policy invoked before
-  dispatch can reduce admitted unauthenticated mutating operations to emergency audio/motion stop
-  only, deny the PCM export, retain bounded status and paired camera behavior, and expose a
-  non-secret `emergency_stop_only` capability without changing OTA or autonomous recovery logic.
-- **Falsification:** Any denied route reaches a side effect; any malformed/query/prefix/suffix case
-  falls through to status; any query-free `GET` emergency stop used by maintained clients is lost;
-  paired camera or OTA behavior changes; a build profile bypasses the policy; any sink leaks raw
-  request/query/pairing/authorization material; or the repair requires a credential, pairing-file
-  transport, or hardware action before source gates.
-- **Frozen baseline:** Commit `9c72f020`, the contained production bridge, installed firmware of
-  unknown SHA-256, voice/vision/model workers, port-8790 OTA authorization, camera pairing grammar,
-  automatic offline recovery supervisor, 50 ms face gate, actuator ownership, and physical
-  evidence.
-- **Rollback:** Revert only the atomic `SEC-002` source/client compatibility commit. Do not restore
-  an insecure listener or flash the prior image as an automatic fallback; isolate or power off the
-  robot and preserve evidence.
+- **Observed behavior:** The boot-motion prerequisite is committed at `b5ea5c5f`, but the current
+  release-governance tree is dirty. The diagnostic v8 package is explicitly dirty, diagnostic-only,
+  non-release-eligible, non-flashable, and does not prove firmware reproducibility. No tracked
+  reviewed toolchain allowlist exists. Fresh canonical dependency evidence covers only the
+  `stackchan` environment, and the current Git/runtime and packed-object semantics are not fully
+  byte-authorized.
+- **Primary hypothesis:** Deterministic build inputs, exact source/package binding, safe ZIP
+  handling, hardened publication commands, and an independently reviewed executable/toolchain
+  allowlist can make a clean three-environment two-cycle package auditable without weakening
+  firmware, privacy, motion, power, or evidence gates.
+- **Falsification:** Any release-grade or `RequireReleaseEligible` path executes an unapproved
+  Git/Python/PlatformIO root; any dependency/source mutation escapes the identity; two clean cycles
+  differ; a diagnostic package is accepted for release, flash, or hardware qualification; a hostile
+  ZIP escapes or bypasses inventories; or publication mutates remote state before exact repository,
+  commit, tag, asset, and package verification.
+- **Current decision:** Keep release-grade packaging and release-eligible verification fail closed
+  before Git or build-tool execution. Preserve diagnostic packaging only for verifier development.
+  Do not create or promote an allowlist from the same untrusted host evidence. PostBuild and
+  candidate generation remain disabled until all three environments and the remaining Git/runtime
+  semantics have independent authority.
+- **Frozen baseline:** Committed source `b5ea5c5f`, the contained production bridge, installed
+  firmware of unknown SHA-256, the verified private backup, voice/vision/model workers, OTA and
+  camera authorization, automatic recovery, the 50 ms face gate, actuator ownership, and all
+  physical evidence.
+- **Rollback:** Revert only the eventual atomic M0 governance commit if a frozen invariant
+  regresses. Do not delete diagnostic or backup evidence, restore unauthenticated release commands,
+  or flash an older image automatically.
 
-The reproducible-build and memory-authorization hypotheses remain queued P0 work; stop-ship
-transport/control/privacy containment takes precedence without reordering later aliveness work.
+Memory authorization remains queued P0 work. The human/pet/identity/emotional-motion lanes remain
+ordered behind release truth, privacy authority, and exact-image physical qualification.
 
 ## SEC-002 / PRIV-001 Frozen Preregistration
 
@@ -344,6 +354,13 @@ Preregistration metric fields:
 - That documented hash is historical accepted evidence, not a claim about what is currently
   reachable or installed. Direct `/debug` was unavailable during the current snapshot, so no
   live hash binding is asserted.
+- A private full-SPI-flash backup captured on 2026-08-02 is preserved at
+  `output/private/firmware-backups/20260802-233346-COM4`. Three independent 16 MiB reads match at
+  SHA-256 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`.
+  Offline parsing shows backup-time OTA selection of `app0`; the exact app image-file SHA-256 is
+  `BB8311FFD1DFB059561697242E0C87ED45D38BDBEB0B8CEB32937089314621B1`, and its source mapping is
+  unknown. The whole-flash hash is not an application hash, and neither value proves the current
+  live slot or bytes.
 
 ## Active Bridge Source And Services
 
@@ -398,6 +415,13 @@ remains evidence of the presentation defect rather than current status.
 Observed conclusion: robot reachability is not established, and the dashboard is not expiring its
 connected/ready presentation when heartbeat/socket evidence becomes stale. Do not relabel this as
 a robot freeze, blackout, brownout, thermal event, USB failure, board failure, or power failure.
+
+Bounded update on 2026-08-03: the expected ESP32-S3 USB composite device is again present as
+`USB Serial Device (COM4)` with `VID_303A&PID_1001&MI_00`, matching the backup device identity.
+The unrelated CH340 remains separately enumerated on COM3 and was not opened. Three new read-only
+`/debug` requests to `192.168.1.238:8789` timed out, and no local listener was present on ports
+`5059`, `8765`, or `8789`. No serial port was opened and no reset, control request, flash, or motion
+occurred. USB presence does not establish application, actuator, network, bridge, or power state.
 
 ## Known Faults
 
@@ -497,13 +521,37 @@ qualifies the installed firmware or authorizes a service restart.
   local wrong-peer path, not robot reachability or network-attacker resistance. Evidence remains
   ignored under `output/private/sec-001/`.
 
+## M0 Release Governance Working-Tree Evidence
+
+- Command trust, release-package verifier trust, source binding, publication safety, dependency
+  evidence, reproducibility proof/failure retention, PlatformIO UTF-8, and toolchain-identity
+  contracts pass. The reproducible-build contract covers all 22 firmware environments.
+- Independent command-trust review passes the current fail-closed boundary: release-grade
+  packaging and `RequireReleaseEligible` refuse before unauthenticated tools; diagnostic packages
+  cannot authorize release, flashing, distribution, or hardware qualification; managed ZIP,
+  pinned system commands, disabled Git/LFS hooks/filters, and hostile shim tests remain intact.
+- Independent toolchain review passes the PreBuild analysis after adding full Python-installation
+  hashing, exact import isolation including `PYTHONOPTIMIZE`, canonical source/build-byte binding,
+  and source/HEAD/ref/commit mutation tests. No tracked reviewed allowlist exists. PostBuild and
+  candidate generation remain disabled because fresh evidence does not cover all three packaged
+  environments and Git/runtime pack semantics are not yet independently byte-authorized.
+- Current regressions pass: native firmware logic 294/294, bridge 567/567, trusted-facts smoke with
+  zero model invocations and zero audio, and the full-system-soak/current-lead/archive synthetic
+  evidence contracts. These are source/contract results, not current hardware qualification.
+- Diagnostic package generation/verification is retained solely to test the verifier. A diagnostic
+  archive must identify the dirty source snapshot and keep every release, flash, distribution, and
+  hardware-qualification eligibility flag false. No public release was created.
+
 ## Exact Next Action
 
-Keep `SEC-002`/`PRIV-001` ahead of the queued aliveness lanes. First commit the reviewed public
-boot-motion correction, close `M0-004` with two clean identical builds, add and verify the
-OTA-selector-safe installer and guarded private rollback helper, and build a new clean package
-bound to its exact source and application SHA-256. Only that replacement may enter the dedicated
-passive no-motion qualification; the old `4d31de41` / `4256F2E5...B31055` package must be refused.
+Keep `SEC-002`/`PRIV-001` and release truth ahead of the queued aliveness lanes. Reconcile the M0
+scope/state record, independently close command and toolchain trust, and keep release-grade paths
+blocked until a reviewed exact allowlist can authorize them. Then commit the governance slice and
+produce two clean identical builds for all three packaged environments, add and verify the OTA-
+selector-safe installer and guarded private rollback helper, and build a clean package bound to its
+exact source and application SHA-256. Only that replacement may enter the dedicated passive no-
+motion qualification; the old `4d31de41` / `4256F2E5...B31055` package and every diagnostic package
+must be refused.
 After a passing passive gate, conduct the separately reviewed supervised emergency-stop proof and
 final release gates. Do not design credentials or read a pairing file.
 `PERCEPT-002`, `IDENT-001`, and `MOTION-001` remain preregistration/research only until their ordered
@@ -529,8 +577,9 @@ dependencies, expected-red tests, and explicit recognition/physical promotion ch
 ## Rollback Path
 
 `SEC-001` rollback is reversion of exact commit `9c72f020`; keep the exposed listener stopped rather
-than restoring a fail-open fallback. `SEC-002` preregistration and its current implementation remain
-separate atomic changes and are reverted only by exact commit if a frozen invariant regresses. Do
-not flash an insecure prior image as an operational rollback. Hardware rollback remains the exact
-private accepted archive/runbook procedure and is not exercised without source, build, no-motion,
-physical, and exact-image gates.
+than restoring a fail-open fallback. `SEC-002` and its `b5ea5c5f` boot-motion correction are reverted
+only by exact commit if a frozen invariant regresses. The verified private 16 MiB backup is recovery
+evidence, not an application image, current-live identity, release artifact, device clone, or
+automatic restore authorization. Do not flash an insecure prior image as an operational rollback.
+Any hardware restore still requires exact target identity, reviewed recovery procedure, source/
+build/no-motion gates, operator supervision, and fresh post-restore evidence.

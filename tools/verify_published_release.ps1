@@ -12,7 +12,6 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
-. (Join-Path $PSScriptRoot "release_asset_contract.ps1")
 
 function Assert-Command {
   param([string]$Name)
@@ -124,21 +123,17 @@ function Assert-GitHubProvenanceAttestation {
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  $Version = (git describe --tags --always --dirty).Trim()
+  $Version = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    describe --tags --always | Out-String).Trim()
 }
 
 Assert-Command "git"
-Assert-Command "gh"
-
-if ([string]::IsNullOrWhiteSpace($Repo)) {
-  $Repo = (gh repo view --json nameWithOwner --jq ".nameWithOwner").Trim()
-  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Repo)) {
-    throw "Unable to infer GitHub repo. Pass -Repo owner/name."
-  }
-}
 
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
-  $tagCommit = git rev-list -n 1 $Version 2>$null
+  $tagCommit = & git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    rev-list -n 1 $Version 2>$null
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace(($tagCommit | Out-String).Trim())) {
     throw "Unable to resolve tag $Version. Pass -ExpectedCommit explicitly or fetch/create the tag first."
   }
@@ -160,6 +155,44 @@ if ([string]::IsNullOrWhiteSpace($ZipSidecarPath)) {
 Assert-File $PackageRoot
 Assert-File $ZipPath
 Assert-File $ZipSidecarPath
+
+$previousErrorPreference = $ErrorActionPreference
+try {
+  $ErrorActionPreference = "Continue"
+  $localVerifyOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
+    -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
+    -Version $Version -ZipPath $ZipPath -ExpectedCommit $ExpectedCommit `
+    -RequireReleaseEligible 2>&1)
+  $localVerifyExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorPreference
+}
+if ($localVerifyExit -ne 0) {
+  throw "Local release package is not operationally eligible; refusing published-release I/O: $(($localVerifyOutput | Out-String).Trim())"
+}
+try {
+  $ErrorActionPreference = "Continue"
+  $localRootVerifyOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
+    -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
+    -Version $Version -PackageRoot $PackageRoot -ExpectedCommit $ExpectedCommit `
+    -RequireReleaseEligible 2>&1)
+  $localRootVerifyExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorPreference
+}
+if ($localRootVerifyExit -ne 0) {
+  throw "Local extracted release root is not operationally eligible; refusing published-release I/O: $(($localRootVerifyOutput | Out-String).Trim())"
+}
+
+. (Join-Path $PSScriptRoot "release_asset_contract.ps1")
+
+Assert-Command "gh"
+if ([string]::IsNullOrWhiteSpace($Repo)) {
+  $Repo = (gh repo view --json nameWithOwner --jq ".nameWithOwner").Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Repo)) {
+    throw "Unable to infer GitHub repo. Pass -Repo owner/name."
+  }
+}
 
 $release = gh release view $Version --repo $Repo --json url,isPrerelease,assets,tagName,targetCommitish | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) {
@@ -392,7 +425,11 @@ if ($remoteZipHash -ne $Matches[1]) {
   throw "Published ZIP SHA256 sidecar does not match downloaded ZIP"
 }
 
-& (Join-Path $PSScriptRoot "verify_release_package.ps1") -Version $Version -ZipPath $remoteZip -ExpectedCommit $ExpectedCommit
+& (Join-Path $PSScriptRoot "verify_release_package.ps1") `
+  -Version $Version -ZipPath $remoteZip -ExpectedCommit $ExpectedCommit -RequireReleaseEligible
+if ($LASTEXITCODE -ne 0) {
+  throw "Downloaded published release package is not operationally eligible."
+}
 
 Write-Host "Published release verified:"
 Write-Host $release.url

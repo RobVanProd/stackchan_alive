@@ -9,6 +9,39 @@ param(
 $ErrorActionPreference = "Stop"
 
 $physicalRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+  if ([string]::IsNullOrWhiteSpace($Version)) {
+    $zipName = [System.IO.Path]::GetFileName($PackageZip)
+    if ($zipName -notmatch "^stackchan_alive_(.+)\.zip$") {
+      throw "Pass -Version when -PackageZip does not match stackchan_alive_<version>.zip"
+    }
+    $Version = $Matches[1]
+  }
+  if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+    $ExpectedCommit = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+      -c maintenance.auto=false -c core.untrackedCache=false `
+      -C $physicalRepoRoot rev-parse HEAD).Trim()
+  }
+  if ($ExpectedCommit -notmatch "^[0-9a-fA-F]{40}$") {
+    throw "Pass a 40-hex -ExpectedCommit or run from a trusted Git checkout."
+  }
+  if (-not (Test-Path -LiteralPath $PackageZip -PathType Leaf)) {
+    throw "Missing package ZIP: $PackageZip"
+  }
+  $PackageZip = (Resolve-Path -LiteralPath $PackageZip).Path
+  $earlyVerifyArgs = @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+    "-Version", $Version, "-ZipPath", $PackageZip,
+    "-ExpectedCommit", $ExpectedCommit, "-RequireReleaseEligible"
+  )
+  if ($AllowDirty) { $earlyVerifyArgs += "-AllowDirtyPackage" }
+  & powershell.exe @earlyVerifyArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Operational release ZIP verification failed before device-preflight helpers or reports."
+  }
+}
+
 if (
   $env:OS -eq "Windows_NT" -and
   -not $env:STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE -and
@@ -2264,9 +2297,11 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   Invoke-Step "Verify release package" {
     $verifyScript = Join-Path $PSScriptRoot "verify_release_package.ps1"
     if ($AllowDirty) {
-      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit -AllowDirtyPackage
+      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit `
+        -AllowDirtyPackage -RequireReleaseEligible
     } else {
-      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit
+      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit `
+        -RequireReleaseEligible
     }
   }
 
