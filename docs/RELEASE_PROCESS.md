@@ -97,8 +97,15 @@ commit-pinned detached source worktree retained through final ZIP verification. 
 prior snapshots, and failure metadata are moved under ignored
 `output/private/reproducibility-failures/`; the complete failed detached worktree, including
 `.pio/build`, `.pio/libdeps`, and generated state, remains attached at its recorded path. A later
-attempt must not delete it. ZIP hashes may
-differ because generated reports and archive metadata are time-bearing. `-SkipBuild` is allowed only
+attempt must not delete it.
+
+System-wide WPR/ETL collection is optional corroborating forensic evidence, not part of this
+release-authorizing reproducibility claim. Recorder loss must be disclosed when a trace is
+collected and the recorder must be returned to idle, but it neither supplies nor overrides the
+direct proof above. Promotion depends on the exact-host lifetime guard, the two clean build cycles,
+artifact-byte equality, source binding, and independent package verification.
+
+ZIP hashes may differ because generated reports and archive metadata are time-bearing. `-SkipBuild` is allowed only
 with `-AllowDirty` for a diagnostic package that is explicitly barred from release and hardware
 validation; its version must start with `diagnostic-` and it is written under
 `output/diagnostics/`. Its copied firmware identity is explicitly unknown/unbound, every root

@@ -2,6 +2,30 @@
 
 Audit timestamp: 2026-08-02 America/New_York
 
+## Active Qualification Routing (2026-08-04)
+
+- **Sole M0/P0 qualification worktree:**
+  `D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
+  `codex/aliveness-repository-truth`. Verify its exact head and clean state before every
+  qualification command. No other retained worktree is a qualification input.
+- **The primary checkout is not a qualification host.** It is clean `main` at
+  `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`; use it only as the current default source checkout.
+- **`agent/away-cloudflare-bridge` is quarantined, not merely paused.** Preserve it unchanged at
+  `269b11beeac788f76fff5d566446a91b8688bf8f`. It predates SEC-001/SEC-002, ships
+  `data/cert/x509_crt_bundle.bin`, and changes `src/main.cpp`,
+  `BridgeWiFiProvisioningStore`, and other bridge/network authority paths. Do not merge, rebase,
+  package, flash, or qualify it because CI is green or the feature diff appears self-contained.
+  Its release-full profile explicitly restores motion and autonomous motion at boot; its remote
+  path also predates current pairing/admission and `emergency_stop_only` enforcement. Most of the
+  unsafe lane would merge without a textual conflict, so mergeability is not containment evidence.
+  Remote-access approval must first be explicitly opened. Any future implementation must be built
+  afresh from the then-current qualification head and independently reviewed against
+  `emergency_stop_only`, pairing/credential boundaries, privacy, protocol ownership, and
+  motion/rail/torque containment.
+
+This section is the current routing authority. The original 2026-08-02 checkout and local-`main`
+observations below remain historical audit evidence, not current operating instructions.
+
 ## Audit Basis
 
 - Repository: `RobVanProd/stackchan_alive`
@@ -31,7 +55,8 @@ upstream is not evidence that an attached local worktree is disposable.
 
 | Branch | Scope | Merge base | Ahead / behind | Unique files and mechanism | Existing PR | Security implications | Disposition |
 | --- | --- | --- | ---: | --- | --- | --- | --- |
-| `agent/away-cloudflare-bridge` | Local + remote | `36acc0c735132f06dae5d31e5a2cb145db1258b8` | 1 / 75 | 35 files across firmware endpoint/network/provisioning code, Android/desktop endpoint services, `deploy/cloudflare`, a CA bundle, and `docs/AWAY_CLOUDFLARE_BRIDGE.md`; adds Cloudflare-backed Away routing. | None | **High.** Adds Internet reachability, tunnel configuration, certificate material, credential handling, provisioning, and endpoint-ownership changes. It needs a current threat model, credential rotation, recovery, privacy review, and separate physical evidence. | **Archive/quarantine.** Keep separate from the aliveness roadmap. Do not rebase or salvage until the remote-operation approval gates are explicitly opened. Do not remove its active checkout while live services may depend on it. |
+| `agent/away-cloudflare-bridge` | Local + remote | `36acc0c735132f06dae5d31e5a2cb145db1258b8` | 1 / 75 | 35 files across firmware endpoint/network/provisioning code, Android/desktop endpoint services, `deploy/cloudflare`, a CA bundle, and `docs/AWAY_CLOUDFLARE_BRIDGE.md`; adds Cloudflare-backed Away routing. | None | **High.** Re-enables release-full motion/autonomous motion at boot, retains pre-SEC-002 unsafe HTTP routes, accepts replayable persistent profile changes without active-owner/freshness checks, terminates the tunnel at a pre-SEC-001 Kotlin server, and stores Wi-Fi/Access credentials as plaintext JSON. | **Archive/quarantine.** Preserve the exact branch as research evidence; do not merge, rebase, or cherry-pick it. No changed file is approved for whole-file salvage. Any future remote-access lane must be implemented afresh from the then-current qualification head after explicit approval and the review gate above. |
+| `codex/native-release-guard-fixture` | Local only | `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec` | 21 / 0 | Fixture-only `ReadDirectoryChangesExW` mutation barrier, native P/Invoke source, and adversarial contracts. Production callers remain on `FileSystemWatcher`. | None | Changes the exact release-policy helper bytes and therefore invalidates current bootstrap/allowlist pins. It does not yet cover transient source-root injection, exact build-Job accounting, or root-object ACL/attribute changes. | **Preserve as future hardening; not an M0 input.** Local commit `c8d6be2ef7c8aaa2a4ac3475ac879e369db44763` intentionally remains unpushed and non-promotion-ready. Do not merge until line-ending authority, helper/allowlist/bootstrap pins, missing containment controls, full contracts, and an independent guarded build all pass together. |
 | `agent/companion-complaints-harness` | Local only; upstream gone | `81147d8e73f861543d7b0813991b2db6674c0301` | 1 / 1 | Host bridge complaint corpus, qualification harness, memory/persona/initiative/failure-recovery hardening, and tests. Its tree is identical to fetched `origin/main`; `git cherry` reports the commit patch-equivalent. | [#219](https://github.com/RobVanProd/stackchan_alive/pull/219), merged | Privacy and relationship-safety controls are material, but the reviewed content is already on `main`. The local worktree runs production voice/bridge support processes. | **Delete only after retirement and preservation review.** Code is merged, but the worktree currently has a tracked modification to `artifacts/face/phase_e_speech_reactive_6s.gif`. Retain it until services are deliberately migrated or stopped, then inventory and preserve all tracked, untracked, and ignored user/runtime data before deleting the redundant branch/worktree. |
 | `codex/release-integration-preview` | Local only | `329b50c989ed08e582c8f361b903bce9d1a39196` | 3 / 196 | Release archive tooling, private/public evidence distinctions, reproducibility checker changes, package verifier changes, and contracts. All three commits are patch-equivalent to `main`. | None | Release credential hygiene and private diagnostic/public-package separation are security-critical. Those mechanisms are already on `main`. | **Delete after worktree retirement.** No unique patch remains. Preserve tracked, untracked, and ignored release evidence before removing its worktree. |
 | `codex/release-tooling-final` | Local only | `e6b80f32abcb71a61e1eb8616702e216c33ed3cd` | 2 / 209 | Earlier form of the same release archive and private/public evidence tooling. Both commits are patch-equivalent to `main`. | None | Same release-secret and artifact-integrity boundaries as above; already represented on `main`. | **Delete after worktree retirement.** Superseded and patch-equivalent; inventory tracked, untracked, and ignored evidence first. |

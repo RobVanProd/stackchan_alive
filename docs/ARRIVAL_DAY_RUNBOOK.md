@@ -4,6 +4,28 @@ Use this when bringing up a physical Stackchan device from the public `v0.2.0` r
 locally rebuilt or post-release firmware as a new candidate until its applicable evidence gates
 below are complete.
 
+Qualification checkout authority (2026-08-04): run current M0/P0 commands only from
+`D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
+`codex/aliveness-repository-truth`, after verifying its exact head and clean state. The repository's
+primary checkout is now clean `main` at `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`; it is not the
+qualification branch. The preserved `agent/away-cloudflare-bridge` branch at
+`269b11beeac788f76fff5d566446a91b8688bf8f` is remote-access infrastructure that predates the current
+containment lane and is explicitly excluded from packaging, flashing, and physical qualification
+without exception. Do not merge, rebase, or cherry-pick that exact branch. Any explicitly approved
+future remote-access work must be implemented afresh from the then-current qualification head and
+receive a separate security and containment review.
+
+P1/P2 bench-power rule (operator-supplied 2026-08-04): P1 exact-image no-motion qualification may
+use the PC USB connection while motion request, servo rail, and torque are proved off. P2 and every
+other test that can enable the servo rail, torque, or an actuator must instead use the validated
+dedicated 5 V / 3 A BASE supply. Keep the PC connection data-only when the bench wiring can safely
+separate USB power; document the exact power/data topology and do not create a backfeed path. Begin
+power and reset telemetry capture before arming motion. A blackout, USB disappearance, or telemetry
+cut during a stop test is an inconclusive combined power/containment event: issue `/motion-stop` if
+reachable, terminate the motion-refresh runner, capture post-stop `/debug` when it returns, and
+preserve the power-forensics state. Do not count loss of power itself as proof that an emergency
+stop worked, and do not call it a firmware containment failure without matching telemetry.
+
 Repository-truth warning (2026-08-03): live firmware now self-reports confirmed `app0` and expected
 SHA-256 `69d3db27...8ebfa8`, matching the historical accepted lead, but current flash bytes have not
 been independently read back. Dated “installed,” “current,” and “live” notes below remain historical
@@ -51,8 +73,15 @@ events, storage/journal containment passed, WPR returned idle, and conventional 
 restored to `B/B/B`. The failed-run task and active pair were subsequently archived and removed by
 an exact state-D cleanup. This is a host recorder failure, not evidence about robot stability or a
 hardware root cause. Do not flash, open a robot port, start the bridge for qualification, or move a
-motor from this result. P1 remains `HOLD` until an exact guarded two-cycle build has zero recorder
-loss and the resulting exact package passes independent rebuild verification.
+motor from this result.
+
+After those two parameter variations, stop tuning WPR. System-wide WPR/ETL is optional
+corroborating forensic evidence and is not a package-promotion predicate. If collected, recorder
+loss must be reported as `diagnostic-failed` and the recorder must be returned to idle, but the
+authorizing reproducibility evidence is the public exact-host guard plus two clean detached
+worktree/cache cycles, matching artifact bytes, source-bound package generation, and independent
+package rebuild/verification. P1 remains `HOLD` until that direct governed proof passes; it no
+longer requires a lossless system-wide WPR trace.
 
 Current read-only packet: ignored `output/private/p0-live-state-20260803`. Its successful debug JSON
 is SHA-256 `070CA1CDEA6B78D7C15589559E204330716CB6CAD1542BE4BE6DE56DA5C594FB`.

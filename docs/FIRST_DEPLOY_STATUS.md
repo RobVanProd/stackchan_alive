@@ -2,6 +2,25 @@
 
 Status timestamp: 2026-08-04 America/New_York
 
+## Qualification Checkout Authority (2026-08-04)
+
+The authoritative checkout for the current M0/P0 qualification lane is the clean worktree at
+`D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
+`codex/aliveness-repository-truth`. Do not infer qualification state from the repository's default
+working directory or from another retained worktree. The pushed evidence checkpoint immediately
+before this reconciliation was `3ace8f63fbd8d546ee9d234138b627badefdae51`; it matched its remote
+branch and was 20 commits ahead of `origin/main` with no commits behind.
+
+The primary checkout at `D:\CodexProjects\stackchan_alive` was cleanly moved from
+`agent/away-cloudflare-bridge` to current local `main`, and local `main` was fast-forwarded to the
+verified remote `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`. The remote-access branch is preserved unchanged at
+`269b11beeac788f76fff5d566446a91b8688bf8f`; it is not a qualification input. It predates the current
+containment lane and adds Cloudflare-backed remote access plus firmware network-path changes.
+Because remote-access infrastructure requires explicit approval, do not merge, rebase, flash,
+package, or qualify that exact branch. Any explicitly approved future remote-access work must be
+implemented afresh from the then-current qualification head and receive a separate security,
+privacy, protocol-authority, and motion-containment review.
+
 ## Current SEC-002 Qualification Hold (2026-08-03)
 
 The clean `SEC-002` package built from `4d31de41` is preserved as source/package evidence only.
@@ -105,9 +124,19 @@ disabled task and active-file pair, and reached state D; its `removal.final.json
 These are host evidence-recorder failures, not firmware, robot, USB, power, thermal, or actuator
 failures. In these two guarded executions, no governed package or replacement firmware was
 produced, and the guarded workflow did not flash, start a bridge session, access a robot port,
-perform no-motion qualification, or move a motor. The SEC-002 hold remains in force until an
-exact-host guarded two-cycle build completes with zero recorder loss and the resulting exact
-package passes its independent rebuild and passive no-motion preflight.
+perform no-motion qualification, or move a motor. After the two failed recorder parameter
+variations, no third WPR tuning run is authorized. WPR/ETL is now optional corroborating forensic
+evidence, not a release-promotion predicate; recorder loss must remain visible as
+`diagnostic-failed` and any recorder session must return idle, but it does not override the direct
+reproducibility proof.
+
+The M0/P0 build authority remains fail-closed through the reviewed public controls: one exact clean
+commit and host-installed toolchain allowlist, retained file leases and namespace mutation guards,
+sanitized build environment, two clean cycles from distinct detached worktrees and caches, exact
+artifact-byte comparison, package source binding, and independent package rebuild/verification.
+Any failure in those controls still rejects the candidate. The SEC-002 hold remains in force until
+that governed two-cycle proof succeeds and the resulting exact package passes its independent
+rebuild and passive no-motion preflight; lossless system-wide WPR is not additionally required.
 
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
