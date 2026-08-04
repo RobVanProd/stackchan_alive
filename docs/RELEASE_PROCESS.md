@@ -79,8 +79,12 @@ not a claim that arbitrary operating systems or different toolchain/dependency b
 A release-grade package performs two clean cycles for all three public environments,
 waits for at least a 65-second start-time boundary, compares the firmware BIN and ELF, bootloader,
 and partition-table hashes, and packages only the verified second-cycle artifacts. The cycles use
-different short detached clean worktree paths of different lengths, pinned to the captured commit,
-plus a distinct initially empty PlatformIO compiled-artifact cache per cycle/environment. The proof
+distinct short detached clean worktrees with equal total path lengths, fixed-width process-ID
+fields, and different labels, all pinned to the captured commit, plus a distinct initially empty
+PlatformIO compiled-artifact cache per cycle/environment. The independent verifier uses the same
+fixed-width total path length. This keeps the roots genuinely separate without crossing a legacy
+GCC/PlatformIO command-path threshold that changes only DWARF include-path spelling and therefore
+the ESP application ELF-hash field. The proof
 records 13 toolchain observations—one PreBuild record plus pre-execution and post-build records for
 each environment in both cycles—and six source identity attestations, binding both cycles to the
 manifest commit and epoch. The process retains the authenticated PreBuild bytes and namespace

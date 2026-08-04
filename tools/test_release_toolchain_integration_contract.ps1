@@ -97,7 +97,9 @@ foreach ($needle in @(
     'requires exactly one verified subst mapping',
     'refuses a missing, non-directory, or redirected subst target',
     '-ExpectedGitTopLevel $bootstrapGitTopLevel',
-    'detected a changed subst mapping during bootstrap trust verification')) {
+    'detected a changed subst mapping during bootstrap trust verification',
+    "Join-Path `$bootstrapGitTopLevel 'tools/verify_release_package.ps1'",
+    '"-File", $trustedVerifierScriptPath')) {
   Require-Text $packageText $needle `
     "Packager is missing fail-closed subst/Git top-level reconciliation: $needle"
 }
@@ -110,6 +112,29 @@ $packageAst = [System.Management.Automation.Language.Parser]::ParseFile(
   $packagePath, [ref]$packageTokens, [ref]$packageParseErrors)
 if (@($packageParseErrors).Count -ne 0) {
   throw 'Release packager cannot be parsed for short-path regression testing.'
+}
+$bootstrapTrustFunctions = @($packageAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Assert-ReleaseBootstrapTrust'
+}, $true))
+if ($bootstrapTrustFunctions.Count -ne 1) {
+  throw 'Release packager must define one bootstrap-trust function.'
+}
+$bootstrapFileAssignments = @($bootstrapTrustFunctions[0].Body.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $node.Left.Extent.Text -ceq '$bootstrapFiles'
+}, $true))
+$bootstrapVerifierEntries = @(if ($bootstrapFileAssignments.Count -eq 1) {
+  $bootstrapFileAssignments[0].Right.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+      $node.Value -ceq 'tools/verify_release_package.ps1'
+  }, $true)
+})
+if ($bootstrapFileAssignments.Count -ne 1 -or $bootstrapVerifierEntries.Count -ne 1) {
+  throw 'Release packager bootstrap trust must authenticate the physical verifier exactly once.'
 }
 $shortPathFunction = $packageAst.Find({
     param($node)
@@ -158,6 +183,18 @@ try {
   if (-not $observedPhysicalRoot.Equals(
       $canonicalShortPathRepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw 'Release short-path regression test did not recover the exact physical repository root.'
+  }
+  $physicalVerifierScript = [IO.Path]::GetFullPath(
+    (Join-Path $observedPhysicalRoot 'tools/verify_release_package.ps1'))
+  $expectedPhysicalVerifierScript = [IO.Path]::GetFullPath(
+    (Join-Path $canonicalShortPathRepoRoot 'tools/verify_release_package.ps1'))
+  $logicalVerifierScript = [IO.Path]::GetFullPath(
+    (Join-Path "$shortPathDrive\tools" 'verify_release_package.ps1'))
+  if (-not $physicalVerifierScript.Equals(
+      $expectedPhysicalVerifierScript, [System.StringComparison]::OrdinalIgnoreCase) -or
+      $physicalVerifierScript.Equals(
+        $logicalVerifierScript, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Release short-path regression test did not select the physical verifier checkout.'
   }
   $nestedRejected = $false
   try {

@@ -91,7 +91,9 @@ try {
     cycleBSourceCommit = $commit
     cycleBSourceEpoch = $epoch
     buildCachePolicy = "isolated-empty-per-cycle-environment"
-    sourceIsolationPolicy = "distinct-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths"
+    sourceIsolationPolicy = "distinct-equal-length-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths"
+    sourcePathTopologyPolicy = "fixed-width-process-id-and-equal-length-distinct-labels"
+    sourceRootLength = 30
     identityAttestations = @($attestations)
     cycleAArtifacts = @(Copy-Proof $records)
     cycleBArtifacts = @(Copy-Proof $records)
@@ -128,6 +130,8 @@ try {
   Invoke-ExpectedProofFailure { param($p) $p.cycleBSourceEpoch = "1700000001" } "one manifest Git identity"
   Invoke-ExpectedProofFailure { param($p) $p.buildCachePolicy = "shared-cache" } "isolated build-cache policy"
   Invoke-ExpectedProofFailure { param($p) $p.sourceIsolationPolicy = "same-worktree" } "distinct detached source policy"
+  Invoke-ExpectedProofFailure { param($p) $p.sourcePathTopologyPolicy = "varying-length" } "distinct detached source policy"
+  Invoke-ExpectedProofFailure { param($p) $p.sourceRootLength = 0 } "distinct detached source policy"
 
   $packagedArtifact = Join-Path $fixtureRoot "firmware/display_only/firmware.bin"
   [System.IO.File]::AppendAllText($packagedArtifact, "changed")
@@ -145,6 +149,8 @@ try {
     cycleBSourceEpoch = $null
     buildCachePolicy = "not-applicable-skip-build"
     sourceIsolationPolicy = "not-applicable-skip-build"
+    sourcePathTopologyPolicy = "not-applicable-skip-build"
+    sourceRootLength = 0
     identityAttestations = @()
     cycleAArtifacts = @()
     cycleBArtifacts = @()

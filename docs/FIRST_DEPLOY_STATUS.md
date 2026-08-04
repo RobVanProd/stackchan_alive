@@ -162,6 +162,39 @@ contract executes the production resolver both from the physical checkout and fr
 short-drive child context. The SEC-002 hold remains in force until that correction is committed,
 passes exact-head CI, and a fresh direct two-cycle package plus independent rebuild succeed.
 
+### Direct package reproducibility failure (2026-08-04)
+
+Qualification head `1da3c505fd83a664f4d348b84714398f2e941e8f` passed all 11 jobs on the
+first attempt in exact-head GitHub Firmware run `30949170237`. Direct WPR-free packaging for
+`sec-002-1da3c505` passed the corrected physical-to-`R:` bootstrap, exact-host authority scans, and
+both clean firmware build cycles, then failed closed during artifact comparison. No package ZIP,
+sidecar, package verification log, flash, bridge session, robot-port access, or actuator command
+was produced. WPR was idle, the temporary mapping was removed, and all packager/PlatformIO
+processes exited. The complete failed cycle-B worktree remains attached at
+`E:\sc-firmware-b-22576-e1b117f4`; ignored failure evidence is preserved under
+`output/private/reproducibility-failures/20260804-213837-22576-9fb7bb93f52f4d9794f4a1bff3f43cd8`.
+
+Direct hashing found nine matching artifact pairs and six mismatches: `firmware.bin` and
+`firmware.elf` for each of `stackchan`, `stackchan_servo_calibration`, and
+`stackchan_release_full`. Every bootloader, partition table, and `boot_app0.bin` pair matched. Each
+firmware BIN had identical size and differed in exactly 65 bytes: the 32-byte ESP application ELF
+hash plus the final checksum and image digest. All runtime/loadable ELF sections matched. Only
+non-runtime DWARF `.debug_info`/`.debug_line` metadata differed; cycle B recorded alternate relative
+M5GFX include paths containing `../` segments. The source commit/epoch, dependency revisions,
+toolchain identities, and runtime bytes were identical, so this is a real exact-byte reproducibility
+failure but not evidence of changed firmware logic, robot behavior, power, USB, thermal, or motion.
+
+The varying input was the packager's intentional unequal scratch-root length (`fw-a` versus
+`firmware-b`). A targeted diagnostic rebuilt `stackchan` from two fresh distinct 30-character
+detached roots with separate caches, fixed-width names, the same exact commit/epoch, and different
+dependency-install timestamps. Both firmware BINs matched at
+`6873F6967C5DCD01BC6E7D62C63C48ED2BFF21EAB1FF0FFA4962BDF720DBB22B`; both ELFs matched at
+`69D94CE11BF69EA1DE9F13AC03B61D8D6ADC5E5ABDF7F5C2113C25902B2BBA1D`. The release correction
+therefore keeps distinct worktrees/caches and exact byte comparison, but requires `fw-a`, `fw-b`,
+and independent-verifier `vrfy` roots to use one equal total length with a ten-digit process-ID
+field. The SEC-002 hold remains in force until that correction passes contracts, exact-head CI, a
+fresh full two-cycle package, and the independent rebuild.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

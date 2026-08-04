@@ -24,6 +24,8 @@ function Assert-StackchanFirmwareReproducibilityProof {
         $null -ne $Proof.cycleBSourceEpoch -or
         $Proof.buildCachePolicy -ne "not-applicable-skip-build" -or
         $Proof.sourceIsolationPolicy -ne "not-applicable-skip-build" -or
+        $Proof.sourcePathTopologyPolicy -ne "not-applicable-skip-build" -or
+        [int]$Proof.sourceRootLength -ne 0 -or
         @($Proof.identityAttestations).Count -ne 0 -or
         @($Proof.cycleAArtifacts).Count -ne 0 -or
         @($Proof.cycleBArtifacts).Count -ne 0 -or
@@ -45,7 +47,9 @@ function Assert-StackchanFirmwareReproducibilityProof {
       $Proof.buildCachePolicy -cne "isolated-empty-per-cycle-environment") {
     throw "Firmware reproducibility proof is not bound to one manifest Git identity and isolated build-cache policy"
   }
-  if ($Proof.sourceIsolationPolicy -cne "distinct-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths") {
+  if ($Proof.sourceIsolationPolicy -cne "distinct-equal-length-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths" -or
+      $Proof.sourcePathTopologyPolicy -cne "fixed-width-process-id-and-equal-length-distinct-labels" -or
+      [int]$Proof.sourceRootLength -le 0) {
     throw "Firmware reproducibility proof does not use the required distinct detached source policy"
   }
 

@@ -381,6 +381,7 @@ function Assert-ReleaseBootstrapTrust {
   }
   $bootstrapFiles = @(
     '.gitattributes', 'tools/package_release.ps1',
+    'tools/verify_release_package.ps1',
     'tools/test_firmware_reproducible_build_contract.ps1',
     'tools/test_release_toolchain_integration_contract.ps1',
     'tools/test_release_toolchain_documentation_contract.ps1',
@@ -632,6 +633,8 @@ $bootstrapGitTopLevel = $physicalRepoRoot
 if ($ReleaseShortPathChild) {
   $bootstrapGitTopLevel = Get-ReleaseShortPathPhysicalRoot -LogicalRoot $physicalRepoRoot
 }
+$trustedVerifierScriptPath = [System.IO.Path]::GetFullPath(
+  (Join-Path $bootstrapGitTopLevel 'tools/verify_release_package.ps1'))
 if (-not $SkipBuild) {
   Assert-ReleaseBootstrapTrust -Root $physicalRepoRoot `
     -ExpectedGitTopLevel $bootstrapGitTopLevel
@@ -910,6 +913,8 @@ $firmwareReproducibilityProof = [ordered]@{
   cycleBSourceEpoch = $null
   buildCachePolicy = "not-applicable-skip-build"
   sourceIsolationPolicy = "not-applicable-skip-build"
+  sourcePathTopologyPolicy = "not-applicable-skip-build"
+  sourceRootLength = 0
   identityAttestations = @()
   cycleAArtifacts = @()
   cycleBArtifacts = @()
@@ -976,9 +981,11 @@ function New-ShortReleaseScratchPath {
     if ($null -eq $drive) {
       throw "Could not locate a fixed drive for a short release build worktree."
     }
-    $scratch = Join-Path $drive.Root ("sc-$Label-$PID-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+    $fixedWidthProcessId = $PID.ToString('D10', [Globalization.CultureInfo]::InvariantCulture)
+    $scratch = Join-Path $drive.Root ("sc-$Label-$fixedWidthProcessId-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
   } else {
-    $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("sc-$Label-$PID-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+    $fixedWidthProcessId = $PID.ToString('D10', [Globalization.CultureInfo]::InvariantCulture)
+    $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("sc-$Label-$fixedWidthProcessId-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
   }
   $scratch = [System.IO.Path]::GetFullPath($scratch)
   if ($env:OS -eq "Windows_NT" -and $scratch.Length -gt 60) {
@@ -988,6 +995,20 @@ function New-ShortReleaseScratchPath {
     throw "Fresh release scratch path already exists: $scratch"
   }
   return $scratch
+}
+
+function Assert-StackchanReleaseCycleSourceTopology {
+  param(
+    [Parameter(Mandatory = $true)][string]$CycleASourceRoot,
+    [Parameter(Mandatory = $true)][string]$CycleBSourceRoot
+  )
+
+  if ($CycleASourceRoot -ceq $CycleBSourceRoot -or
+      $CycleASourceRoot.Length -ne $CycleBSourceRoot.Length -or
+      (Split-Path -Leaf $CycleASourceRoot) -cnotmatch '^sc-fw-a-[0-9]{10}-[0-9a-f]{8}$' -or
+      (Split-Path -Leaf $CycleBSourceRoot) -cnotmatch '^sc-fw-b-[0-9]{10}-[0-9a-f]{8}$') {
+    throw "Firmware reproducibility proof requires distinct equal-length fixed-width source roots."
+  }
 }
 
 function Invoke-LoggedReleasePlatformio {
@@ -1334,11 +1355,10 @@ if (-not $SkipBuild) {
   $cycleBRoot = Join-Path $firmwareBuildCacheRoot "cycle-b"
   $firmwareDependencySnapshotRoot = Join-Path $firmwareBuildCacheRoot "cycle-b-dependencies"
   $cycleASourceRoot = New-ShortReleaseScratchPath -Label 'fw-a'
-  $cycleBSourceRoot = New-ShortReleaseScratchPath -Label 'firmware-b'
-  if ($cycleASourceRoot -ceq $cycleBSourceRoot -or
-      $cycleASourceRoot.Length -eq $cycleBSourceRoot.Length) {
-    throw "Firmware reproducibility proof requires distinct source roots with different path lengths."
-  }
+  $cycleBSourceRoot = New-ShortReleaseScratchPath -Label 'fw-b'
+  Assert-StackchanReleaseCycleSourceTopology `
+    -CycleASourceRoot $cycleASourceRoot `
+    -CycleBSourceRoot $cycleBSourceRoot
   $activeBuildSourceRoot = $null
   $activeBuildWorktreeAdded = $false
   $script:firmwareIdentityAttestations = @()
@@ -1444,7 +1464,9 @@ if (-not $SkipBuild) {
       cycleBSourceCommit = $canonicalBuildCommit
       cycleBSourceEpoch = $canonicalBuildEpoch
       buildCachePolicy = "isolated-empty-per-cycle-environment"
-      sourceIsolationPolicy = "distinct-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths"
+      sourceIsolationPolicy = "distinct-equal-length-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths"
+      sourcePathTopologyPolicy = "fixed-width-process-id-and-equal-length-distinct-labels"
+      sourceRootLength = $cycleASourceRoot.Length
       identityAttestations = @($script:firmwareIdentityAttestations)
       cycleAArtifacts = @($cycleAArtifacts)
       cycleBArtifacts = @($cycleBArtifacts)
@@ -3065,7 +3087,7 @@ $manifest = [ordered]@{
     scope = if ($SkipBuild) {
       "unknown/unbound-skip-build; copied pre-existing outputs whose source identity is not established"
     } else {
-      "same host/core paths and clean commit across distinct prefix-mapped project roots, canonical recorded PlatformIO toolchain/configuration, and no listed ambient build overrides"
+      "same host/core paths and clean commit across distinct equal-length fixed-width prefix-mapped project roots, canonical recorded PlatformIO toolchain/configuration, and no listed ambient build overrides"
     }
     proof = $firmwareReproducibilityProof
   }
@@ -3794,7 +3816,7 @@ $packageVerifyLog = Join-Path $releaseOutputRoot "$Version-package-verify.log"
 $packageVerifyArgs = @(
   "-NoProfile",
   "-ExecutionPolicy", "Bypass",
-  "-File", (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+  "-File", $trustedVerifierScriptPath,
   "-Version", $Version,
   "-ZipPath", $zipPath,
   "-ExpectedCommit", $commit,

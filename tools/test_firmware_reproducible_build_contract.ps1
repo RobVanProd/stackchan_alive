@@ -138,6 +138,67 @@ $verifyGovernanceText = $verifyText + "`n" + $proofHelperText
 $workflowText = Get-Content -LiteralPath $workflowPath -Raw
 $contractText = Get-Content -LiteralPath $PSCommandPath -Raw
 
+$packageTopologyFunctions = @($packageAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Assert-StackchanReleaseCycleSourceTopology'
+}, $true))
+$verifierTopologyFunctions = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Assert-StackchanVerifierSourceTopology'
+}, $true))
+Require-ReproAssertion ($packageTopologyFunctions.Count -eq 1) `
+  'package-source-topology-contract: expected one executable cycle-root guard'
+Require-ReproAssertion ($verifierTopologyFunctions.Count -eq 1) `
+  'verifier-source-topology-contract: expected one executable rebuild-root guard'
+if ($packageTopologyFunctions.Count -eq 1 -and $verifierTopologyFunctions.Count -eq 1) {
+  . ([scriptblock]::Create($packageTopologyFunctions[0].Extent.Text))
+  . ([scriptblock]::Create($verifierTopologyFunctions[0].Extent.Text))
+
+  $topologyParent = [System.IO.Path]::GetTempPath()
+  $cycleARootFixture = Join-Path $topologyParent 'sc-fw-a-0000000001-deadbeef'
+  $cycleBRootFixture = Join-Path $topologyParent 'sc-fw-b-0000000001-feedface'
+  try {
+    Assert-StackchanReleaseCycleSourceTopology `
+      -CycleASourceRoot $cycleARootFixture -CycleBSourceRoot $cycleBRootFixture
+  } catch {
+    $issues.Add("package-source-topology-valid-case: $($_.Exception.Message)")
+  }
+  $mismatchedCycleBRoot = Join-Path (Join-Path $topologyParent 'x') `
+    'sc-fw-b-0000000001-feedface'
+  $cycleMismatchRejected = $false
+  try {
+    Assert-StackchanReleaseCycleSourceTopology `
+      -CycleASourceRoot $cycleARootFixture -CycleBSourceRoot $mismatchedCycleBRoot
+  } catch {
+    $cycleMismatchRejected = $true
+  }
+  Require-ReproAssertion $cycleMismatchRejected `
+    'package-source-topology-mutation: unequal total root lengths must fail'
+
+  $verifierRootFixture = Join-Path $topologyParent 'sc-vrfy-0000000001-cafebabe'
+  try {
+    Assert-StackchanVerifierSourceTopology `
+      -SourceRoot $verifierRootFixture -ExpectedLength $verifierRootFixture.Length
+  } catch {
+    $issues.Add("verifier-source-topology-valid-case: $($_.Exception.Message)")
+  }
+  foreach ($invalidLength in @(
+      ([int]$verifierRootFixture.Length - 1),
+      ([int]$verifierRootFixture.Length + 1))) {
+    $verifierMismatchRejected = $false
+    try {
+      Assert-StackchanVerifierSourceTopology `
+        -SourceRoot $verifierRootFixture -ExpectedLength $invalidLength
+    } catch {
+      $verifierMismatchRejected = $true
+    }
+    Require-ReproAssertion $verifierMismatchRejected `
+      "verifier-source-topology-mutation: root length $invalidLength must fail"
+  }
+}
+
 foreach ($workflowCompilerProbeMarker in @(
     '$pioarduinoCoreDir = Join-Path $env:RUNNER_TEMP "stackchan-pioarduino"',
     '-CompilerProbeCoreDir $pioarduinoCoreDir'
@@ -327,7 +388,12 @@ foreach ($marker in @(
   "-CycleName 'cycle-a'",
   "-CycleName 'cycle-b'",
   'isolated-empty-per-cycle-environment',
-  'distinct-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths',
+  'distinct-equal-length-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths',
+  'fixed-width-process-id-and-equal-length-distinct-labels',
+  "New-ShortReleaseScratchPath -Label 'fw-a'",
+  "New-ShortReleaseScratchPath -Label 'fw-b'",
+  "'D10'",
+  'distinct equal-length fixed-width source roots',
   'STACKCHAN_EXPECTED_BUILD_COMMIT',
   'STACKCHAN_EXPECTED_BUILD_EPOCH',
   'output/private/reproducibility-failures',
@@ -562,12 +628,21 @@ foreach ($marker in @(
   "unexpected or duplicate artifact",
   "cycleASourceCommit",
   "identityAttestations",
-  "distinct-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths",
+  "distinct-equal-length-short-detached-clean-worktrees-pinned-to-source-commit-with-prefix-mapped-paths",
+  "fixed-width-process-id-and-equal-length-distinct-labels",
+  "sourceRootLength",
   "DIAGNOSTIC_PACKAGE_DO_NOT_FLASH.txt",
   "Diagnostic archive integrity verified; release and hardware use forbidden:",
   "RequireReleaseEligible"
 )) {
   Require-ReproAssertion ($verifyGovernanceText.Contains($marker)) "package-verifier-missing: $marker"
+}
+foreach ($marker in @(
+  "'sc-vrfy-'",
+  "'^sc-vrfy-[0-9]{10}-[0-9a-f]{8}$'",
+  "fixed-width equal-length source topology"
+)) {
+  Require-ReproAssertion ($verifyText.Contains($marker)) "package-verifier-topology-missing: $marker"
 }
 
 $workflowStep = "Run firmware reproducibility contract"

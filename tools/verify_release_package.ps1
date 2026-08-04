@@ -1003,6 +1003,18 @@ function Assert-OperationalPackageGitBindings {
   }
 }
 
+function Assert-StackchanVerifierSourceTopology {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourceRoot,
+    [Parameter(Mandatory = $true)][int]$ExpectedLength
+  )
+
+  if ((Split-Path -Leaf $SourceRoot) -cnotmatch '^sc-vrfy-[0-9]{10}-[0-9a-f]{8}$' -or
+      $SourceRoot.Length -ne $ExpectedLength) {
+    throw "Operational independent rebuild requires the proof's fixed-width equal-length source topology."
+  }
+}
+
 function Assert-OperationalFirmwareMatchesTrustedRebuild {
   if (-not $RequireReleaseEligible) { return }
 
@@ -1022,13 +1034,17 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
   $rebuildCacheRoot = Join-Path $rebuildEvidenceRoot 'build-cache'
   New-Item -ItemType Directory -Path $rebuildCacheRoot | Out-Null
 
-  $rebuildWorktree = if ($env:OS -eq 'Windows_NT') {
-    Join-Path ([System.IO.Path]::GetPathRoot($resolvedVerifierRoot)) (
-      'sc-vr-' + $PID + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+  $rebuildScratchParent = if ($env:OS -eq 'Windows_NT') {
+    [System.IO.Path]::GetPathRoot($resolvedVerifierRoot)
   } else {
-    Join-Path ([System.IO.Path]::GetTempPath()) (
-      'sc-vr-' + $PID + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    [System.IO.Path]::GetTempPath()
   }
+  $fixedWidthProcessId = $PID.ToString('D10', [Globalization.CultureInfo]::InvariantCulture)
+  $rebuildWorktree = Join-Path $rebuildScratchParent (
+    'sc-vrfy-' + $fixedWidthProcessId + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+  Assert-StackchanVerifierSourceTopology `
+    -SourceRoot $rebuildWorktree `
+    -ExpectedLength ([int]$reproducibilityProof.sourceRootLength)
   if (Test-Path -LiteralPath $rebuildWorktree) {
     throw "Operational rebuild scratch path unexpectedly exists: $rebuildWorktree"
   }
@@ -4432,7 +4448,7 @@ if ([bool]$manifest.diagnosticPackage) {
       $firmwareReproducibility.contract -ne "tools/test_firmware_reproducible_build_contract.ps1" -or
       $firmwareReproducibility.hookCoverage -ne "exactly-one-effective-hook" -or
       $firmwareReproducibility.releaseOverridePolicy -ne "release-overrides-fail-closed" -or
-      $firmwareReproducibility.scope -ne "same host/core paths and clean commit across distinct prefix-mapped project roots, canonical recorded PlatformIO toolchain/configuration, and no listed ambient build overrides" -or
+      $firmwareReproducibility.scope -ne "same host/core paths and clean commit across distinct equal-length fixed-width prefix-mapped project roots, canonical recorded PlatformIO toolchain/configuration, and no listed ambient build overrides" -or
       [string]$toolchainIdentity.status -cne 'verified-reviewed-toolchain-and-two-cycle-dependencies' -or
       [string]$toolchainIdentity.allowlistSha256 -cne $verifierToolchainAllowlistSha256 -or
       [string]$toolchainIdentity.identityHelperSha256 -cne $verifierToolchainIdentityHelperSha256 -or
