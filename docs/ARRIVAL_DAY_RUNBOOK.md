@@ -41,6 +41,19 @@ image was built with motion and autonomous motion enabled at boot. Until the too
 exact eligible package, and P1 gates close, the physical step is `HOLD`, not a reason to reuse an
 older package or infer state from USB or ping.
 
+Exact-host update (2026-08-04): the cache-free release-platform identity is committed through
+`4590528941eefd919edcb62ecc9aa5bbd4657d51`, and all 11 exact-head Firmware jobs passed in GitHub
+run `30925806783`. This still is not an install candidate. Two retained local guarded builds failed
+closed during build A because the host WPR evidence recorder lost events; neither produced a
+governed package. In the final retry, sample 132 reported zero loss and sample 133 reported 990,278
+lost/dropped events. The runner was terminated, the diagnostic ETL was sealed with 1,265,270 lost
+events, storage/journal containment passed, WPR returned idle, and conventional authorities were
+restored to `B/B/B`. The failed-run task and active pair were subsequently archived and removed by
+an exact state-D cleanup. This is a host recorder failure, not evidence about robot stability or a
+hardware root cause. Do not flash, open a robot port, start the bridge for qualification, or move a
+motor from this result. P1 remains `HOLD` until an exact guarded two-cycle build has zero recorder
+loss and the resulting exact package passes independent rebuild verification.
+
 Current read-only packet: ignored `output/private/p0-live-state-20260803`. Its successful debug JSON
 is SHA-256 `070CA1CDEA6B78D7C15589559E204330716CB6CAD1542BE4BE6DE56DA5C594FB`.
 Intermittent timeouts alternated with successful samples and increasing uptime at one boot; do not

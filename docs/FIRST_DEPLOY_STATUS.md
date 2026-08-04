@@ -70,10 +70,44 @@ SHA-256 `001CBC5D6F511C32B0829F1FB34A0FE851F48846C8290F29C5A09F434920FB67`.
 The independently reviewed 24-component allowlist and matching packager/verifier pins now cover
 those exact host bytes; the reviewed allowlist SHA-256 is
 `8425BFD814AD4395E70DD86AFF7CFD3D9003F3D5E91FBBC1F2F19BAAF0FF1790`, and all three
-toolchain/promotion trust contracts pass. This does not prove that a future build will avoid cache
-regeneration or pass the runtime guard. The allowlist promotion must still be committed and pass
-exact-head CI, then the corrected private authority chain must be rematerialized and pass its
-self-tests before another guarded build. The SEC-002 hold remains in force.
+toolchain/promotion trust contracts pass. The cache-free allowlist promotion is committed as
+`4590528941eefd919edcb62ecc9aa5bbd4657d51`; all 11 jobs passed in exact-head GitHub Firmware run
+`30925806783`. A fresh detached build worktree at that commit and the private guarded authority
+chain independently reverified the exact release-platform identity above, 612 files, 22,355,010
+bytes, zero CPython cache files, and the expected clean source/configuration identities.
+
+Two subsequent local guarded executions failed closed before producing a package. Outer run
+`output/private/current-head-guard-promotions/20260804-161747-853de45e39bf` reached build A, then
+its recorder jumped from zero loss to 2,622,135 lost events. The runner was contained, the partial
+output had no firmware binary, the compiler outcome remained indeterminate, and all available
+retained evidence was preserved. The wrapper was then hardened and self-tested with 10-second
+collector polling,
+nullable-exit handling, bounded diagnostic trace salvage, fresh storage/journal checks, and a
+512 x 1 MiB exact diagnostic buffer profile. Those changes improve containment and evidence
+quality; they do not make a lossy trace eligible for promotion.
+
+The one corrected retry is outer run
+`output/private/current-head-guard-promotions/20260804-172745-f3d5c167fe8b`, transaction SHA-256
+`18CD37DF9F339BE6BB1CD0235E139FE3AD802A69047BB3A7B67EBDADEAFD43AD`, with runner evidence under
+`output/private/toolchain-guard-smoke/20260804-172801-26784-9c832522d58449fc8a26bd1195724780`.
+Exact prebuild identity, dependency installation, and clean-before-build-A passed. During build A,
+collector sample 132 still reported zero loss; sample 133 reported 990,278 lost/dropped events.
+The wrapper immediately terminated the runner, recorded 1,126,928 events lost before cleanup, and
+completed diagnostic-only ETL salvage. The sealed ETL header reports 1,265,270 lost events. The
+wrapper manifest is SHA-256
+`9D8EBC63AF6D3C78D8F06E4C27EDC91E2F24AEBECF7A7BCE51995BFAEA081105` and remains `status=fail`.
+Storage stayed within policy, the durable journal drained 1,450/1,450 samples, final WPR state is
+idle, terminal containment is proven, conventional authorities were restored to `B/B/B`, and no
+promotion occurred. Exact failed-run cleanup archived the residual authority, removed only the
+disabled task and active-file pair, and reached state D; its `removal.final.json` is SHA-256
+`F92ED013CE327081DD7E5A9E2861A8B7A04193168215862DBCEE1B39BB965197`.
+
+These are host evidence-recorder failures, not firmware, robot, USB, power, thermal, or actuator
+failures. In these two guarded executions, no governed package or replacement firmware was
+produced, and the guarded workflow did not flash, start a bridge session, access a robot port,
+perform no-motion qualification, or move a motor. The SEC-002 hold remains in force until an
+exact-host guarded two-cycle build completes with zero recorder loss and the resulting exact
+package passes its independent rebuild and passive no-motion preflight.
 
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
