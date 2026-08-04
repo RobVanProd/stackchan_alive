@@ -399,9 +399,11 @@ if ($RequireReleaseEligible) {
     'tools/firmware_reproducibility_proof.ps1',
     'tools/release_zip_safety.ps1',
     'tools/release_dependency_evidence.ps1',
+    'tools/release_source_binding.ps1',
     'tools/release_git_trust.ps1',
     'tools/release_ota_selector_policy.ps1',
-    'tools/platformio_resolver.ps1'
+    'tools/platformio_resolver.ps1',
+    'tools/preview_python_resolver.ps1'
   )) {
     $indexRecord = @(Invoke-TrustedVerifierGit -Arguments @(
       '-C', $resolvedVerifierRoot, 'ls-files', '-v', '--', $trustedBootstrapRelative))
@@ -439,6 +441,7 @@ if ($RequireReleaseEligible) {
 . (Join-Path $PSScriptRoot "firmware_reproducibility_proof.ps1")
 . (Join-Path $PSScriptRoot "release_zip_safety.ps1")
 . (Join-Path $PSScriptRoot "release_dependency_evidence.ps1")
+. (Join-Path $PSScriptRoot "release_source_binding.ps1")
 . (Join-Path $PSScriptRoot "release_git_trust.ps1")
 . (Join-Path $PSScriptRoot "release_ota_selector_policy.ps1")
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
@@ -970,10 +973,17 @@ function Assert-OperationalPackageGitBindings {
 
   $mediaSourceMappings = [System.Collections.Generic.Dictionary[string,string]]::new(
     [System.StringComparer]::Ordinal)
+  $lfsMediaSources = @(
+    'media/voice/rvc/model.pth',
+    'media/voice/rvc/model.index'
+  )
   $mediaTreeRoot = Join-Path $packageEnumerationRoot 'media'
   foreach ($item in Get-ChildItem -LiteralPath $mediaTreeRoot -Recurse -File -Force) {
     $packageRelative = (Get-PackageItemFullName $item).Substring(
       $packageRootPrefix.Length).Replace('\', '/')
+    if ($packageRelative -in $lfsMediaSources) {
+      continue
+    }
     $sourceRelative = if ($commitMaps.treeBlobs.ContainsKey($packageRelative)) {
       $packageRelative
     } elseif ($commitMaps.treeBlobs.ContainsKey("docs/$packageRelative")) {
@@ -989,6 +999,40 @@ function Assert-OperationalPackageGitBindings {
     Assert-PackageFileMatchesTrustedBlobMap -PackageRelativePath $packageRelative `
       -TrustedSourceRelativePath ([string]$mediaSourceMappings[$packageRelative]) `
       -CommitMaps $commitMaps
+  }
+  $manifestLfsBindings = @($Manifest.voiceRvcSourceBindings)
+  if ($manifestLfsBindings.Count -ne $lfsMediaSources.Count) {
+    throw 'Operational package manifest has the wrong RVC LFS source-binding count.'
+  }
+  foreach ($sourcePath in $lfsMediaSources) {
+    if (-not $commitMaps.treeBlobs.ContainsKey($sourcePath) -or
+        -not $commitMaps.indexStates.ContainsKey($sourcePath) -or
+        [string]$commitMaps.indexStates[$sourcePath] -cne 'H') {
+      throw "Operational package policy refuses missing or hidden LFS source state: $sourcePath"
+    }
+    $pointerBlob = [string]$commitMaps.treeBlobs[$sourcePath]
+    $pointerLines = @(Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $resolvedVerifierRoot, 'cat-file', 'blob', $pointerBlob))
+    if ($LASTEXITCODE -ne 0 -or $pointerLines.Count -ne 3) {
+      throw "Operational package policy could not read a canonical trusted LFS pointer: $sourcePath"
+    }
+    $pointerText = ((@($pointerLines | ForEach-Object { [string]$_ }) -join "`n") + "`n")
+    $pointerTextBytes = [System.Text.Encoding]::UTF8.GetByteCount($pointerText)
+    if ($pointerTextBytes -eq 0 -or $pointerTextBytes -gt 1024 -or
+        (Get-StackchanUtf8GitBlobHash `
+          -Text $pointerText -HashLength $pointerBlob.Length) -cne $pointerBlob) {
+      throw "Operational package policy LFS pointer reconstruction does not match the exact commit blob: $sourcePath"
+    }
+    $pointer = ConvertTo-StackchanCanonicalLfsPointerRecord `
+      -PointerText $pointerText -RelativePath $sourcePath
+    Assert-StackchanPackageLfsPayloadMatchesPointerRecord `
+      -Pointer $pointer -PackagePath (Join-PackagePath $sourcePath)
+    Assert-StackchanLfsSourceBindingRecord `
+      -ManifestBindings $manifestLfsBindings `
+      -SourcePath $sourcePath `
+      -ExpectedCommit $ExpectedCommit `
+      -PointerBlob $pointerBlob `
+      -Pointer $pointer
   }
 
   $allowedTopDirectories = @(
@@ -4317,6 +4361,20 @@ Assert-Bytes "media/voice/stackchan_spark_thinking.wav" ([byte[]](0x52, 0x49, 0x
 Assert-Bytes "media/voice/stackchan_spark_safety.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_warm_slow_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+
+$manifestPath = Join-PackagePath "release_manifest.json"
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if ($manifest.releaseAssetManifest -ne "release_assets.json") {
+  throw "Manifest releaseAssetManifest mismatch: $($manifest.releaseAssetManifest)"
+}
+if ($manifest.version -ne $Version) {
+  throw "Manifest version mismatch: expected $Version, got $($manifest.version)"
+}
+if ($manifest.commit -ne $ExpectedCommit) {
+  throw "Manifest commit mismatch: expected $ExpectedCommit, got $($manifest.commit)"
+}
+Assert-OperationalPackageGitBindings -Manifest $manifest
+
 & (Join-Path $PSScriptRoot "verify_voice_samples.ps1") -VoiceRoot (Join-PackagePath "media/voice")
 & (Join-Path $PSScriptRoot "verify_tracked_rvc_assets.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
 foreach ($asset in @($personaPromptAssets.assets)) {
@@ -4329,13 +4387,6 @@ foreach ($asset in @($personaPromptAssets.assets)) {
 & (Join-Path $PSScriptRoot "verify_face_phase_c.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
 & (Join-Path $PSScriptRoot "verify_face_phase_d.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
 & (Join-Path $PSScriptRoot "verify_face_phase_e.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
-
-$manifestPath = Join-PackagePath "release_manifest.json"
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-
-if ($manifest.releaseAssetManifest -ne "release_assets.json") {
-  throw "Manifest releaseAssetManifest mismatch: $($manifest.releaseAssetManifest)"
-}
 
 $contractZipPath = if ([string]::IsNullOrWhiteSpace($ZipPath)) {
   Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
@@ -4350,14 +4401,6 @@ $contractZipPath = if ([string]::IsNullOrWhiteSpace($ZipPath)) {
   -SkipExternalFiles
 if ($LASTEXITCODE -ne 0) {
   throw "Release asset contract verification failed."
-}
-
-if ($manifest.version -ne $Version) {
-  throw "Manifest version mismatch: expected $Version, got $($manifest.version)"
-}
-
-if ($manifest.commit -ne $ExpectedCommit) {
-  throw "Manifest commit mismatch: expected $ExpectedCommit, got $($manifest.commit)"
 }
 
 if ($manifest.board -ne "m5stack-cores3") {
@@ -4473,8 +4516,6 @@ foreach ($governanceTool in $m0GovernanceTools) {
     throw "Manifest includedTools is missing M0 governance input: $governanceTool"
   }
 }
-Assert-OperationalPackageGitBindings -Manifest $manifest
-
 $reproducibilityHook = "pre:tools/platformio_reproducible_build.py"
 $reproducibilityRootEnvironments = @(
   "stackchan",

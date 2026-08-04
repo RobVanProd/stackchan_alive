@@ -3,16 +3,18 @@ $ErrorActionPreference = 'Stop'
 $packagePath = Join-Path $PSScriptRoot 'package_release.ps1'
 $verifyPath = Join-Path $PSScriptRoot 'verify_release_package.ps1'
 $gitTrustPath = Join-Path $PSScriptRoot 'release_git_trust.ps1'
+$sourceBindingPath = Join-Path $PSScriptRoot 'release_source_binding.ps1'
 $platformioResolverPath = Join-Path $PSScriptRoot 'platformio_resolver.ps1'
 $previewPythonResolverPath = Join-Path $PSScriptRoot 'preview_python_resolver.ps1'
 $packageText = Get-Content -LiteralPath $packagePath -Raw
 $verifyText = Get-Content -LiteralPath $verifyPath -Raw
 $gitTrustText = Get-Content -LiteralPath $gitTrustPath -Raw
+$sourceBindingText = Get-Content -LiteralPath $sourceBindingPath -Raw
 $platformioResolverText = Get-Content -LiteralPath $platformioResolverPath -Raw
 $previewPythonResolverText = Get-Content -LiteralPath $previewPythonResolverPath -Raw
 
 foreach ($scriptPath in @(
-  $packagePath, $verifyPath, $gitTrustPath, $platformioResolverPath,
+  $packagePath, $verifyPath, $gitTrustPath, $sourceBindingPath, $platformioResolverPath,
   $previewPythonResolverPath
 )) {
   $tokens = $null
@@ -69,6 +71,12 @@ foreach ($required in @(
 }
 if ($gitTrustText.Contains('Get-Command') -or $gitTrustText.Contains('PinLfsFilter')) {
   throw 'Trusted Git wrapper must not re-resolve Git or optionally enable LFS.'
+}
+foreach ($forbiddenLfsAuthority in @('& git-lfs', '& git lfs', 'git lfs pull', 'git lfs checkout',
+    'filter.lfs.process=', 'filter.lfs.smudge=')) {
+  if ($sourceBindingText.Contains($forbiddenLfsAuthority)) {
+    throw "Release source binding must not execute or enable Git LFS authority: $forbiddenLfsAuthority"
+  }
 }
 foreach ($resolver in @(
   [pscustomobject]@{ label = 'PlatformIO'; text = $platformioResolverText },

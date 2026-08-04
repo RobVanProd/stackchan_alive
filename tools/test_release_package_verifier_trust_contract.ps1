@@ -294,6 +294,22 @@ foreach ($required in @(
     throw "Verifier trust contract is missing: $required"
   }
 }
+$manifestLoadOffset = $verifyText.LastIndexOf(
+  '$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json',
+  [System.StringComparison]::Ordinal)
+$operationalBindingOffset = if ($manifestLoadOffset -ge 0) {
+  $verifyText.IndexOf(
+    'Assert-OperationalPackageGitBindings -Manifest $manifest',
+    $manifestLoadOffset,
+    [System.StringComparison]::Ordinal)
+} else { -1 }
+$firstPackageHelperOffset = $verifyText.IndexOf(
+  '& (Join-Path $PSScriptRoot "verify_voice_samples.ps1")',
+  [System.StringComparison]::Ordinal)
+if ($manifestLoadOffset -lt 0 -or $operationalBindingOffset -le $manifestLoadOffset -or
+    $firstPackageHelperOffset -le $operationalBindingOffset) {
+  throw 'Operational package Git binding must authenticate packaged helper bytes before their first execution.'
+}
 $verifyTokens = $null
 $verifyParseErrors = $null
 $verifyAst = [System.Management.Automation.Language.Parser]::ParseFile(
@@ -413,6 +429,7 @@ foreach ($helper in @(
   'firmware_reproducibility_proof.ps1',
   'release_zip_safety.ps1',
   'release_dependency_evidence.ps1',
+  'release_source_binding.ps1',
   'release_git_trust.ps1',
   'platformio_resolver.ps1'
 )) {
@@ -425,6 +442,13 @@ foreach ($helper in @(
       $helperLoads[0].Extent.EndOffset -ge $cleanupAssignments[0].Extent.StartOffset) {
     throw "Operational verifier loads $helper before its trusted checkout gate"
   }
+}
+$previewResolverLoad = @($verifyAst.EndBlock.Statements | Where-Object {
+  $_.Extent.Text -eq '. (Join-Path $PSScriptRoot "preview_python_resolver.ps1")'
+})
+if ($previewResolverLoad.Count -ne 1 -or
+    $previewResolverLoad[0].Extent.StartOffset -le $releaseEligibilityGate.Extent.EndOffset) {
+  throw 'Operational verifier preview resolver is not uniquely loaded after its trusted bootstrap gate.'
 }
 $bootstrapGitFunctions = @($verifyAst.FindAll({
   param($node)
@@ -1205,9 +1229,11 @@ try {
     'firmware_reproducibility_proof.ps1',
     'release_zip_safety.ps1',
     'release_dependency_evidence.ps1',
+    'release_source_binding.ps1',
     'release_git_trust.ps1',
     'release_ota_selector_policy.ps1',
-    'platformio_resolver.ps1'
+    'platformio_resolver.ps1',
+    'preview_python_resolver.ps1'
   )) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $relative) -Destination $epochTools
   }
@@ -1324,9 +1350,11 @@ if (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
     'firmware_reproducibility_proof.ps1',
     'release_zip_safety.ps1',
     'release_dependency_evidence.ps1',
+    'release_source_binding.ps1',
     'release_git_trust.ps1',
     'release_ota_selector_policy.ps1',
-    'platformio_resolver.ps1'
+    'platformio_resolver.ps1',
+    'preview_python_resolver.ps1'
   )) {
     $preGateMarker = Join-Path ([System.IO.Path]::GetTempPath()) (
       'stackchan-dirty-helper-marker-' + [guid]::NewGuid().ToString('N') + '.txt')

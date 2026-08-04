@@ -195,6 +195,40 @@ and independent-verifier `vrfy` roots to use one equal total length with a ten-d
 field. The SEC-002 hold remains in force until that correction passes contracts, exact-head CI, a
 fresh full two-cycle package, and the independent rebuild.
 
+### Equal-length proof and commit-bound RVC packaging hold (2026-08-04)
+
+Qualification head `16d8f1b0245f829737e406c5a6309d5486249f2a` passed all 11 jobs on the
+first attempt in exact-head GitHub Firmware run `30955812308`. Direct WPR-free packaging for
+`sec-002-16d8f1b0` then built both release cycles from distinct equal-length 30-character source
+roots, passed exact comparison of all 15 firmware artifacts, removed both clean cycle worktrees,
+and advanced into the detached release-source staging phase. This closes the prior unequal-root
+DWARF/ELF-hash failure in the actual governed path; it does not by itself create an eligible
+package.
+
+The same run failed closed before ZIP creation and independent verification when the RVC verifier
+read the canonical 133-byte Git LFS pointer for `model.pth` as though it were the 57,577,722-byte
+payload. Hardened Git intentionally disables LFS filters, so the detached commit-bound worktree
+correctly remains pointer-only. Both referenced objects are already present in the local Git LFS
+object cache and independently match the committed OIDs, declared sizes, and reviewed production
+SHA-256 values. No download, smudge, source-worktree hydration, flash, COM access, bridge session,
+robot-port access, or actuator command occurred during the package run. The partial output has no
+manifest, checksum inventory, ZIP, or verifier result and is not a candidate.
+
+The release correction keeps Git LFS execution and network access disabled. It requires ordinary
+`H` index state and exact commit-pointer blob bytes, parses only the canonical three-line LFS v1
+pointer, selects the matching content-addressed object under the non-reparse local Git common
+directory, copies it through one held read-only handle to a temporary package file, verifies size
+and SHA-256, and only then promotes it to its destination. The independent verifier separately
+binds the packaged bytes and manifest record back to the exact expected commit pointer, then applies
+the existing production RVC hash allowlist. The source-binding, command-trust, verifier-trust, and
+full 22-environment reproducibility contract bundle pass with this correction. The SEC-002 hold
+remains in force until exact-head CI passes and a fresh governed package completes its independent
+rebuild.
+A focused real-cache probe used the retained pointer-only worktree at
+`E:\sc-firmware-b-22576-e1b117f4`, streamed both local content-addressed objects through the new
+helper, independently rebound the staged files to those pointers, and matched both reviewed hashes;
+ignored evidence is under `output/private/manual-lfs-probe-20260804`.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that
@@ -224,6 +258,24 @@ SHA-256 `15D5609CE6F1706FB4E5B9771CFFDF402473026FA1BC13E632029B174C04E926`. Its 
 entries each hash to `F94C5D786A7A8FAB06AC5D10E33BF37711A6697636DC037559EA19CC410A17F0`;
 the non-authorizing verifier passes, the operational flasher rejects it before flash preparation,
 and all release, hardware-validation, flash, and distribution eligibility flags are false.
+
+### Operator-requested USB motor disable (2026-08-04)
+
+With Stackchan connected by USB and the area reported clear, an HTTP `/motion-stop` succeeded and
+reported motion request/enabled, servo power authority, rail, and torque all false with
+`motion_last_reason=manual_stop`. A redundant `motion stop` attempt through the official COM4
+serial helper is preserved under ignored `output/private/manual-motion-stop-20260804`, but opening
+COM4 unexpectedly reset the board (`reset_reason` code `11`) before the command was consumed; it is
+not counted as a successful serial stop. COM4 was left closed. A bounded post-reset HTTP
+`/motion-stop` returned 200 on the first attempt, and a fresh `/debug` snapshot again reported all
+motion/servo authorities false, `motion_last_reason=manual_stop`, protected power mode, and VBUS
+`4488 mV`. No flash or observed actuator movement occurred. The reset is an observed USB/serial-open
+event, not an inferred power, brownout, firmware, or containment root cause. A later read-only
+`/debug` check with COM4 still closed again reported motion request/enabled, servo power authority,
+rail, and torque all false with `motion_last_reason=manual_stop`; it reported `boot_count=1`,
+`reset_reason=poweron` (code `1`), uptime about 577 seconds, idle power mode, VBUS `4639 mV`, and the
+bridge offline. This is a subsequent observed boot relative to the earlier code-11 snapshot. Its
+cause is unknown and is not attributed to USB, power, firmware, or the packaging work.
 
 ## Last Owner-Accepted Physical Lead — Historical Evidence; Current Installation Unknown
 

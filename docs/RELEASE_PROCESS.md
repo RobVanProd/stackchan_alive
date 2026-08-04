@@ -348,6 +348,16 @@ To verify the exact production RVC model and index bundled in the release:
 Published releases include the current production `model.pth` and `model.index`, plus small
 Stackchan Spark MP3 previews as standalone GitHub assets. The model files are tracked with Git LFS
 and are accepted only when their exact byte lengths and SHA-256 values match the production record.
+Release-grade packaging keeps all Git LFS filters and network retrieval disabled. The detached
+commit worktree therefore remains pointer-only. The packager accepts a voice payload only by
+strictly binding its canonical three-line LFS v1 pointer to the exact expected commit and ordinary
+index state, then streaming the matching content-addressed object from the non-redirected local Git
+LFS cache into package output. It hashes and counts the object through a held read-only handle,
+promotes only a verified temporary file, and records the commit, pointer blob, OID, size, and offline
+materialization policy in `release_manifest.json`. The independent verifier derives the pointer
+again from `-ExpectedCommit`, binds the packaged bytes and manifest record to it, and separately
+applies the reviewed production hash allowlist. Do not run `git lfs pull`, enable smudge, hydrate the
+detached source worktree, or substitute mutable working-tree bytes in a governed package.
 
 To scrub restricted model and RVC payloads from a legacy/private ZIP while preserving the approved
 hash-pinned YuNet detector, write to a new archive:

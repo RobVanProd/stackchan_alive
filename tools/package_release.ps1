@@ -1834,23 +1834,89 @@ foreach ($file in $voiceMediaFiles) {
   Copy-Item -LiteralPath $file -Destination $voiceMediaDir
 }
 
-& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $releaseToolsRoot "verify_tracked_rvc_assets.ps1") `
-  -VoiceRoot "media/voice/rvc"
-if ($LASTEXITCODE -ne 0) {
-  throw "Tracked RVC audition asset verification failed."
+$voiceRvcReadme = "media/voice/rvc/README.md"
+Copy-StackchanCommitBoundPackageFile `
+  -PackageSourceRoot $packageTrackedSourceRoot `
+  -RelativePath $voiceRvcReadme `
+  -DestinationPath (Join-Path $voiceRvcMediaDir "README.md")
+
+$voiceRvcPayloads = @(
+  [ordered]@{
+    relativePath = "media/voice/rvc/model.pth"
+    bytes = 57577722
+    sha256 = "1A8ADDFD670CD811D1AD1EEB9E9B4FF72C5D795B1123A23E86A0C41C1DD9BF1A"
+  },
+  [ordered]@{
+    relativePath = "media/voice/rvc/model.index"
+    bytes = 99428699
+    sha256 = "DA0EDB00FB15E8CEEC135B261F32E5907BA570FF0D213BEF8267EB80AB167DC2"
+  }
+)
+$voiceRvcSourceBindings = [System.Collections.Generic.List[object]]::new()
+$releaseGitCommonDir = $null
+if (-not $SkipBuild) {
+  $releaseGitCommonDirCandidate = (Invoke-ReleaseGit -Arguments @(
+    '-C', $packageTrackedSourceRoot, 'rev-parse', '--git-common-dir')).Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($releaseGitCommonDirCandidate)) {
+    throw 'Could not resolve the trusted local Git object authority for RVC packaging.'
+  }
+  $releaseGitCommonDir = Resolve-ReleaseBootstrapGitPath `
+    -Root $packageTrackedSourceRoot -Candidate $releaseGitCommonDirCandidate
+}
+foreach ($entry in $voiceRvcPayloads) {
+  $file = [string]$entry.relativePath
+  $destination = Join-Path $voiceRvcMediaDir ([System.IO.Path]::GetFileName($file))
+  if ($SkipBuild) {
+    Copy-StackchanCommitBoundPackageFile `
+      -PackageSourceRoot $packageTrackedSourceRoot `
+      -RelativePath $file `
+      -DestinationPath $destination
+    $voiceRvcSourceBindings.Add([ordered]@{
+      sourcePath = $file
+      sourceCommit = $null
+      pointerBlob = $null
+      bytes = [int64](Get-Item -LiteralPath $destination).Length
+      sha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToUpperInvariant()
+      policy = 'diagnostic-working-tree-unbound'
+    }) | Out-Null
+  } else {
+    $pointerIndexRecord = @(Invoke-ReleaseGit -Arguments @(
+      '-C', $packageTrackedSourceRoot, 'ls-files', '-v', '--', $file))
+    $pointerBlob = (Invoke-ReleaseGit -Arguments @(
+      '-C', $packageTrackedSourceRoot, 'rev-parse', '--verify',
+      "${canonicalBuildCommit}:$file")).Trim().ToLowerInvariant()
+    $pointerWorkingBlob = if ($pointerBlob -match '^[0-9a-f]{40,64}$') {
+      Get-ReleaseBootstrapCanonicalBlobHash `
+        -LiteralPath (Join-Path $packageTrackedSourceRoot $file) `
+        -HashLength $pointerBlob.Length
+    } else { '' }
+    if ($pointerIndexRecord.Count -ne 1 -or
+        [string]$pointerIndexRecord[0] -cne "H $file" -or
+        $pointerWorkingBlob -cne $pointerBlob) {
+      throw "Release packaging refuses hidden or noncanonical LFS pointer state: $file"
+    }
+    $binding = Copy-StackchanCommitBoundLfsPackageFile `
+      -CommitPointerRoot $packageTrackedSourceRoot `
+      -GitCommonDir $releaseGitCommonDir `
+      -RelativePath $file `
+      -DestinationPath $destination `
+      -ExpectedBytes ([int64]$entry.bytes) `
+      -ExpectedSha256 ([string]$entry.sha256)
+    $voiceRvcSourceBindings.Add([ordered]@{
+      sourcePath = [string]$binding.relativePath
+      sourceCommit = $canonicalBuildCommit
+      pointerBlob = $pointerBlob
+      bytes = [int64]$binding.bytes
+      sha256 = [string]$binding.sha256
+      policy = 'offline-local-lfs-object-bound-to-commit-pointer-v1'
+    }) | Out-Null
+  }
 }
 
-$voiceRvcFiles = @(
-  "media/voice/rvc/README.md",
-  "media/voice/rvc/model.pth",
-  "media/voice/rvc/model.index"
-)
-
-foreach ($file in $voiceRvcFiles) {
-  if (-not (Test-Path -LiteralPath $file)) {
-    throw "Missing production RVC release asset: $file"
-  }
-  Copy-Item -LiteralPath $file -Destination $voiceRvcMediaDir
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $releaseToolsRoot "verify_tracked_rvc_assets.ps1") `
+  -VoiceRoot $voiceRvcMediaDir
+if ($LASTEXITCODE -ne 0) {
+  throw "Packaged RVC asset verification failed."
 }
 
 Copy-Item -LiteralPath "README.md" -Destination $outDir
@@ -3118,6 +3184,7 @@ $manifest = [ordered]@{
   packageSourceIsolationPolicy = if ($SkipBuild) { "diagnostic-mutable-source-unbound" } else { "detached-clean-worktree-pinned-to-package-commit" }
   packageSourceCommit = if ($SkipBuild) { $null } else { $canonicalBuildCommit }
   packageSourceEpoch = if ($SkipBuild) { $null } else { $canonicalBuildEpoch }
+  voiceRvcSourceBindings = @($voiceRvcSourceBindings)
   releaseEligible = ($releaseToolchainEligible -and (-not $SkipBuild))
   hardwareValidationEligible = ($releaseToolchainEligible -and (-not $SkipBuild))
   distributionEligible = ($releaseToolchainEligible -and (-not $SkipBuild))

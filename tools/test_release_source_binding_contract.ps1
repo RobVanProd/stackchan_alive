@@ -159,6 +159,10 @@ foreach ($required in @(
   'Push-Location $releaseSourceRoot',
   '$packageTrackedSourceRoot = if ($SkipBuild) { [string]$repoRoot } else { [string]$releaseSourceRoot }',
   'Copy-StackchanCommitBoundPackageFile',
+  'Copy-StackchanCommitBoundLfsPackageFile',
+  '-GitCommonDir $releaseGitCommonDir',
+  'offline-local-lfs-object-bound-to-commit-pointer-v1',
+  'voiceRvcSourceBindings = @($voiceRvcSourceBindings)',
   '$releaseToolsRoot = if ($SkipBuild)',
   '-Phase "final commit-bound package source staging"',
   '-Phase "final release checkout audit"',
@@ -195,11 +199,21 @@ if (-not $sourceCleanupText.Contains('full-failed-worktree-retained-attached') -
 foreach ($required in @(
   'packageSourceIsolationPolicy -ne "detached-clean-worktree-pinned-to-package-commit"',
   'packageSourceCommit -cne $ExpectedCommit',
-  'packageSourceEpoch'
+  'packageSourceEpoch',
+  "'cat-file', 'blob', `$pointerBlob",
+  'Get-StackchanUtf8GitBlobHash',
+  'LFS pointer reconstruction does not match the exact commit blob',
+  'ConvertTo-StackchanCanonicalLfsPointerRecord',
+  'Assert-StackchanPackageLfsPayloadMatchesPointerRecord',
+  'Assert-StackchanLfsSourceBindingRecord'
 )) {
   if (-not $verifyText.Contains($required)) {
     throw "Release source-binding verifier is missing: $required"
   }
+}
+if ($verifyText.Contains('-SourcePaths $lfsMediaSources') -or
+    $verifyText.Contains('-CommitPointerRoot $resolvedVerifierRoot')) {
+  throw 'Operational verifier still depends on hydrated working-tree bytes for LFS binding.'
 }
 $sourceCreationIndex = $packageText.IndexOf("New-ShortReleaseScratchPath -Label 'release-src'")
 $sourcePushIndex = $packageText.IndexOf('Push-Location $releaseSourceRoot')
@@ -277,6 +291,186 @@ if ($zipCreationCommands.Count -ne 1 -or
     $zipCreationCommands[0].Extent.StartOffset -le $hashAssignments[0].Extent.EndOffset -or
     $finalVerifierCommands[0].Extent.StartOffset -le $zipCreationCommands[0].Extent.EndOffset) {
   throw 'Final ignored-file audit does not govern the package hash, ZIP, and final verifier in one ordered chain'
+}
+
+$lfsFixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+  'stackchan-lfs-source-binding-contract-' + [guid]::NewGuid().ToString('N'))
+try {
+  $pointerRoot = Join-Path $lfsFixtureRoot 'pointer'
+  $pointerRelative = 'media/voice/rvc/model.bin'
+  $pointerPath = Join-Path $pointerRoot $pointerRelative
+  $gitCommonDir = Join-Path $lfsFixtureRoot 'git-common'
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $pointerPath), $gitCommonDir | Out-Null
+  $payload = [byte[]](0..255)
+  $payloadHasher = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $payloadHash = [System.BitConverter]::ToString(
+      $payloadHasher.ComputeHash($payload)).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $payloadHasher.Dispose()
+  }
+  $pointerText = "version https://git-lfs.github.com/spec/v1`noid sha256:$payloadHash`nsize $($payload.Length)`n"
+  $canonicalPointerBlob = Get-StackchanUtf8GitBlobHash -Text $pointerText -HashLength 40
+  $crlfPointerBlob = Get-StackchanUtf8GitBlobHash `
+    -Text $pointerText.Replace("`n", "`r`n") -HashLength 40
+  $missingFinalLfBlob = Get-StackchanUtf8GitBlobHash `
+    -Text $pointerText.TrimEnd("`n") -HashLength 40
+  if ($canonicalPointerBlob -eq $crlfPointerBlob -or
+      $canonicalPointerBlob -eq $missingFinalLfBlob) {
+    throw 'Canonical pointer Git-blob proof did not distinguish exact line-ending bytes.'
+  }
+  [System.IO.File]::WriteAllText(
+    $pointerPath, $pointerText, (New-Object System.Text.UTF8Encoding($false)))
+  $objectPath = Join-Path $gitCommonDir (
+    "lfs/objects/$($payloadHash.Substring(0, 2))/$($payloadHash.Substring(2, 2))/$payloadHash")
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $objectPath) | Out-Null
+  [System.IO.File]::WriteAllBytes($objectPath, $payload)
+
+  $destination = Join-Path $lfsFixtureRoot 'package/model.bin'
+  $binding = Copy-StackchanCommitBoundLfsPackageFile `
+    -CommitPointerRoot $pointerRoot `
+    -GitCommonDir $gitCommonDir `
+    -RelativePath $pointerRelative `
+    -DestinationPath $destination `
+    -ExpectedBytes $payload.Length `
+    -ExpectedSha256 $payloadHash
+  if ([string]$binding.sha256 -cne $payloadHash.ToUpperInvariant() -or
+      [int64]$binding.bytes -ne $payload.Length -or
+      -not [System.Linq.Enumerable]::SequenceEqual(
+        [byte[]][System.IO.File]::ReadAllBytes($destination), $payload)) {
+    throw 'Commit-bound LFS copy did not produce the exact pointer-bound payload.'
+  }
+  Assert-StackchanPackageLfsPayloadMatchesCommitPointer `
+    -CommitPointerRoot $pointerRoot -RelativePath $pointerRelative -PackagePath $destination
+
+  foreach ($case in @(
+      'wrong-reviewed-hash', 'corrupt-object', 'malformed-pointer',
+      'missing-final-lf', 'missing-object')) {
+    $casePointerRoot = Join-Path $lfsFixtureRoot "pointer-$case"
+    $casePointerPath = Join-Path $casePointerRoot $pointerRelative
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $casePointerPath) | Out-Null
+    $casePointerText = if ($case -eq 'malformed-pointer') {
+      $pointerText + "extension unreviewed`n"
+    } elseif ($case -eq 'missing-final-lf') {
+      $pointerText.TrimEnd("`n")
+    } else {
+      $pointerText
+    }
+    [System.IO.File]::WriteAllText(
+      $casePointerPath, $casePointerText, (New-Object System.Text.UTF8Encoding($false)))
+    $caseCommonDir = if ($case -eq 'missing-object') {
+      $missingCommon = Join-Path $lfsFixtureRoot 'missing-git-common'
+      New-Item -ItemType Directory -Force -Path (Join-Path $missingCommon 'lfs/objects') | Out-Null
+      $missingCommon
+    } else {
+      $gitCommonDir
+    }
+    if ($case -eq 'corrupt-object') {
+      [System.IO.File]::WriteAllBytes($objectPath, [byte[]](255..0))
+    }
+    $caseDestination = Join-Path $lfsFixtureRoot "package-$case/model.bin"
+    try {
+      Copy-StackchanCommitBoundLfsPackageFile `
+        -CommitPointerRoot $casePointerRoot `
+        -GitCommonDir $caseCommonDir `
+        -RelativePath $pointerRelative `
+        -DestinationPath $caseDestination `
+        -ExpectedBytes $payload.Length `
+        -ExpectedSha256 $(if ($case -eq 'wrong-reviewed-hash') { '0' * 64 } else { $payloadHash }) | Out-Null
+      throw "Commit-bound LFS copy accepted invalid fixture: $case"
+    } catch {
+      if ($_.Exception.Message -eq "Commit-bound LFS copy accepted invalid fixture: $case") { throw }
+    } finally {
+      if ($case -eq 'corrupt-object') {
+        [System.IO.File]::WriteAllBytes($objectPath, $payload)
+      }
+    }
+    if ((Test-Path -LiteralPath $caseDestination) -or
+        @(Get-ChildItem -LiteralPath (Split-Path -Parent $caseDestination) `
+          -Filter '*.lfs-stage-*' -Force -ErrorAction SilentlyContinue).Count -ne 0) {
+      throw "Failed commit-bound LFS copy retained output: $case"
+    }
+  }
+  try {
+    Copy-StackchanCommitBoundLfsPackageFile `
+      -CommitPointerRoot $pointerRoot -GitCommonDir $gitCommonDir `
+      -RelativePath '../model.bin' -DestinationPath (Join-Path $lfsFixtureRoot 'escape.bin') `
+      -ExpectedBytes $payload.Length -ExpectedSha256 $payloadHash | Out-Null
+    throw 'Commit-bound LFS copy accepted traversal.'
+  } catch {
+    if ($_.Exception.Message -eq 'Commit-bound LFS copy accepted traversal.') { throw }
+  }
+
+  [System.IO.File]::WriteAllBytes($pointerPath, $payload)
+  $commitPointerRecord = ConvertTo-StackchanCanonicalLfsPointerRecord `
+    -PointerText $pointerText -RelativePath $pointerRelative
+  Assert-StackchanPackageLfsPayloadMatchesPointerRecord `
+    -Pointer $commitPointerRecord -PackagePath $destination
+  try {
+    Get-StackchanCommitBoundLfsPointerRecord `
+      -CommitPointerRoot $pointerRoot -RelativePath $pointerRelative | Out-Null
+    throw 'Hydrated-checkout regression fixture unexpectedly parsed working payload bytes as a pointer.'
+  } catch {
+    if ($_.Exception.Message -eq
+        'Hydrated-checkout regression fixture unexpectedly parsed working payload bytes as a pointer.') {
+      throw
+    }
+  }
+
+  $expectedCommit = 'a' * 40
+  $expectedPointerBlob = 'b' * 40
+  $validManifestBinding = [pscustomobject]@{
+    sourcePath = $pointerRelative
+    sourceCommit = $expectedCommit
+    pointerBlob = $expectedPointerBlob
+    bytes = $commitPointerRecord.bytes
+    sha256 = $commitPointerRecord.sha256
+    policy = 'offline-local-lfs-object-bound-to-commit-pointer-v1'
+  }
+  Assert-StackchanLfsSourceBindingRecord `
+    -ManifestBindings @($validManifestBinding) `
+    -SourcePath $pointerRelative `
+    -ExpectedCommit $expectedCommit `
+    -PointerBlob $expectedPointerBlob `
+    -Pointer $commitPointerRecord
+  $invalidManifestBindings = [System.Collections.Generic.List[object]]::new()
+  $invalidManifestBindings.Add([object[]]@([pscustomobject]@{
+      sourcePath = $pointerRelative; sourceCommit = ('c' * 40); pointerBlob = $expectedPointerBlob
+      bytes = $commitPointerRecord.bytes; sha256 = $commitPointerRecord.sha256
+      policy = 'offline-local-lfs-object-bound-to-commit-pointer-v1'
+    })) | Out-Null
+  $invalidManifestBindings.Add([object[]]@([pscustomobject]@{
+      sourcePath = $pointerRelative; sourceCommit = $expectedCommit; pointerBlob = ('d' * 40)
+      bytes = $commitPointerRecord.bytes; sha256 = $commitPointerRecord.sha256
+      policy = 'offline-local-lfs-object-bound-to-commit-pointer-v1'
+    })) | Out-Null
+  $invalidManifestBindings.Add([object[]]@([pscustomobject]@{
+      sourcePath = $pointerRelative; sourceCommit = $expectedCommit; pointerBlob = $expectedPointerBlob
+      bytes = $commitPointerRecord.bytes; sha256 = ('E' * 64)
+      policy = 'offline-local-lfs-object-bound-to-commit-pointer-v1'
+    })) | Out-Null
+  $invalidManifestBindings.Add(
+    [object[]]@($validManifestBinding, $validManifestBinding)) | Out-Null
+  foreach ($invalidBindings in $invalidManifestBindings) {
+    try {
+      Assert-StackchanLfsSourceBindingRecord `
+        -ManifestBindings @($invalidBindings) `
+        -SourcePath $pointerRelative `
+        -ExpectedCommit $expectedCommit `
+        -PointerBlob $expectedPointerBlob `
+        -Pointer $commitPointerRecord
+      throw 'RVC LFS manifest binding accepted mutated or duplicate evidence.'
+    } catch {
+      if ($_.Exception.Message -eq
+          'RVC LFS manifest binding accepted mutated or duplicate evidence.') {
+        throw
+      }
+    }
+  }
+} finally {
+  if (Test-Path -LiteralPath $lfsFixtureRoot) {
+    [System.IO.Directory]::Delete($lfsFixtureRoot, $true)
+  }
 }
 
 $root = Join-Path ([System.IO.Path]::GetTempPath()) (
