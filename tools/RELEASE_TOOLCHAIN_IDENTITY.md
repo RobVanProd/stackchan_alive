@@ -176,15 +176,25 @@ these reviewed canonical libdeps identities:
   `AB7DB6C267BF82C5B8AC72624D266CB3A0ABE6D5E227BEF6B4750D52800B760E`.
 
 The failed A root and older candidates remain rejected evidence and are not release inputs. The
-reviewed tracked allowlist was derived from candidate
-`release_toolchain_identity_allowlist_candidate_20260804-073551.json`, candidate SHA-256
-`2E95CC671A65F9600BDA3D99ABF1FB0BB039CDA71478F621B103B6740FAE899E`, after two fresh isolated
-B/C roots reproduced all three dependency identities. The earlier candidate SHA-256
+current reviewed tracked allowlist was derived from candidate
+`release_toolchain_identity_allowlist_candidate_20260804-153036.json`, candidate SHA-256
+`9C5DD20DFBFE2873F6B69665B07C7133562DD2043B3BB0BE51BBA70190DC53B0`. Independent review found
+23 of 24 component identities unchanged. The sole promoted component is
+`release-platform-espressif32`, from tracked identity
+`B13CF308C54F37032645E2F0373E25318F79B24C328661C718491309BD3BD0F9` (616 files, 22,522,018
+bytes) to `9371DF52EF5A5A9A8D3ABF35D1D08F47994FE3929B67B5C94CF24316F3D8738F` (612 files,
+22,355,010 bytes). This promotion explicitly accepts the diagnostic rewrite of `.git/index` to
+SHA-256 `436767ED0D7A257873F68629A62C465100C9810A67997E6679DA62766E55AEBC`; it does not claim that
+the earlier B13 identity was restored.
+
+The sealed recovery transaction itself began at
+`2AD818580622CA4F57C4F480222EAAF1EFA6961A5DD332F3102A669E61B6D55E` (616 files, 22,522,081
+bytes) and removed exactly four archived Python 3.12 bytecode files totaling 167,071 bytes. It added
+or changed no retained file and produced the reviewed 9371 identity. The earlier candidate SHA-256
 `119D97845AA5998CB678AE4299BE248ABF0118C60C1C197CF0D0208B4A6DB652` remains rejected because it
-captured 29 generated `urllib3` bytecode files in the release penv. Exact cache-only restoration
-returned that penv to its previously reviewed identity before the accepted candidate was created.
-Promotion approved only the byte policy; release eligibility still requires the packager/verifier
-record and artifact gates.
+captured 29 generated `urllib3` bytecode files in the release penv. Promotion approves only these
+exact installed bytes; it does not prove future cache non-regeneration, runtime-guard success, or
+release eligibility. Those still require the guarded packager/verifier record and artifact gates.
 
 ## Portability and CI limit
 

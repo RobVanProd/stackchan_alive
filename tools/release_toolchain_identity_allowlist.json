@@ -12,11 +12,11 @@
                                           ],
     "pythonExecutableRelativePath":  "python.exe",
     "gitExecutableRelativePath":  "cmd/git.exe",
-    "generatedUtc":  "2026-08-04T14:02:54Z",
+    "generatedUtc":  "2026-08-04T15:35:37Z",
     "review":  {
                    "status":  "reviewed",
-                   "reviewer":  "Luna independent post-provision 24-component allowlist audit; Codex integration",
-                   "reason":  "Independently verified candidate A644395D50BDBDE3FACF88D1553C31996634EB90EA152129CCFADA2EE18D259E against the tracked 24-component windows_amd64 allowlist and current installed governed bytes. Twenty-three components remain exact. The sole promoted delta is release-platform-espressif32 from B524A0DA5B8CF1CB88D82E808584FD6200CB090E41DFB7F6B60405DC119EF401 (616 files, 22522049 bytes) to B13CF308C54F37032645E2F0373E25318F79B24C328661C718491309BD3BD0F9 (616 files, 22522018 bytes). Release-core penv remains A1E366961C1410F32DD31102F37725B500FF0F3FB8E9604A4BA34715FBC08C84, framework libs remain 4C86469E19BD779918E4AF25EAE2A9393A018729492686F3A1A428EBBF08F075, and all three canonical libdeps identities remain unchanged. This review promotes only these exact host-installed bytes; it does not establish release eligibility or authorize packaging, publication, flashing, or physical qualification."
+                   "reviewer":  "Luna independent 24-component no-bytecode candidate audit; Codex integration",
+                   "reason":  "Independently reviewed candidate 9C5DD20DFBFE2873F6B69665B07C7133562DD2043B3BB0BE51BBA70190DC53B0 against the tracked 24-component windows_amd64 allowlist and sealed recovery evidence. Twenty-three components remain exact. The sole promoted governed component is release-platform-espressif32 from B13CF308C54F37032645E2F0373E25318F79B24C328661C718491309BD3BD0F9 (616 files, 22522018 bytes) to 9371DF52EF5A5A9A8D3ABF35D1D08F47994FE3929B67B5C94CF24316F3D8738F (612 files, 22355010 bytes). Relative to tracked B13, the promotion also accepts the diagnostic-git-status rewrite of .git/index to SHA-256 436767ED0D7A257873F68629A62C465100C9810A67997E6679DA62766E55AEBC (63620 bytes) and the post-B13 refreshed CPython cache-byte provenance that is now absent. The sealed recovery transaction itself was 2AD818580622CA4F57C4F480222EAAF1EFA6961A5DD332F3102A669E61B6D55E (616 files, 22522081 bytes) to 9371DF52EF5A5A9A8D3ABF35D1D08F47994FE3929B67B5C94CF24316F3D8738F by removing exactly four archived Python 3.12 .pyc files, with no additions or changed files during that transaction, forbidden residue zero, and sealed source hashes unchanged. This promotes only these exact host-installed bytes; it does not prove future cache non-regeneration, a successful build/WPR, runtime-guard success, release eligibility, or authorize packaging, publication, flashing, or physical qualification."
                },
     "components":  [
                        {
@@ -135,9 +135,9 @@
                            "name":  "release-platform-espressif32",
                            "phase":  "preBuild",
                            "identitySchema":  "stackchan.byte-tree.v1",
-                           "treeSha256":  "B13CF308C54F37032645E2F0373E25318F79B24C328661C718491309BD3BD0F9",
-                           "fileCount":  616,
-                           "bytes":  22522018
+                           "treeSha256":  "9371DF52EF5A5A9A8D3ABF35D1D08F47994FE3929B67B5C94CF24316F3D8738F",
+                           "fileCount":  612,
+                           "bytes":  22355010
                        },
                        {
                            "name":  "release-package-contrib-piohome",

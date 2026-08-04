@@ -52,13 +52,28 @@ or actuator operation occurred.
 
 The reviewed source correction is now provisioned on the exact release host. It keeps empty
 normalized `lib_ignore` read-only while preserving the backup immediately before a real LTO edit;
-the WPR wrapper correction serializes stop/export against every WPR control command. The exact
-installed core was sealed transactionally, the failed-run residual backup was archived and removed,
-and an independently reviewed 24-component allowlist plus matching packager/verifier pins now cover
-the resulting host bytes. The tracked contracts pass, but these corrections do not yet authorize a
-retry: the change must be committed and pass exact-head CI, the old failed-run scheduled authority
-must be archived and removed under its historical pins, and the corrected private authority chain
-must then be rematerialized and pass its self-tests. The SEC-002 hold remains in force.
+the WPR wrapper correction serializes stop/export against every WPR control command. Source commit
+`76d67273f5a8ec4ecdb603627c99e83f07aec64e` passed all 11 jobs in exact-head GitHub Firmware run
+`30920597195`. The old failed-run scheduled authority and active-file pair were archived under their
+historical pins and removed. State-D finalization is recorded by `removal.final.json` SHA-256
+`DB4693B7BB71BB7C4A6EC90636DFAB3B33063F189C2816EAD5D03ED21CD43CC6`; the task and both active
+files remain absent.
+
+An unisolated validation build refreshed two existing CPython cache files, and four generated cache
+files were present when recovery began. A later diagnostic `git status` rewrote the governed
+platform `.git/index`; neither event is attributed to firmware or hardware. The four exact cache
+files were archived and removed in a sealed transaction from
+platform identity `2AD818580622CA4F57C4F480222EAAF1EFA6961A5DD332F3102A669E61B6D55E` (616 files,
+22,522,081 bytes) to `9371DF52EF5A5A9A8D3ABF35D1D08F47994FE3929B67B5C94CF24316F3D8738F`
+(612 files, 22,355,010 bytes), with zero added or changed retained files. Completion evidence is
+SHA-256 `001CBC5D6F511C32B0829F1FB34A0FE851F48846C8290F29C5A09F434920FB67`.
+The independently reviewed 24-component allowlist and matching packager/verifier pins now cover
+those exact host bytes; the reviewed allowlist SHA-256 is
+`8425BFD814AD4395E70DD86AFF7CFD3D9003F3D5E91FBBC1F2F19BAAF0FF1790`, and all three
+toolchain/promotion trust contracts pass. This does not prove that a future build will avoid cache
+regeneration or pass the runtime guard. The allowlist promotion must still be committed and pass
+exact-head CI, then the corrected private authority chain must be rematerialized and pass its
+self-tests before another guarded build. The SEC-002 hold remains in force.
 
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
