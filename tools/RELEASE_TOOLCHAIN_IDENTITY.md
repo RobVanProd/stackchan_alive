@@ -20,7 +20,19 @@ every build to reinstall the same 6.1.18 core and alternately swap `urllib3` 2.7
 seal recognizes both names while retaining the exact v6.1.18 comparison and URL. It accepts only
 the reviewed original SHA-256, writes and verifies a private original-byte backup, atomically
 installs only the reviewed patched SHA-256, and also validates the backup on already-sealed runs.
-It is a trusted-source provisioning step, not an archive-side authority or a package-time repair.
+The same seal also corrects upstream `component_manager.py` so its framework-script backup is
+created only when a nonempty `lib_ignore` configuration will actually edit the framework. With no
+exclusions, the build is read-only and the authenticated namespace remains stable. Configured
+exclusions are not silently exempted: their attempted edits remain visible to the lifetime guard
+and fail under its leases. The same exact transform moves the shared backup responsibility to the
+start of a real LTO edit, so upstream LTO builds still restore the original framework script after
+their post-action. Governed release profiles do not enable LTO; if a future profile does, the
+authenticated lifetime guard must observe and reject that framework mutation rather than allowing
+it through the seal. Both corrections are exact original-to-sealed byte transformations with
+separate private backups. The seal performs all-target path, hash, backup, reparse, and transaction
+preflight before its first replacement and rolls back completed replacements if a later install
+step fails. It is a trusted-source provisioning step, not an archive-side authority or a
+package-time repair.
 
 The Python claim additionally requires an exact process isolation state. The caller must set
 `PYTHONNOUSERSITE=1`, `PYTHONSAFEPATH=1`, `PYTHONDONTWRITEBYTECODE=1`, `PYTHONHASHSEED=0`,

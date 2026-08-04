@@ -17,7 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 $script:verificationCleanupReady = $false
 
-$verifierToolchainAllowlistSha256 = '149BC9DC713E2550C3EA199337F4BC7F095A1B1497935000F27539EDE16B7CEB' # reviewed allowlist SHA-256
+$verifierToolchainAllowlistSha256 = 'E13A3558AA979DF08CBA42C46B537D32FD3CAF340A4E924A867C6D54B95E1FB7' # reviewed allowlist SHA-256
 $verifierToolchainIdentityHelperSha256 = 'D63A93F4E9C3CFE057B59F963FCFF2C7CAF293300FF572E04F4B22608BD368A9' # reviewed identity helper SHA-256
 $verifierToolchainSemanticVerifierSha256 = '649DE0BBF4A966ADF389A4C2F98190B87958E2ECCC1DF15A6E6FE04D86A4BEBA' # reviewed semantic verifier SHA-256
 $verifierToolchainPreBuild = $null

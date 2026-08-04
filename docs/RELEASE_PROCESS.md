@@ -28,13 +28,22 @@ Python, PlatformIO, and both core trees before trusted Git/build-tool execution.
 or same-version installation fails closed.
 
 The exact self-hosted pioarduino core must already contain the reviewed sealed
-`platforms/espressif32/builder/penv_setup.py` bytes. Provision an original matching core only from
+`platforms/espressif32/builder/penv_setup.py` and
+`platforms/espressif32/builder/frameworks/component_manager.py` bytes. The first correction binds
+the installed distribution name. The second keeps an empty `lib_ignore` configuration genuinely
+read-only instead of creating and restoring a target-specific framework backup during every build.
+It also creates that backup immediately before a real LTO edit, preserving the upstream
+edit/restore contract without reintroducing the empty-configuration side effect.
+Provision an original matching core only from
 the clean trusted source checkout with
 `tools/seal_pioarduino_release_core.ps1 -ReleaseCoreDir C:\spio\pioarduino`, then regenerate and
 independently review the installed-byte allowlist. Do not run the seal during packaging and do not
 treat a packaged copy as authority. Its two-line distribution-name correction prevents the pinned
 6.1.18 core from reinstalling itself and mutating the authenticated penv on every build; the
-toolchain lifetime guard still rejects any later penv or platform mutation.
+component-manager correction prevents the no-op backup side effect without permitting configured
+component or library exclusions to mutate under a lease. Configured `lib_ignore` or LTO still
+attempts its normal framework edit, so the toolchain lifetime guard rejects it while an authenticated
+release lease is held. The seal does not create an exemption from namespace authority.
 
 The package is written under `output/release/<version>/` and includes safe display-only,
 servo-calibration, and secret-free full-online firmware binaries; preview media; an expression

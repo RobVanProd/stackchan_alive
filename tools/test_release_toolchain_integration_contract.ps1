@@ -23,6 +23,12 @@ function Require-Order {
   }
 }
 
+function Require-Count {
+  param([string]$Text, [string]$Needle, [int]$Expected, [string]$Message)
+  $count = [regex]::Matches($Text, [regex]::Escape($Needle)).Count
+  if ($count -ne $Expected) { throw "$Message Observed count: $count" }
+}
+
 $packageText = Get-Content -LiteralPath $packagePath -Raw
 $verifierText = Get-Content -LiteralPath $verifierPath -Raw
 $helperText = Get-Content -LiteralPath $helperPath -Raw
@@ -135,9 +141,109 @@ $sealText = Get-Content -LiteralPath $pioarduinoSealPath -Raw
 foreach ($sealNeedle in @(
     '6FC4C8912CBB1FA65A84A527EC5A3CB1280BBA399B02D4885C8C1D91AB7CC9D0',
     'D16479CFAD23EF7C392B48C66B9E2422C0294E185746814ED4F7F9E4EFFACB60',
+    '756B5AAF863F0BCC0E7CB88C9DDBA3FCE2055E1DC6A4D7362ADC057F813324F8',
+    'DCABDC11CA1DEA4FBF3854811BF24CD2ADC9AD692785FB27B1EBA0CF41C924E7',
     '"pioarduino-core"', 'name in ("platformio", "pioarduino-core")',
-    '[IO.File]::Replace', 'output/private/toolchain-backups')) {
+    'if lib_ignore_entries:', 'self._backup_pioarduino_build_py()',
+    'self.backup_manager.backup_pioarduino_build_py()',
+    'component-manager-noop-and-lto',
+    'Assert-ExistingPathChainReal', 'Assert-PathContained',
+    'Get-PathVolumeRoot', "ParameterSetName = 'SelfTest'",
+    'Invoke-SealTargetTransaction', 'stackchan.pioarduino-seal-selftest.v1',
+    "'prepare-second'", "'install-second'",
+    'Refusing stale $([string]$target.label) transaction artifact',
+    '[IO.File]::Replace', 'stackchan-displaced-',
+    'stackchan-rollback-', '$rollbackFailures',
+    'output/private/toolchain-backups')) {
   Require-Text $sealText $sealNeedle "Pioarduino release-core seal is missing: $sealNeedle"
+}
+$newIgnoreStart = $sealText.IndexOf('$newIgnoreBlock = (', [StringComparison]::Ordinal)
+$newIgnoreEnd = $sealText.IndexOf('$oldLtoBlock = (', $newIgnoreStart,
+  [StringComparison]::Ordinal)
+if ($newIgnoreStart -lt 0 -or $newIgnoreEnd -le $newIgnoreStart) {
+  throw 'Pioarduino seal does not expose one reviewable nonempty-lib-ignore transform.'
+}
+$newIgnoreText = $sealText.Substring($newIgnoreStart, $newIgnoreEnd - $newIgnoreStart)
+Require-Order $newIgnoreText 'lib_ignore_entries = self._get_lib_ignore_entries()' `
+  'if lib_ignore_entries:' `
+  'Pioarduino seal does not normalize lib_ignore before deciding to back up.'
+Require-Order $newIgnoreText 'if lib_ignore_entries:' 'self._backup_pioarduino_build_py()' `
+  'Pioarduino seal can back up for an empty normalized lib_ignore configuration.'
+Require-Order $newIgnoreText 'self._backup_pioarduino_build_py()' `
+  'self.ignored_libs.update(lib_ignore_entries)' `
+  'Pioarduino seal does not back up before its lib_ignore edit.'
+Require-Count $newIgnoreText 'self._backup_pioarduino_build_py()' 1 `
+  'Pioarduino nonempty-lib-ignore transform has ambiguous backup behavior.'
+
+$newLtoStart = $sealText.IndexOf('$newLtoBlock = $oldLtoBlock.Replace(',
+  [StringComparison]::Ordinal)
+$newLtoEnd = $sealText.IndexOf('if ([regex]::Matches($originalText', $newLtoStart,
+  [StringComparison]::Ordinal)
+if ($newLtoStart -lt 0 -or $newLtoEnd -le $newLtoStart) {
+  throw 'Pioarduino seal does not expose one reviewable LTO-preservation transform.'
+}
+$newLtoText = $sealText.Substring($newLtoStart, $newLtoEnd - $newLtoStart)
+Require-Order $newLtoText 'return False' `
+  'self.backup_manager.backup_pioarduino_build_py()' `
+  'Pioarduino LTO transform backs up before proving its build script exists.'
+$ltoBackupIndex = $newLtoText.IndexOf(
+  'self.backup_manager.backup_pioarduino_build_py()', [StringComparison]::Ordinal)
+$ltoReplacementTryIndex = $newLtoText.LastIndexOf('try:', [StringComparison]::Ordinal)
+if ($ltoBackupIndex -lt 0 -or $ltoReplacementTryIndex -lt 0 -or
+    $ltoBackupIndex -ge $ltoReplacementTryIndex) {
+  throw 'Pioarduino LTO transform does not back up before its first edit.'
+}
+Require-Count $newLtoText 'self.backup_manager.backup_pioarduino_build_py()' 1 `
+  'Pioarduino LTO transform has ambiguous backup behavior.'
+
+Require-Order $sealText 'Refusing pre-existing seal transaction path' `
+  '[void][IO.Directory]::CreateDirectory([string]$PlanSet.backupRoot)' `
+  'Pioarduino seal can mutate before every target transaction path passes preflight.'
+Require-Order $sealText 'Refusing stale $([string]$target.label) transaction artifact' `
+  '[void][IO.Directory]::CreateDirectory([string]$PlanSet.backupRoot)' `
+  'Pioarduino seal can mutate before stale prior-process transaction artifacts are rejected.'
+Require-Order $sealText 'Private $([string]$target.label) backup is not the reviewed original file.' `
+  '[void][IO.Directory]::CreateDirectory([string]$PlanSet.backupRoot)' `
+  'Pioarduino seal can mutate before every existing backup passes preflight.'
+Require-Order $sealText '$preparedPlans = ' '$installedPlans = ' `
+  'Pioarduino seal can install before all candidate files are prepared and verified.'
+Require-Order $sealText '$installedPlans = ' '$rollbackFailures = ' `
+  'Pioarduino seal lacks rollback after an installation-stage failure.'
+
+$powerShellPath = Join-Path $PSHOME 'powershell.exe'
+if (-not (Test-Path -LiteralPath $powerShellPath -PathType Leaf)) {
+  throw "PowerShell executable for pioarduino seal self-test is missing: $powerShellPath"
+}
+$sealSelfTestOutput = @(& $powerShellPath -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+    -File $pioarduinoSealPath -SelfTest 2>&1 | ForEach-Object { [string]$_ })
+$sealSelfTestExitCode = $LASTEXITCODE
+if ($sealSelfTestExitCode -ne 0) {
+  throw "Pioarduino seal behavioral self-test failed with exit $sealSelfTestExitCode`: $($sealSelfTestOutput -join ' | ')"
+}
+if ($sealSelfTestOutput.Count -ne 1) {
+  throw "Pioarduino seal behavioral self-test produced $($sealSelfTestOutput.Count) output lines instead of one."
+}
+try {
+  $sealSelfTest = $sealSelfTestOutput[0] | ConvertFrom-Json -ErrorAction Stop
+} catch {
+  throw "Pioarduino seal behavioral self-test output is not exact JSON: $($_.Exception.Message)"
+}
+$expectedSealScenarios = @(
+  'preparationFailure', 'secondInstallRollback', 'successfulCommit',
+  'alreadySealedIdempotence', 'mixedState', 'staleArtifactPreflight'
+)
+$actualSealScenarios = @($sealSelfTest.scenarios.PSObject.Properties.Name | Sort-Object)
+if ([string]$sealSelfTest.schema -cne 'stackchan.pioarduino-seal-selftest.v1' -or
+    [string]$sealSelfTest.status -cne 'pass' -or
+    -not [bool]$sealSelfTest.usedSystemTemp -or
+    -not [bool]$sealSelfTest.tempRootRemoved -or
+    @(Compare-Object ($expectedSealScenarios | Sort-Object) $actualSealScenarios).Count -ne 0) {
+  throw 'Pioarduino seal behavioral self-test result has the wrong authority shape.'
+}
+foreach ($scenario in $expectedSealScenarios) {
+  if ([string]$sealSelfTest.scenarios.$scenario -cne 'pass') {
+    throw "Pioarduino seal behavioral scenario did not pass: $scenario"
+  }
 }
 foreach ($packagedSealInput in @(
     'tools/test_release_toolchain_cache_contract.ps1',

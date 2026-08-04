@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-08-03 America/New_York
+Status timestamp: 2026-08-04 America/New_York
 
 ## Current SEC-002 Qualification Hold (2026-08-03)
 
@@ -29,6 +29,36 @@ contracts, but it is not a flash or qualification input.
 Hold all flashing and physical promotion until the exact-host guard and exact clean governed
 package pass their two-cycle build and independent rebuild for the committed source, a reviewed rollback
 path exists, and a fresh passive no-motion preflight is complete.
+
+### Authenticated exact-host retry evidence (2026-08-04)
+
+Source commit `cf75a8dbddf90c2fcd02558f6ffc76899f34b697` passed all 11 jobs in exact-head
+GitHub Firmware run `30890019733`. The second local guarded attempt is preserved under outer run
+`output/private/current-head-guard-promotions/20260804-101617-358f1e7e3ec3` and runner run
+`output/private/toolchain-guard-smoke/20260804-101639-1304-c17b029421024407978cff288d3480a2`.
+It failed closed during build A before packaging. Linking completed, but pioarduino had created the
+51,819-byte target-specific `pioarduino-build.py.esp32s3` backup even though the governed profiles
+have no `lib_ignore`. Its `checkprogsize` post-action then tried to restore the framework script
+while the authenticated lifetime guard correctly held that file read-only. The resulting Windows
+sharing violation is evidence of an upstream no-op toolchain write, not a locked `firmware.elf`,
+firmware failure, or hardware failure. The contaminated framework-libs tree is not allowlisted.
+
+The same run exposed a separate evidence-wrapper defect: a collector-status query overlapped
+`wpr -stop -compress`, returned duplicate-control-library error `0xc5580601`, and prevented formal
+merged-ETL loss proof. Twenty-nine earlier collector samples reported zero loss, and WPR later
+reported scoped idle, but those facts do not replace the missing final proof. The raw trace and all
+failed-run evidence remain preserved; no package was produced and no bridge, robot, port, flash,
+or actuator operation occurred.
+
+The reviewed source correction is now provisioned on the exact release host. It keeps empty
+normalized `lib_ignore` read-only while preserving the backup immediately before a real LTO edit;
+the WPR wrapper correction serializes stop/export against every WPR control command. The exact
+installed core was sealed transactionally, the failed-run residual backup was archived and removed,
+and an independently reviewed 24-component allowlist plus matching packager/verifier pins now cover
+the resulting host bytes. The tracked contracts pass, but these corrections do not yet authorize a
+retry: the change must be committed and pass exact-head CI, the old failed-run scheduled authority
+must be archived and removed under its historical pins, and the corrected private authority chain
+must then be rematerialized and pass its self-tests. The SEC-002 hold remains in force.
 
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256

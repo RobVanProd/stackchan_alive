@@ -12,11 +12,11 @@
                                           ],
     "pythonExecutableRelativePath":  "python.exe",
     "gitExecutableRelativePath":  "cmd/git.exe",
-    "generatedUtc":  "2026-08-04T07:39:28Z",
+    "generatedUtc":  "2026-08-04T14:02:54Z",
     "review":  {
                    "status":  "reviewed",
-                   "reviewer":  "Luna independent 24-component allowlist audit and corrected governed-environment B/C dependency audit; Codex integration",
-                   "reason":  "Independently audited all 24 windows_amd64 exact-host components: 20 remain byte-for-byte unchanged and four intentional deltas are promoted. The policy source now owner-qualifies M5Stack/M5GFX@0.2.24, requires the single reviewed M5GFX 0.2.24 and M5Unified 0.2.17 leaves and exact registry manifests, and fails closed on unexpected dependency topology or metadata. Two isolated fresh B/C roots reproduced the canonical dependency identities for all three governed environments: stackchan and stackchan_servo_calibration 248A6E4A19A7079F920B9C192AE47161377555442A80889742FD6B6FD43B986E (1119 files, 163164344 bytes), and stackchan_release_full AB7DB6C267BF82C5B8AC72624D266CB3A0ABE6D5E227BEF6B4750D52800B760E (866 files, 161476510 bytes). The release-core penv remains the previously reviewed A1E366961C1410F32DD31102F37725B500FF0F3FB8E9604A4BA34715FBC08C84 identity (3154 files, 124599325 bytes) after exact cache-side-effect restoration; the prior contaminated candidate remains rejected. This review promotes only these exact allowlist component bytes; it does not prove the retained runtime guard, establish release eligibility, authorize publication, flashing, or physical qualification."
+                   "reviewer":  "Luna independent post-provision 24-component allowlist audit; Codex integration",
+                   "reason":  "Independently verified candidate A644395D50BDBDE3FACF88D1553C31996634EB90EA152129CCFADA2EE18D259E against the tracked 24-component windows_amd64 allowlist and current installed governed bytes. Twenty-three components remain exact. The sole promoted delta is release-platform-espressif32 from B524A0DA5B8CF1CB88D82E808584FD6200CB090E41DFB7F6B60405DC119EF401 (616 files, 22522049 bytes) to B13CF308C54F37032645E2F0373E25318F79B24C328661C718491309BD3BD0F9 (616 files, 22522018 bytes). Release-core penv remains A1E366961C1410F32DD31102F37725B500FF0F3FB8E9604A4BA34715FBC08C84, framework libs remain 4C86469E19BD779918E4AF25EAE2A9393A018729492686F3A1A428EBBF08F075, and all three canonical libdeps identities remain unchanged. This review promotes only these exact host-installed bytes; it does not establish release eligibility or authorize packaging, publication, flashing, or physical qualification."
                },
     "components":  [
                        {
@@ -135,9 +135,9 @@
                            "name":  "release-platform-espressif32",
                            "phase":  "preBuild",
                            "identitySchema":  "stackchan.byte-tree.v1",
-                           "treeSha256":  "B524A0DA5B8CF1CB88D82E808584FD6200CB090E41DFB7F6B60405DC119EF401",
+                           "treeSha256":  "B13CF308C54F37032645E2F0373E25318F79B24C328661C718491309BD3BD0F9",
                            "fileCount":  616,
-                           "bytes":  22522049
+                           "bytes":  22522018
                        },
                        {
                            "name":  "release-package-contrib-piohome",
