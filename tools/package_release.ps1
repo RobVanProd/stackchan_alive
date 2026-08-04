@@ -335,14 +335,26 @@ function Resolve-ReleaseBootstrapGitPath {
 }
 
 function Assert-ReleaseBootstrapTrust {
-  param([Parameter(Mandatory = $true)][string]$Root)
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [string]$ExpectedGitTopLevel = ''
+  )
 
   $resolvedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+  $resolvedExpectedGitTopLevel = if ([string]::IsNullOrWhiteSpace($ExpectedGitTopLevel)) {
+    $resolvedRoot
+  } else {
+    [System.IO.Path]::GetFullPath($ExpectedGitTopLevel).TrimEnd('\', '/')
+  }
+  $prefix = (Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
+    'rev-parse', '--show-prefix') | Out-String).Trim()
+  $prefixExitCode = $LASTEXITCODE
   $topLevel = (Invoke-ReleaseBootstrapGit -Root $resolvedRoot -Arguments @(
     'rev-parse', '--show-toplevel')).Trim()
-  if ($LASTEXITCODE -ne 0 -or
+  if ($prefixExitCode -ne 0 -or -not [string]::IsNullOrEmpty($prefix) -or
+      $LASTEXITCODE -ne 0 -or
       -not [System.IO.Path]::GetFullPath($topLevel).TrimEnd('\', '/').Equals(
-        $resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $resolvedExpectedGitTopLevel, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw 'Release packaging must start at its exact Git top-level.'
   }
   $attributePaths = New-Object System.Collections.Generic.List[string]
@@ -574,9 +586,62 @@ foreach ($systemExecutable in @($releasePowerShellExecutable, $releaseSubstExecu
   }
 }
 
+function Get-ReleaseShortPathPhysicalRoot {
+  param([Parameter(Mandatory = $true)][string]$LogicalRoot)
+
+  $fullLogicalRoot = [System.IO.Path]::GetFullPath($LogicalRoot)
+  $driveRoot = [System.IO.Path]::GetPathRoot($fullLogicalRoot)
+  $resolvedLogicalRoot = $fullLogicalRoot.TrimEnd('\', '/')
+  $allowedShortRoots = @('R:\', 'Q:\', 'P:\', 'O:\')
+  if ($allowedShortRoots -notcontains $driveRoot -or
+      -not $resolvedLogicalRoot.Equals(
+        $driveRoot.TrimEnd('\', '/'), [System.StringComparison]::OrdinalIgnoreCase) -or
+      $resolvedLogicalRoot.Length -gt 60) {
+    throw '-ReleaseShortPathChild is internal and requires the verified short subst checkout.'
+  }
+
+  $mappingLines = @(& $script:releaseSubstExecutable)
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Release packaging could not query the temporary subst mapping.'
+  }
+  $driveLetter = $driveRoot.Substring(0, 1)
+  $physicalTargets = @($mappingLines | ForEach-Object {
+    $match = [regex]::Match(
+      [string]$_, '^(?<drive>[A-Za-z]):\\: => (?<target>.+)$',
+      [System.Text.RegularExpressions.RegexOptions]::CultureInvariant)
+    if ($match.Success -and
+        $match.Groups['drive'].Value.Equals(
+          $driveLetter, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $match.Groups['target'].Value
+    }
+  })
+  if ($physicalTargets.Count -ne 1) {
+    throw 'Release packaging requires exactly one verified subst mapping for its short checkout.'
+  }
+  $physicalRoot = [System.IO.Path]::GetFullPath([string]$physicalTargets[0]).TrimEnd('\', '/')
+  $physicalItem = Get-Item -LiteralPath $physicalRoot -Force -ErrorAction Stop
+  if (-not $physicalItem.PSIsContainer -or
+      ($physicalItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+    throw 'Release packaging refuses a missing, non-directory, or redirected subst target.'
+  }
+  return $physicalRoot
+}
+
 $physicalRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$bootstrapGitTopLevel = $physicalRepoRoot
+if ($ReleaseShortPathChild) {
+  $bootstrapGitTopLevel = Get-ReleaseShortPathPhysicalRoot -LogicalRoot $physicalRepoRoot
+}
 if (-not $SkipBuild) {
-  Assert-ReleaseBootstrapTrust -Root $physicalRepoRoot
+  Assert-ReleaseBootstrapTrust -Root $physicalRepoRoot `
+    -ExpectedGitTopLevel $bootstrapGitTopLevel
+  if ($ReleaseShortPathChild) {
+    $confirmedPhysicalRoot = Get-ReleaseShortPathPhysicalRoot -LogicalRoot $physicalRepoRoot
+    if (-not $confirmedPhysicalRoot.Equals(
+        $bootstrapGitTopLevel, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw 'Release packaging detected a changed subst mapping during bootstrap trust verification.'
+    }
+  }
 }
 if (
   $env:OS -eq "Windows_NT" -and
@@ -617,15 +682,11 @@ if (
   } finally {
     Set-Location $env:TEMP
     & $script:releaseSubstExecutable $driveName /D | Out-Null
+    if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath "$driveName\")) {
+      throw "Could not remove temporary release path $driveName"
+    }
   }
   exit $childExit
-}
-if ($ReleaseShortPathChild) {
-  $allowedShortRoots = @("R:\", "Q:\", "P:\", "O:\")
-  $currentRoot = [System.IO.Path]::GetPathRoot($physicalRepoRoot)
-  if ($allowedShortRoots -notcontains $currentRoot -or $physicalRepoRoot.Length -gt 60) {
-    throw "-ReleaseShortPathChild is internal and requires the verified short subst checkout."
-  }
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")

@@ -89,6 +89,93 @@ foreach ($text in @($packageText, $verifierText)) {
 Require-Order $packageText 'Assert-StackchanReleaseToolchainIdentity' `
   'Assert-ReleaseBootstrapTrust -Root' `
   'Packager does not assert exact PreBuild identity before first trusted Git execution.'
+foreach ($needle in @(
+    'Get-ReleaseShortPathPhysicalRoot',
+    "'rev-parse', '--show-prefix'",
+    '-not [string]::IsNullOrEmpty($prefix)',
+    "'^(?<drive>[A-Za-z]):\\: => (?<target>.+)$'",
+    'requires exactly one verified subst mapping',
+    'refuses a missing, non-directory, or redirected subst target',
+    '-ExpectedGitTopLevel $bootstrapGitTopLevel',
+    'detected a changed subst mapping during bootstrap trust verification')) {
+  Require-Text $packageText $needle `
+    "Packager is missing fail-closed subst/Git top-level reconciliation: $needle"
+}
+Require-Count $packageText `
+  'Get-ReleaseShortPathPhysicalRoot -LogicalRoot $physicalRepoRoot' 2 `
+  'Packager must verify the subst target both before and after Git bootstrap trust.'
+$packageTokens = $null
+$packageParseErrors = $null
+$packageAst = [System.Management.Automation.Language.Parser]::ParseFile(
+  $packagePath, [ref]$packageTokens, [ref]$packageParseErrors)
+if (@($packageParseErrors).Count -ne 0) {
+  throw 'Release packager cannot be parsed for short-path regression testing.'
+}
+$shortPathFunction = $packageAst.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Get-ReleaseShortPathPhysicalRoot'
+  }, $true)
+if ($null -eq $shortPathFunction) {
+  throw 'Release packager short-path resolver function is unavailable for regression testing.'
+}
+. ([scriptblock]::Create($shortPathFunction.Extent.Text))
+$script:releaseSubstExecutable = Join-Path ([Environment]::SystemDirectory) 'subst.exe'
+$shortPathRepoRoot = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path
+$canonicalShortPathRepoRoot = (& git -C $shortPathRepoRoot rev-parse --show-toplevel |
+  Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonicalShortPathRepoRoot)) {
+  throw 'Release short-path regression test could not resolve the canonical Git top-level.'
+}
+$canonicalShortPathRepoRoot = [IO.Path]::GetFullPath(
+  $canonicalShortPathRepoRoot).TrimEnd('\', '/')
+$allowedShortPathRoots = @('R:\', 'Q:\', 'P:\', 'O:\')
+$shortPathRepoFull = [IO.Path]::GetFullPath($shortPathRepoRoot)
+$shortPathRepoDriveRoot = [IO.Path]::GetPathRoot($shortPathRepoFull)
+$createdShortPathMapping = $false
+if ($allowedShortPathRoots -contains $shortPathRepoDriveRoot -and
+    $shortPathRepoFull.TrimEnd('\', '/').Equals(
+      $shortPathRepoDriveRoot.TrimEnd('\', '/'),
+      [StringComparison]::OrdinalIgnoreCase)) {
+  $shortPathDrive = $shortPathRepoDriveRoot.TrimEnd('\')
+  $shortPathLogicalRoot = $shortPathRepoDriveRoot
+} else {
+  $shortPathDrive = @('R:', 'Q:', 'P:', 'O:') |
+    Where-Object { -not (Test-Path -LiteralPath "$_\") } |
+    Select-Object -First 1
+  if ([string]::IsNullOrWhiteSpace($shortPathDrive)) {
+    throw 'Release short-path regression test requires one free governed subst drive.'
+  }
+  & $script:releaseSubstExecutable $shortPathDrive $shortPathRepoRoot
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Release short-path regression test could not create its temporary subst mapping.'
+  }
+  $createdShortPathMapping = $true
+  $shortPathLogicalRoot = "$shortPathDrive\"
+}
+try {
+  $observedPhysicalRoot = Get-ReleaseShortPathPhysicalRoot -LogicalRoot $shortPathLogicalRoot
+  if (-not $observedPhysicalRoot.Equals(
+      $canonicalShortPathRepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Release short-path regression test did not recover the exact physical repository root.'
+  }
+  $nestedRejected = $false
+  try {
+    Get-ReleaseShortPathPhysicalRoot -LogicalRoot "$shortPathDrive\tools" | Out-Null
+  } catch {
+    $nestedRejected = $true
+  }
+  if (-not $nestedRejected) {
+    throw 'Release short-path regression test accepted a nested logical checkout root.'
+  }
+} finally {
+  if ($createdShortPathMapping) {
+    & $script:releaseSubstExecutable $shortPathDrive /D | Out-Null
+    if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath "$shortPathDrive\")) {
+      throw 'Release short-path regression test did not remove its temporary subst mapping.'
+    }
+  }
+}
 Require-Order $verifierText 'Assert-StackchanReleaseToolchainIdentity' `
   "Invoke-TrustedVerifierGit -Arguments @('describe'" `
   'Verifier does not assert exact PreBuild identity before first trusted Git execution.'

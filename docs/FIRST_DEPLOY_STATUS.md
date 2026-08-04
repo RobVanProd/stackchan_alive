@@ -138,6 +138,30 @@ Any failure in those controls still rejects the candidate. The SEC-002 hold rema
 that governed two-cycle proof succeeds and the resulting exact package passes its independent
 rebuild and passive no-motion preflight; lossless system-wide WPR is not additionally required.
 
+### Direct package routing failure (2026-08-04)
+
+Qualification head `ce5dc3abdfd390c4b06762a3547b5895b05df681` passed all 11 jobs in exact-head
+GitHub Firmware run `30942401869`. The first direct WPR-free public-packager attempt then failed
+closed before cycle A and before release-output creation. The physical checkout was long enough to
+require the packager's temporary `R:` mapping. In the short-path child, Windows kept
+`Resolve-Path R:\` as the logical alias while the reviewed Git executable canonicalized
+`rev-parse --show-toplevel` to the exact physical
+`D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` path. The bootstrap
+guard compared those equivalent roots as strings and rejected the child with
+`Release packaging must start at its exact Git top-level.`
+
+This is a release-host routing defect, not a toolchain-identity, firmware, robot, USB, power,
+thermal, motion, or reproducibility result. The failed attempt produced no cycle A/B build, ZIP,
+sidecar, package verification log, flash, bridge session, robot-port access, or actuator command.
+WPR remained idle, the temporary mapping was removed, retained packager processes exited, and the
+qualification worktree remained clean at the failed head. The source correction preserves exact
+Git-top-level validation by requiring an empty Git `--show-prefix`, exactly one mapping for the
+governed short drive, exact equality between the mapped physical target and Git's canonical
+top-level, a non-reparse target directory, and an unchanged mapping after bootstrap trust. Its
+contract executes the production resolver both from the physical checkout and from the actual
+short-drive child context. The SEC-002 hold remains in force until that correction is committed,
+passes exact-head CI, and a fresh direct two-cycle package plus independent rebuild succeed.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that
