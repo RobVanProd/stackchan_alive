@@ -8,7 +8,13 @@ param(
   [string]$OutDir = "",
   [switch]$AllowNonPrerelease,
   [switch]$UploadToRelease,
-  [switch]$StrictPromotion
+  [switch]$StrictPromotion,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -170,7 +176,13 @@ $publishedVerifyArgs = @(
   "-PackageRoot", $PackageRoot,
   "-ZipPath", $ZipPath,
   "-ZipSidecarPath", $ZipSidecarPath,
-  "-ExpectedCommit", $ExpectedCommit
+  "-ExpectedCommit", $ExpectedCommit,
+  "-ToolchainAllowlistPath", $ToolchainAllowlistPath,
+  "-GitExecutable", $GitExecutable,
+  "-PythonExecutable", $PythonExecutable,
+  "-PlatformioExecutable", $PlatformioExecutable,
+  "-LegacyCoreDir", $LegacyCoreDir,
+  "-ReleaseCoreDir", $ReleaseCoreDir
 )
 if ($AllowNonPrerelease) {
   $publishedVerifyArgs += "-AllowNonPrerelease"
@@ -200,7 +212,13 @@ if ($publishedVerify.exitCode -eq 0) {
     "-Version", $Version,
     "-PackageRoot", $PackageRoot,
     "-ExpectedCommit", $ExpectedCommit,
-    "-OutDir", $rolloutDir
+    "-OutDir", $rolloutDir,
+    "-ToolchainAllowlistPath", $ToolchainAllowlistPath,
+    "-GitExecutable", $GitExecutable,
+    "-PythonExecutable", $PythonExecutable,
+    "-PlatformioExecutable", $PlatformioExecutable,
+    "-LegacyCoreDir", $LegacyCoreDir,
+    "-ReleaseCoreDir", $ReleaseCoreDir
   )
   $rollout = Read-JsonFile (Join-Path $rolloutDir "ROLLOUT_STATUS.json")
 }

@@ -20,6 +20,8 @@ $selectorPolicyContractPath = Join-Path $repoRoot "tools/test_release_ota_select
 $flashSnapshotContractPath = Join-Path $repoRoot "tools/test_release_flash_snapshot_contract.ps1"
 $sourceBindingContractPath = Join-Path $repoRoot "tools/test_release_source_binding_contract.ps1"
 $dependencyEvidenceContractPath = Join-Path $repoRoot "tools/test_release_dependency_evidence_contract.ps1"
+$toolchainIntegrationContractPath = Join-Path $repoRoot "tools/test_release_toolchain_integration_contract.ps1"
+$toolchainDocumentationContractPath = Join-Path $repoRoot "tools/test_release_toolchain_documentation_contract.ps1"
 $issues = New-Object 'System.Collections.Generic.List[string]'
 
 function Require-ReproAssertion {
@@ -171,6 +173,14 @@ if ($LASTEXITCODE -ne 0) {
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $dependencyEvidenceContractPath
 if ($LASTEXITCODE -ne 0) {
   $issues.Add("release-dependency-evidence-contract-failed: exit $LASTEXITCODE")
+}
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $toolchainIntegrationContractPath
+if ($LASTEXITCODE -ne 0) {
+  $issues.Add("release-toolchain-integration-contract-failed: exit $LASTEXITCODE")
+}
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $toolchainDocumentationContractPath
+if ($LASTEXITCODE -ne 0) {
+  $issues.Add("release-toolchain-documentation-contract-failed: exit $LASTEXITCODE")
 }
 
 Require-ReproAssertion ($contractText.Contains('platformio_resolver.ps1') -and

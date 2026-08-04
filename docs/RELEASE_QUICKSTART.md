@@ -1,6 +1,8 @@
 # Stackchan: Alive Release Quickstart
 
-Use this from an extracted release package when the device arrives.
+Use this from the exact clean trusted source checkout when the device arrives. Define the
+six-value `$releaseToolchain` splat from `docs/RELEASE_PROCESS.md` first. A downloaded or extracted
+archive does not confer release authority; pass the ZIP to the trusted source-side tools.
 
 ## First 30 Minutes
 
@@ -8,7 +10,7 @@ Follow this once, in order. Stop at the first failed command or unexpected robot
 ahead to motion.
 
 1. Put Stackchan on a stable surface with the body clear. Leave servos unpowered.
-2. Open PowerShell in the extracted package and run the no-hardware check:
+2. Open PowerShell in the trusted source checkout and run the no-hardware check:
 
    ```powershell
    .\tools\run_hardware_simulation.cmd
@@ -18,7 +20,7 @@ ahead to motion.
 4. Create the device packet, replacing the three placeholders:
 
    ```powershell
-   .\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+   .\tools\prepare_device_arrival.ps1 -ReleaseTag <version> -PackageZip <absolute-path-to-downloaded-zip> -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
    ```
 
 5. Open the newest `output\hardware-evidence\<packet-folder>` and run:
@@ -253,16 +255,23 @@ validated for v1.
 
 ## Remote Review Link
 
-From an extracted release package:
+Run sharing only from the exact clean trusted source checkout that can independently verify the
+release ZIP. Do not run the packaged copy of the verifier as authority. Define the six-value
+`$releaseToolchain` splat from `docs/RELEASE_PROCESS.md`, then run:
 
 ```powershell
-.\tools\share_release.cmd -CloudflareTunnel -DownloadCloudflared
+.\tools\share_release.ps1 -Version <version> -CloudflareTunnel -DownloadCloudflared @releaseToolchain
 ```
 
 This serves the release ZIP, ZIP SHA256 sidecar, preview image, expression sheet, video, quickstart, release notes, readiness report, and checksums. It downloads a local `cloudflared.exe` under `output\tools` only when `cloudflared` is not already installed.
 Use `-OpenLocal` when you want the helper to open the host-only local page automatically after it proves the server is answering.
 The public URL is saved as `output\share\<version>\PUBLIC_URL.txt` when a tunnel exists. Local-only shares are also valid for same-machine or LAN review: after `verify_share_release.cmd`, the evidence packet records the verified URL in `share\VERIFIED_URL.txt`. The share folder includes `OPEN_LOCAL_SHARE.cmd` for opening the host-only local page plus `STOP_SHARING.cmd` to stop the local server and tunnel.
-After `share_release.cmd -NoServe`, use `.\tools\verify_share_release.cmd -Version <version> -Offline` to check the static folder and ZIP hash without starting a server. Offline mode writes `share_static_verification_report.json` with an `offline-static:` URL marker; it does not replace the HTTP verifier when you need hosted-media evidence.
+The transparent `share_release.cmd` wrapper remains available when all six authority parameters are
+passed literally; the PowerShell splat is less error-prone. After `share_release.ps1 -NoServe
+@releaseToolchain`, use `.\tools\verify_share_release.cmd -Version <version> -Offline` to check the
+static folder and ZIP hash without starting a server. Offline mode writes
+`share_static_verification_report.json` with an `offline-static:` URL marker; it does not replace
+the HTTP verifier when you need hosted-media evidence.
 Before sending the URL, verify the handoff page and public assets:
 
 ```powershell
@@ -282,13 +291,13 @@ The cleanup command only stops processes recorded under `output\share` that stil
 From a source checkout, pass the release version:
 
 ```powershell
-.\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
+.\tools\share_release.ps1 -Version <version> -CloudflareTunnel -DownloadCloudflared @releaseToolchain
 ```
 
 If Cloudflare DNS or tunnel startup is unreliable and the reviewer is on the same network, use a LAN share instead:
 
 ```powershell
-.\tools\share_release.cmd -Version <version> -Lan
+.\tools\share_release.ps1 -Version <version> -Lan @releaseToolchain
 ```
 
 Open the first printed same-network URL on the other device. The loopback URL is for the machine running the share command.
@@ -296,10 +305,11 @@ If the first same-network URL fails, run `output\share\<version>\OPEN_LOCAL_SHAR
 
 ## Prepare The Arrival Packet
 
-From inside the extracted release folder:
+From the trusted source checkout, pass the absolute path to the downloaded ZIP:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+$packageZip = (Resolve-Path 'C:\Downloads\stackchan_alive_<version>.zip').Path
+.\tools\prepare_device_arrival.ps1 -ReleaseTag <version> -PackageZip $packageZip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
 Replace `COM3`, `Your Name`, and `STACKCHAN-001` with the device serial port, operator name, and physical device identifier.
@@ -525,10 +535,13 @@ After servo calibration, Wi-Fi/pairing provisioning, and the short hardware gate
 the secret-free full system from the verified release ZIP:
 
 ```powershell
-.\tools\flash_release_firmware.cmd `
-  -PackageZip .\stackchan_alive_<version>.zip `
+.\tools\flash_release_firmware.ps1 `
+  -PackageZip output\release\stackchan_alive_<version>.zip `
+  -Version <version> `
+  -ExpectedCommit <release-commit> `
   -Firmware full_online `
-  -ConfirmServoRisk
+  -ConfirmServoRisk `
+  @releaseToolchain
 ```
 
 `full_online` contains wake, bridge audio, speaker playback, RGB, touch, IMU, power
@@ -627,7 +640,7 @@ The generated command uses `output\companion-v1-evidence\latest` by default and 
 release ZIP. Pending aggregate evidence cannot pass consumer promotion. The generated command also
 assumes the package commit and tested firmware source commit are identical.
 If documentation or host-only release commits were made after the exact firmware image was flashed,
-run `tools\verify_consumer_promotion.cmd` directly and pass both `-ExpectedCommit` for the package
+run `tools\verify_consumer_promotion.ps1 @releaseToolchain` directly and pass both `-ExpectedCommit` for the package
 and `-ExpectedFirmwareSourceCommit` for the physical camera, body-sensor, and soak evidence, plus
 `-CompanionV1EvidenceRoot` for the completed aggregate packet.
 

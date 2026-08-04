@@ -75,20 +75,24 @@ Its restart and restart-failure counters must not advance during the qualificati
 
 ## Open An Evidence Session
 
+Run the command from the exact clean trusted source checkout after defining `$releaseToolchain` as
+shown in `docs/RELEASE_PROCESS.md`. A downloaded or extracted archive does not confer release
+authority.
+
 This command is passive. It does not start, stop, restart, flash, or move the robot. It refuses
 the session unless the live bridge has all candidate flags, local persistent STT, redacted logs,
 no private audio evidence, a configured dashboard, and a connected motion-off robot.
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File tools\start_bridge_ai_supervised_qualification.ps1 `
+.\tools\start_bridge_ai_supervised_qualification.ps1 `
   -PackageZip "output\release\stackchan_alive_<exact-version>.zip" `
   -ExpectedFirmwareSha256 "<accepted-pr217-or-later-private-firmware-sha256>" `
   -ExpectedFirmwareSourceCommit "<accepted-pr217-or-later-main-source-commit>" `
   -OperatorPresent `
   -ConfirmMotionOff `
   -MinReplyWindows 100 `
-  -Json
+  -Json `
+  @releaseToolchain
 ```
 
 Preserve the returned evidence-root path. During that one session:

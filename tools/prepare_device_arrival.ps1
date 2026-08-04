@@ -8,7 +8,13 @@ param(
   [string]$DeviceId = "",
   [string]$ShareRoot = "",
   [switch]$AllowIncompleteMetadata,
-  [switch]$AllowDirtyPackage
+  [switch]$AllowDirtyPackage,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -90,17 +96,29 @@ if (-not [string]::IsNullOrWhiteSpace($Port)) {
 Write-Host ""
 Write-Host "==> Verify release package"
 $verifyScript = Join-Path $PSScriptRoot "verify_release_package.ps1"
+$releaseToolchainArguments = @{
+  ToolchainAllowlistPath = $ToolchainAllowlistPath
+  GitExecutable = $GitExecutable
+  PythonExecutable = $PythonExecutable
+  PlatformioExecutable = $PlatformioExecutable
+  LegacyCoreDir = $LegacyCoreDir
+  ReleaseCoreDir = $ReleaseCoreDir
+}
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($AllowDirtyPackage) {
-    & $verifyScript -Version $ReleaseTag -ZipPath $PackageZip -ExpectedCommit $commit -AllowDirtyPackage -RequireReleaseEligible
+    & $verifyScript -Version $ReleaseTag -ZipPath $PackageZip -ExpectedCommit $commit `
+      -AllowDirtyPackage -RequireReleaseEligible @releaseToolchainArguments
   } else {
-    & $verifyScript -Version $ReleaseTag -ZipPath $PackageZip -ExpectedCommit $commit -RequireReleaseEligible
+    & $verifyScript -Version $ReleaseTag -ZipPath $PackageZip -ExpectedCommit $commit `
+      -RequireReleaseEligible @releaseToolchainArguments
   }
 } else {
   if ($AllowDirtyPackage) {
-    & $verifyScript -Version $ReleaseTag -PackageRoot $PackageRoot -ExpectedCommit $commit -AllowDirtyPackage -RequireReleaseEligible
+    & $verifyScript -Version $ReleaseTag -PackageRoot $PackageRoot -ExpectedCommit $commit `
+      -AllowDirtyPackage -RequireReleaseEligible @releaseToolchainArguments
   } else {
-    & $verifyScript -Version $ReleaseTag -PackageRoot $PackageRoot -ExpectedCommit $commit -RequireReleaseEligible
+    & $verifyScript -Version $ReleaseTag -PackageRoot $PackageRoot -ExpectedCommit $commit `
+      -RequireReleaseEligible @releaseToolchainArguments
   }
 }
 if ($LASTEXITCODE -ne 0) {
@@ -113,23 +131,24 @@ $flashScript = Join-Path $PSScriptRoot "flash_release_firmware.ps1"
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($AllowDirtyPackage) {
     & $flashScript -PackageZip $PackageZip -Firmware display_only -Version $ReleaseTag `
-      -ExpectedCommit $commit -DryRun -Monitor -Port $Port -AllowDirtyPackage
+      -ExpectedCommit $commit -DryRun -Monitor -Port $Port -AllowDirtyPackage `
+      @releaseToolchainArguments
   } else {
     & $flashScript -PackageZip $PackageZip -Firmware display_only -Version $ReleaseTag `
-      -ExpectedCommit $commit -DryRun -Monitor -Port $Port
+      -ExpectedCommit $commit -DryRun -Monitor -Port $Port @releaseToolchainArguments
   }
 } else {
   if ($AllowDirtyPackage) {
-    & $flashScript -PackageRoot $PackageRoot -Firmware display_only -Version $ReleaseTag -ExpectedCommit $commit -DryRun -Monitor -Port $Port -AllowDirtyPackage
+    & $flashScript -PackageRoot $PackageRoot -Firmware display_only -Version $ReleaseTag -ExpectedCommit $commit -DryRun -Monitor -Port $Port -AllowDirtyPackage @releaseToolchainArguments
   } else {
-    & $flashScript -PackageRoot $PackageRoot -Firmware display_only -Version $ReleaseTag -ExpectedCommit $commit -DryRun -Monitor -Port $Port
+    & $flashScript -PackageRoot $PackageRoot -Firmware display_only -Version $ReleaseTag -ExpectedCommit $commit -DryRun -Monitor -Port $Port @releaseToolchainArguments
   }
 }
 
 Write-Host ""
 Write-Host "==> Create hardware evidence packet"
 $evidenceScript = Join-Path $PSScriptRoot "start_hardware_evidence.ps1"
-$metadataArgs = @{}
+$metadataArgs = @{} + $releaseToolchainArguments
 if ($AllowIncompleteMetadata) {
   $metadataArgs["AllowIncompleteMetadata"] = $true
 }

@@ -10,7 +10,13 @@ param(
   [switch]$Monitor,
   [switch]$ConfirmServoRisk,
   [switch]$AllowDirtyPackage,
-  [switch]$DryRun
+  [switch]$DryRun,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -157,7 +163,13 @@ $verifyScript = Join-Path $PSScriptRoot "verify_release_package.ps1"
 $verifyArgs = @(
   "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $verifyScript,
   "-Version", $Version, "-ExpectedCommit", $ExpectedCommit,
-  "-RequireReleaseEligible"
+  "-RequireReleaseEligible",
+  "-ToolchainAllowlistPath", $ToolchainAllowlistPath,
+  "-GitExecutable", $GitExecutable,
+  "-PythonExecutable", $PythonExecutable,
+  "-PlatformioExecutable", $PlatformioExecutable,
+  "-LegacyCoreDir", $LegacyCoreDir,
+  "-ReleaseCoreDir", $ReleaseCoreDir
 )
 Assert-File $PackageZip
 $PackageZip = (Resolve-Path -LiteralPath $PackageZip).Path
@@ -312,7 +324,13 @@ try {
   $snapshotVerifyArgs = @(
     "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $verifyScript,
     "-Version", $Version, "-ExpectedCommit", $ExpectedCommit,
-    "-RequireReleaseEligible", "-ZipPath", $snapshotZip
+    "-RequireReleaseEligible", "-ZipPath", $snapshotZip,
+    "-ToolchainAllowlistPath", $ToolchainAllowlistPath,
+    "-GitExecutable", $GitExecutable,
+    "-PythonExecutable", $PythonExecutable,
+    "-PlatformioExecutable", $PlatformioExecutable,
+    "-LegacyCoreDir", $LegacyCoreDir,
+    "-ReleaseCoreDir", $ReleaseCoreDir
   )
   if ($AllowDirtyPackage) {
     $snapshotVerifyArgs += "-AllowDirtyPackage"

@@ -5,7 +5,13 @@ param(
   [string]$EvidenceRoot = "",
   [string]$OutDir = "",
   [string]$ActionsStatusPath = "",
-  [string]$ExpectedCommit = ""
+  [string]$ExpectedCommit = "",
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +20,30 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
 $cleanupDir = $null
+
+function ConvertTo-RolloutPowerShellLiteral {
+  param([Parameter(Mandatory = $true)][string]$Value)
+  return "'" + ($Value -replace "'", "''") + "'"
+}
+
+function New-RolloutTrustedSourceCommand {
+  param(
+    [Parameter(Mandatory = $true)][string]$ScriptName,
+    [Parameter(Mandatory = $true)][string]$Arguments
+  )
+
+  $scriptPath = Join-Path $PSScriptRoot $ScriptName
+  $toolchainCommandArguments = @(
+    '-ToolchainAllowlistPath ' + (ConvertTo-RolloutPowerShellLiteral $ToolchainAllowlistPath),
+    '-GitExecutable ' + (ConvertTo-RolloutPowerShellLiteral $GitExecutable),
+    '-PythonExecutable ' + (ConvertTo-RolloutPowerShellLiteral $PythonExecutable),
+    '-PlatformioExecutable ' + (ConvertTo-RolloutPowerShellLiteral $PlatformioExecutable),
+    '-LegacyCoreDir ' + (ConvertTo-RolloutPowerShellLiteral $LegacyCoreDir),
+    '-ReleaseCoreDir ' + (ConvertTo-RolloutPowerShellLiteral $ReleaseCoreDir)
+  ) -join ' '
+  return '& ' + (ConvertTo-RolloutPowerShellLiteral $scriptPath) + ' ' +
+    $Arguments + ' ' + $toolchainCommandArguments
+}
 
 function Join-ResolvedPath {
   param(
@@ -317,7 +347,8 @@ function Get-RolloutNextAction {
     return [ordered]@{
       owner = "package"
       action = "Regenerate or verify the release package so release_manifest.json matches the expected commit."
-      command = ".\tools\package_release.cmd -Version $ReleaseVersion"
+      command = New-RolloutTrustedSourceCommand -ScriptName 'package_release.ps1' `
+        -Arguments ('-Version ' + (ConvertTo-RolloutPowerShellLiteral $ReleaseVersion))
       reason = [string]$manifestGate.evidence
     }
   }
@@ -348,7 +379,12 @@ function Get-RolloutNextAction {
     return [ordered]@{
       owner = "hardware"
       action = "Create or refresh the hardware evidence packet and run its progress check."
-      command = ".\tools\start_hardware_evidence.cmd -ReleaseTag $ReleaseVersion -PackageZip output\release\stackchan_alive_$ReleaseVersion.zip -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
+      command = New-RolloutTrustedSourceCommand -ScriptName 'start_hardware_evidence.ps1' `
+        -Arguments ((
+          '-ReleaseTag {0} -PackageZip {1} -ExpectedCommit {2} -Port COM3 -Operator ''Your Name'' -DeviceId STACKCHAN-001' -f
+          (ConvertTo-RolloutPowerShellLiteral $ReleaseVersion),
+          (ConvertTo-RolloutPowerShellLiteral (Join-Path $repoRoot "output/release/stackchan_alive_$ReleaseVersion.zip")),
+          (ConvertTo-RolloutPowerShellLiteral $ExpectedCommit)))
       reason = [string]$progressGate.evidence
     }
   }
@@ -416,7 +452,12 @@ function Get-RolloutNextAction {
   return [ordered]@{
     owner = "release"
     action = "Run the consumer promotion verifier."
-    command = ".\tools\verify_consumer_promotion.cmd -Version $ReleaseVersion -PackageZip <path-to-release-zip> -EvidenceRoot <path-to-hardware-evidence> -CompanionV1EvidenceRoot output\companion-v1-evidence\latest"
+    command = New-RolloutTrustedSourceCommand -ScriptName 'verify_consumer_promotion.ps1' `
+      -Arguments ((
+        '-Version {0} -PackageZip ''<path-to-release-zip>'' -EvidenceRoot ''<path-to-hardware-evidence>'' -CompanionV1EvidenceRoot {1} -ExpectedCommit {2}' -f
+        (ConvertTo-RolloutPowerShellLiteral $ReleaseVersion),
+        (ConvertTo-RolloutPowerShellLiteral (Join-Path $repoRoot 'output/companion-v1-evidence/latest')),
+        (ConvertTo-RolloutPowerShellLiteral $ExpectedCommit)))
     reason = "All rollout component gates are passing; the aggregate Companion v1 packet remains mandatory for terminal promotion."
   }
 }
@@ -440,7 +481,13 @@ try {
     (Join-Path $PSScriptRoot "verify_release_package.ps1"),
     "-Version", $Version,
     "-ExpectedCommit", $ExpectedCommit,
-    "-RequireReleaseEligible"
+    "-RequireReleaseEligible",
+    "-ToolchainAllowlistPath", $ToolchainAllowlistPath,
+    "-GitExecutable", $GitExecutable,
+    "-PythonExecutable", $PythonExecutable,
+    "-PlatformioExecutable", $PlatformioExecutable,
+    "-LegacyCoreDir", $LegacyCoreDir,
+    "-ReleaseCoreDir", $ReleaseCoreDir
   )
   if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     if (-not (Test-Path -LiteralPath $PackageZip)) {

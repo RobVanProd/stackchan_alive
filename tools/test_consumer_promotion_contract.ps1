@@ -28,7 +28,9 @@ foreach ($fragment in $required) {
 }
 
 $identityBindings = @(
-  '& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage -Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit -RequireReleaseEligible',
+  '-RequireReleaseEligible -ToolchainAllowlistPath $ToolchainAllowlistPath',
+  '-GitExecutable $GitExecutable -PythonExecutable $PythonExecutable',
+  '-LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir',
   '$cameraEvidence = Assert-CameraFollowReady $CameraFollowSummaryPath $ExpectedFirmwareSourceCommit',
   '$bodyEvidence = Assert-BodySensorReady $BodySensorReportPath $ExpectedFirmwareSourceCommit',
   '$soakEvidence = Assert-FinalSoakReady $FullSystemSoakSummaryPath $ExpectedFirmwareSourceCommit $MinFinalSoakDurationSeconds',
@@ -48,19 +50,19 @@ $packageVerifierSource = Get-Content -LiteralPath (Join-Path $RepoRoot "tools\ve
 $actionsExporterSource = Get-Content -LiteralPath (Join-Path $RepoRoot "tools\export_github_actions_status.ps1") -Raw
 
 foreach ($fragment in @(
-    'Release-grade packaging is fail-closed before Git or build-tool execution.',
-    'Diagnostic packaging remains',
-    'available only with -SkipBuild -AllowDirty; it is never release eligible.',
+    'Assert-StackchanReleaseToolchainIdentity',
+    'pre-Git byte authority mismatch',
+    'release_toolchain_identity_allowlist.json',
     'if ($SkipBuild -and -not $AllowDirty) {',
     'if ($AllowDirty -and -not $SkipBuild) {',
     'if ($SkipBuild -and $ObserveCandidateActions) {',
     '"diagnostic-only; reproducibility not proven; release and hardware validation forbidden"',
     '"test-ready prerelease; hardware validation pending"',
     'diagnosticPackage = [bool]$SkipBuild',
-    'releaseEligible = (-not $SkipBuild)',
-    'hardwareValidationEligible = (-not $SkipBuild)',
-    'distributionEligible = (-not $SkipBuild)',
-    'flashEligible = (-not $SkipBuild)',
+    'releaseEligible = ($releaseToolchainEligible -and (-not $SkipBuild))',
+    'hardwareValidationEligible = ($releaseToolchainEligible -and (-not $SkipBuild))',
+    'distributionEligible = ($releaseToolchainEligible -and (-not $SkipBuild))',
+    'flashEligible = ($releaseToolchainEligible -and (-not $SkipBuild))',
     'status = if ($SkipBuild) { "diagnostic-only-unqualified" } else { "test-ready-prerelease" }',
     'consumerRollout = if ($SkipBuild) { "forbidden-diagnostic-package" } else { "blocked-pending-hardware-validation" }',
     'releaseClass = if ($SkipBuild) { "diagnostic-only-unqualified" } else { "test-ready-prerelease" }',
@@ -77,7 +79,8 @@ foreach ($fragment in @(
     '-ExpectedCommit $ExpectedCommit -RequireReleaseEligible',
     'Operational release ZIP verification failed before consumer-promotion extraction.',
     'Expand-StackchanReleaseZipSafely',
-    '-PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit -RequireReleaseEligible'
+    '-PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit',
+    '-RequireReleaseEligible -ToolchainAllowlistPath $ToolchainAllowlistPath'
   )) {
   if (-not $source.Contains($fragment)) {
     throw "Consumer promotion release-eligibility boundary missing fragment: $fragment"
@@ -85,7 +88,7 @@ foreach ($fragment in @(
 }
 
 $packageFailClosedGuardIndex = $packageSource.IndexOf('if (-not $SkipBuild) {')
-$packageFailClosedMessageIndex = $packageSource.IndexOf('Release-grade packaging is fail-closed before Git or build-tool execution.')
+$packageFailClosedMessageIndex = $packageSource.IndexOf('Assert-StackchanReleaseToolchainIdentity')
 $packageFirstGitResolutionIndex = $packageSource.IndexOf('$releaseBootstrapGitCommand = Get-Command -Name git')
 if ($packageFailClosedGuardIndex -lt 0 -or
     $packageFailClosedMessageIndex -lt $packageFailClosedGuardIndex -or
@@ -95,8 +98,8 @@ if ($packageFailClosedGuardIndex -lt 0 -or
 
 foreach ($fragment in @(
     '[switch]$RequireReleaseEligible',
-    'Release-eligible verification is fail-closed before Git or build-tool execution.',
-    'verification remains available without -RequireReleaseEligible and cannot establish eligibility.',
+    'Assert-StackchanReleaseToolchainIdentity',
+    'Release verifier pre-Git byte authority mismatch:',
     'Operational release verification refuses diagnostic packages.',
     '$manifest.releaseEligible -ne $false',
     '$manifest.hardwareValidationEligible -ne $false',
@@ -114,12 +117,12 @@ foreach ($fragment in @(
 }
 
 $verifierFailClosedGuardIndex = $packageVerifierSource.IndexOf('if ($RequireReleaseEligible) {')
-$verifierFailClosedMessageIndex = $packageVerifierSource.IndexOf('Release-eligible verification is fail-closed before Git or build-tool execution.')
-$verifierAmbientProcessingIndex = $packageVerifierSource.IndexOf('$ambientGitOverrides = @(')
+$verifierFailClosedMessageIndex = $packageVerifierSource.IndexOf('Assert-StackchanReleaseToolchainIdentity')
+$verifierAmbientProcessingIndex = $packageVerifierSource.IndexOf('$trustedGitDisabledHooksPath = Join-Path')
 if ($verifierFailClosedGuardIndex -lt 0 -or
     $verifierFailClosedMessageIndex -lt $verifierFailClosedGuardIndex -or
     $verifierAmbientProcessingIndex -lt $verifierFailClosedMessageIndex) {
-  throw "Release package verifier fail-closed guard must precede ambient, Git, tool, and package processing."
+  throw "Release package verifier identity guard must precede trusted Git, tool, and package processing."
 }
 
 foreach ($fragment in @(
@@ -136,7 +139,7 @@ foreach ($fragment in @(
 $zipEligibilityVerifyIndex = $source.IndexOf('-ExpectedCommit $ExpectedCommit -RequireReleaseEligible')
 $zipVerificationFailureIndex = $source.IndexOf('Operational release ZIP verification failed before consumer-promotion extraction.')
 $safeExtractionIndex = $source.IndexOf('Expand-StackchanReleaseZipSafely')
-$rootEligibilityVerifyIndex = $source.IndexOf('& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage -Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit -RequireReleaseEligible')
+$rootEligibilityVerifyIndex = $source.IndexOf('-Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit')
 $firstEvidenceCheckIndex = $source.IndexOf('if ([string]::IsNullOrWhiteSpace($EvidenceRoot))')
 if ($zipEligibilityVerifyIndex -lt 0 -or
     $zipVerificationFailureIndex -lt $zipEligibilityVerifyIndex -or

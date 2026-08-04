@@ -6,26 +6,28 @@ Status timestamp: 2026-08-03 America/New_York
 
 The clean `SEC-002` package built from `4d31de41` is preserved as source/package evidence only.
 Its public `full_online` image is SHA-256
-`4256F2E5B4D81E3615D1F074737E867E86925B6737A4F38A4EF158C2B31055` and its effective build
+`4256F2E5F4A5567361A97796CFC2A81E7DE24EC7F2202FCFB7C9C4CFC1B31055` and its effective build
 configuration requests motion and autonomous motion at boot. It must not be installed for the
 planned exact-image no-motion qualification. This corrects the package's former role without
 rewriting its historical hash or claiming that it was deployed.
 
 The replacement source profile inherits motion-off-at-boot, explicitly keeps autonomous refresh
-off, and is committed as `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. The later M0 governance
-worktree can create and verify diagnostic-only packages, but release-grade packaging and
-`RequireReleaseEligible` verification intentionally fail closed because no reviewed exact
-toolchain allowlist exists. No clean reproducible replacement package, installation, physical
-qualification, or soak exists yet. The release package/flasher source now carries a per-environment
+off, and is committed as `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. OTA selector authority and
+publication locking are committed through `e52826a4a130f00718e20e71e5aea0f1cbc050ff`. A reviewed
+24-component exact-host toolchain allowlist now exists in the current M0 worktree; independent
+recomputation matched every component and clean B/C canonical libdeps for all three release
+environments. The packager/verifier integration and broad reproducibility contracts pass, but
+this integration is not yet a clean committed release input and no governed replacement package,
+installation, physical qualification, or soak exists yet. The release package/flasher source carries a per-environment
 `boot_app0.bin` bound to reviewed framework versions, exact 8,192-byte size, and SHA-256, and writes
 it at `0xE000` between the partition table and application. The flasher uses a second-verified,
 read-locked private ZIP snapshot and hashes locked payload streams against that snapshot before
 esptool. Publication holds staged assets read-locked through upload and downloads the standalone
 firmware assets for remote hash verification. A diagnostic-only v13 rehearsal verified those
 contracts, but it is not a flash or qualification input.
-Hold all flashing and physical promotion until reproducible-build and toolchain-trust closure, a
-reviewed rollback path, exact clean package verification, and a fresh passive no-motion preflight
-are complete.
+Hold all flashing and physical promotion until this toolchain integration is committed, the exact
+clean governed package passes its own two-cycle build and independent rebuild, a reviewed rollback
+path exists, and a fresh passive no-motion preflight is complete.
 
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256

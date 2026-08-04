@@ -328,32 +328,37 @@ Designing a face is a YAML edit plus a re-render; see
 
 ## Release And Evidence Flow
 
+Run every release-authorizing command below from the exact clean trusted source checkout. Define
+the six-value `$releaseToolchain` splat in `docs/RELEASE_PROCESS.md`; a downloaded or extracted
+archive does not confer release authority.
+
 Create a verified prerelease package:
 
 ```powershell
-.\tools\package_release.cmd -Version <version>
-.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -RequireReleaseEligible
+# Define the six reviewed authority values shown in docs/RELEASE_PROCESS.md first.
+.\tools\package_release.ps1 -Version <version> @releaseToolchain
+.\tools\verify_release_package.ps1 -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -RequireReleaseEligible @releaseToolchain
 ```
 
 Share the package locally or through a tunnel:
 
 ```powershell
-.\tools\share_release.cmd -Version <version> -OpenLocal
-.\tools\share_release.cmd -Version <version> -Lan
-.\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
+.\tools\share_release.ps1 -Version <version> -OpenLocal @releaseToolchain
+.\tools\share_release.ps1 -Version <version> -Lan @releaseToolchain
+.\tools\share_release.ps1 -Version <version> -CloudflareTunnel -DownloadCloudflared @releaseToolchain
 ```
 
 Publish a verified prerelease manually when hosted Actions cannot run:
 
 ```powershell
-.\tools\publish_release.cmd -Version <version> -Repo RobVanProd/stackchan_alive -CreateTag -PushCurrentBranch -PushTag
-.\tools\audit_published_release.cmd -Version <version>
+.\tools\publish_release.ps1 -Version <version> -Repo RobVanProd/stackchan_alive -CreateTag -PushCurrentBranch -PushTag @releaseToolchain
+.\tools\audit_published_release.ps1 -Version <version> @releaseToolchain
 ```
 
 Start a hardware evidence packet when the device is connected:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\start_hardware_evidence.ps1 -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
 Evidence packets include `RUN_HARDWARE_SIM_BASELINE.cmd` for the pre-arrival virtual
@@ -364,7 +369,7 @@ Verify completed evidence before promotion:
 
 ```powershell
 .\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
-.\tools\verify_consumer_promotion.cmd `
+.\tools\verify_consumer_promotion.ps1 `
   -Version <version> `
   -PackageZip output\release\stackchan_alive_<version>.zip `
   -EvidenceRoot output\hardware-evidence\<packet-folder> `
@@ -373,7 +378,8 @@ Verify completed evidence before promotion:
   -CameraFollowSummaryPath <camera-summary.json> `
   -BodySensorReportPath <body-sensor-report.json> `
   -FullSystemSoakSummaryPath <full-soak-summary.json> `
-  -MinFinalSoakDurationSeconds 28800
+  -MinFinalSoakDurationSeconds 28800 `
+  @releaseToolchain
 ```
 
 The release commit and tested firmware source commit are normally identical. Keep them separate

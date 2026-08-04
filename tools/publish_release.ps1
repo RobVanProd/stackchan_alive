@@ -6,7 +6,13 @@ param(
   [switch]$PushCurrentBranch,
   [switch]$AllowExistingRelease,
   [switch]$AllowDirtyPackage,
-  [switch]$DryRun
+  [switch]$DryRun,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -328,6 +334,12 @@ function Invoke-OperationalPackageVerification {
     ZipPath = $ZipPath
     ExpectedCommit = $ExpectedCommit
     RequireReleaseEligible = $true
+    ToolchainAllowlistPath = $ToolchainAllowlistPath
+    GitExecutable = $GitExecutable
+    PythonExecutable = $PythonExecutable
+    PlatformioExecutable = $PlatformioExecutable
+    LegacyCoreDir = $LegacyCoreDir
+    ReleaseCoreDir = $ReleaseCoreDir
   }
   if ($AllowDirtyPackage) {
     $arguments.AllowDirtyPackage = $true
@@ -729,6 +741,12 @@ try {
       ZipPath = $publishedZipPath
       ZipSidecarPath = $publishedZipSidecarPath
       ExpectedCommit = $tagCommit
+      ToolchainAllowlistPath = $ToolchainAllowlistPath
+      GitExecutable = $GitExecutable
+      PythonExecutable = $PythonExecutable
+      PlatformioExecutable = $PlatformioExecutable
+      LegacyCoreDir = $LegacyCoreDir
+      ReleaseCoreDir = $ReleaseCoreDir
     }
     & (Join-Path $PSScriptRoot "verify_published_release.ps1") @publishedVerifyArgs
 
@@ -739,6 +757,12 @@ try {
       -ZipPath $publishedZipPath `
       -ZipSidecarPath $publishedZipSidecarPath `
       -ExpectedCommit $tagCommit `
+      -ToolchainAllowlistPath $ToolchainAllowlistPath `
+      -GitExecutable $GitExecutable `
+      -PythonExecutable $PythonExecutable `
+      -PlatformioExecutable $PlatformioExecutable `
+      -LegacyCoreDir $LegacyCoreDir `
+      -ReleaseCoreDir $ReleaseCoreDir `
       -UploadToRelease
 
     Write-Host "Release published and verified:"

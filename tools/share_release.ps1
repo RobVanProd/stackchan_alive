@@ -11,7 +11,13 @@ param(
   [int]$PublicUrlReadyPollSeconds = 2,
   [switch]$StopAfterUrl,
   [switch]$OpenLocal,
-  [switch]$NoServe
+  [switch]$NoServe,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -145,6 +151,12 @@ function Invoke-OperationalPackageVerification {
     -Version $Version `
     -ZipPath $ZipPath `
     -ExpectedCommit $ExpectedCommit `
+    -ToolchainAllowlistPath $ToolchainAllowlistPath `
+    -GitExecutable $GitExecutable `
+    -PythonExecutable $PythonExecutable `
+    -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir `
+    -ReleaseCoreDir $ReleaseCoreDir `
     -RequireReleaseEligible
   if ($LASTEXITCODE -ne 0) {
     throw "Operational release package verification failed with exit code $LASTEXITCODE."
@@ -1047,9 +1059,9 @@ $rolloutStatus = if (Test-Path -LiteralPath $rolloutStatusPath) {
   [pscustomobject]@{
     status = "blocked-or-pending"
     nextOwner = "hardware"
-    nextAction = "Create the arrival-day evidence packet and run the progress check."
-    nextCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
-    nextReason = "ROLLOUT_STATUS.json was not available in this share."
+    nextAction = "Return to the exact clean trusted source checkout, define its six exact-host authority values, and create the arrival-day evidence packet there."
+    nextCommand = $null
+    nextReason = "ROLLOUT_STATUS.json was not available in this share, and a shared archive does not confer release authority."
   }
 }
 $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -1059,6 +1071,11 @@ $consumerRollout = [string]$readiness.consumerRollout
 $rolloutNextOwner = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextOwner)
 $rolloutNextAction = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextAction)
 $rolloutNextCommand = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextCommand)
+$rolloutNextCommandHtml = if ([string]::IsNullOrWhiteSpace([string]$rolloutStatus.nextCommand)) {
+  '<em>No command is emitted by the shared archive. Return to the exact trusted source checkout.</em>'
+} else {
+  "<code>$rolloutNextCommand</code>"
+}
 $rolloutNextReason = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextReason)
 $voiceSourceGateStatus = [System.Net.WebUtility]::HtmlEncode([string]$voiceSourceStatus.status)
 $voiceSourceBlockedGateCount = [int]$voiceSourceStatus.blockedGateCount
@@ -1123,7 +1140,7 @@ $promotionGateItems = (@($readiness.hardwareGates) | ForEach-Object {
     <span class="pill pending">Next owner: $rolloutNextOwner</span>
   </div>
   <p><strong>Action:</strong> $rolloutNextAction</p>
-  <p><strong>Command:</strong> <code>$rolloutNextCommand</code></p>
+  <p><strong>Command:</strong> $rolloutNextCommandHtml</p>
   <p><strong>Reason:</strong> $rolloutNextReason</p>
   <p>Rollout status is intentionally not generated into this release share. Run the packaged arrival-day evidence command separately so mutable hardware state cannot be mistaken for verified release content.</p>
 
@@ -1306,9 +1323,8 @@ $preflightDownloadItems
 
   <h2>Device Arrival Quickstart</h2>
   <p>Bench operator runbook: <a href="ARRIVAL_DAY_RUNBOOK.md">ARRIVAL_DAY_RUNBOOK.md</a></p>
-  <p>After downloading and extracting the release ZIP, run this from inside the extracted folder:</p>
-  <pre><code>.\tools\prepare_device_arrival.cmd -Port COM3 -Operator &quot;Your Name&quot; -DeviceId STACKCHAN-001</code></pre>
-  <p>This verifies the package, dry-runs the display-only flash command, and creates a hardware evidence packet with runnable <code>RUN_*.cmd</code> files.</p>
+  <p>This page and the downloaded archive do not confer release authority. Return to the exact clean trusted source checkout, define the six-value <code>releaseToolchain</code> splat from <code>docs/RELEASE_PROCESS.md</code>, and pass the downloaded ZIP to the source-side <code>tools/prepare_device_arrival.ps1</code>.</p>
+  <p>The trusted source-side flow independently verifies the package, dry-runs the display-only flash command, and creates a hardware evidence packet with authority-bound <code>RUN_*.cmd</code> files.</p>
   <h3>Arrival-Day Evidence Loop</h3>
   <ol>
     <li>Run <code>RUN_DISPLAY_ONLY.cmd</code> and confirm the face appears with dry-run servo logs.</li>

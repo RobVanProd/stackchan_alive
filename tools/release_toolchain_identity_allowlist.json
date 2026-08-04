@@ -1,0 +1,215 @@
+{
+    "schema":  "stackchan.release-toolchain-identity.v3",
+    "platformKey":  "windows_amd64",
+    "platformioCoreVersion":  "6.1.19",
+    "pythonVersion":  "3.12.10",
+    "identityScope":  "exact-host-installed-bytes",
+    "portableAcrossHosts":  false,
+    "canonicalLibdepsSchema":  "stackchan.canonical-libdeps.v1",
+    "platformioExecutableRelativePaths":  [
+                                              "Scripts/pio.exe",
+                                              "Scripts/platformio.exe"
+                                          ],
+    "pythonExecutableRelativePath":  "python.exe",
+    "gitExecutableRelativePath":  "cmd/git.exe",
+    "generatedUtc":  "2026-08-03T23:41:23Z",
+    "review":  {
+                   "status":  "reviewed",
+                   "reviewer":  "Luna independent pioarduino byte/provenance audit, Luna lifetime-cache/TOCTOU review, and Luna adversarial watcher-forensics review; Codex integration",
+                   "reason":  "Independently recomputed the 21 unchanged windows_amd64 exact-host components and reviewed three intentional deltas: the sealed pioarduino release-core penv, the converged pioarduino espressif32 platform bytes, and the policy source that adds process-lifetime leases, namespace watchers, guarded PreBuild caching, fail-fast cache revalidation, exact-once state-wide watcher drains, bounded post-disable/post-unregister quiescence, and cumulative chronological evidence. Adversarial review reproduced and closed duplicate-drain, cross-root ordering, late-after-snapshot cleanup, post-unregister delivery, and cross-batch chronology defects while retaining fail-closed anomaly behavior. Clean canonical dependencies for all three firmware environments remain explicitly bound. The original pioarduino source byte is retained only in ignored private recovery evidence and has no release authority. This review promotes only these exact allowlist bytes; it does not prove the retained runtime guard, establish release eligibility, authorize publication, or authorize physical qualification."
+               },
+    "components":  [
+                       {
+                           "name":  "python-installation",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "14B55DD417A755CCD8F2B479172A62C6FB3687F1DE28BA5EDE6BCEFED177632E",
+                           "fileCount":  20270,
+                           "bytes":  452204560
+                       },
+                       {
+                           "name":  "git-installation",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "19744036AC9232C7862F333A048ECD2BDAD2B398207EFFEEF09B949D7D45989B",
+                           "fileCount":  9514,
+                           "bytes":  425255243
+                       },
+                       {
+                           "name":  "release-toolchain-identity-policy-source",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "5895FA33E7FFE2E848C86B9FC5DA2A77933D45B423079796EF7C643D45B8CB22",
+                           "fileCount":  1,
+                           "bytes":  88173
+                       },
+                       {
+                           "name":  "git-pack-semantic-verifier-source",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "395CB65FCEA32F6AE9DE2D885694C17265469B974F00A58D87B11FE98601BF2D",
+                           "fileCount":  1,
+                           "bytes":  19626
+                       },
+                       {
+                           "name":  "legacy-core-penv",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "98F54162C98C39418B1D258A44EB0FA9B7E329C7C053A3A1868D8CCA1A268356",
+                           "fileCount":  3145,
+                           "bytes":  123351444
+                       },
+                       {
+                           "name":  "legacy-platform-espressif32-7.0.1",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "C13A988ED2BE7E3D428C50348FB9ED1550777C6474F3EB8814F25FABA3974109",
+                           "fileCount":  463,
+                           "bytes":  664040
+                       },
+                       {
+                           "name":  "legacy-package-framework-arduinoespressif32",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "A3FAE56BF9562BA54D2413267F226BE2A18A150B95AADAB6E047A936A36E8116",
+                           "fileCount":  10059,
+                           "bytes":  771573491
+                       },
+                       {
+                           "name":  "legacy-package-toolchain-riscv32-esp",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "AE0936B79C65BD2E8F1C74BC02BEA4947F14CBB79B8DB74D618472B7E0020AEC",
+                           "fileCount":  1627,
+                           "bytes":  952252150
+                       },
+                       {
+                           "name":  "legacy-package-toolchain-xtensa-esp32s3",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "647D4B2A87DB26C44CBD5855362028AEDAA0B37B4924DE458A15C58AD83C9CAA",
+                           "fileCount":  1328,
+                           "bytes":  274397176
+                       },
+                       {
+                           "name":  "legacy-package-tool-esptoolpy",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "45A9A5A96AB117BC0057AD5D643C51F79A6935E27CBE5B635FBFCFF54551EDE1",
+                           "fileCount":  227,
+                           "bytes":  2647183
+                       },
+                       {
+                           "name":  "legacy-package-tool-mkfatfs",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "F99847572137BCF7123529EEF83A6D4A8C66BE25C43EE8C5C9655CDE1F649918",
+                           "fileCount":  6,
+                           "bytes":  3519100
+                       },
+                       {
+                           "name":  "legacy-package-tool-mklittlefs",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "E6F2DE1E27AB57AF39AE66E60623DFCC1E2AC1A5381CDC75112386CB0A56FC10",
+                           "fileCount":  3,
+                           "bytes":  984066
+                       },
+                       {
+                           "name":  "legacy-package-tool-mkspiffs",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "44B48B20C63E9C093DC1455B1984D5C39296B76E7FED88E6692BD6523C19E318",
+                           "fileCount":  5,
+                           "bytes":  2019304
+                       },
+                       {
+                           "name":  "release-core-penv",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "A1E366961C1410F32DD31102F37725B500FF0F3FB8E9604A4BA34715FBC08C84",
+                           "fileCount":  3154,
+                           "bytes":  124599325
+                       },
+                       {
+                           "name":  "release-platform-espressif32",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "B524A0DA5B8CF1CB88D82E808584FD6200CB090E41DFB7F6B60405DC119EF401",
+                           "fileCount":  616,
+                           "bytes":  22522049
+                       },
+                       {
+                           "name":  "release-package-contrib-piohome",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "4B41344B3E7A320EE72965186F9436757AC69B43C547934DE3164AB1F3F82D10",
+                           "fileCount":  13,
+                           "bytes":  3358744
+                       },
+                       {
+                           "name":  "release-package-framework-arduinoespressif32",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "81C11DB32DC9A653FF14EE8811394F6DF0410FF85189F2056E8AE02B69268ECA",
+                           "fileCount":  1855,
+                           "bytes":  50764476
+                       },
+                       {
+                           "name":  "release-package-framework-arduinoespressif32-libs",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "4C86469E19BD779918E4AF25EAE2A9393A018729492686F3A1A428EBBF08F075",
+                           "fileCount":  33418,
+                           "bytes":  1879561242
+                       },
+                       {
+                           "name":  "release-package-toolchain-xtensa-esp-elf",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "1E2130613E26E8C5F1B4D87E040130C9ACE76856D8710C7A95DB4235F92863D2",
+                           "fileCount":  2056,
+                           "bytes":  1321027144
+                       },
+                       {
+                           "name":  "release-package-tool-esptoolpy",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "9A35EA4E986A5DE6FDD8878EA4C35CFD89BBE0FECDF6CAAEC7C40EF8C9BC445E",
+                           "fileCount":  189,
+                           "bytes":  2262196
+                       },
+                       {
+                           "name":  "release-package-tool-scons",
+                           "phase":  "preBuild",
+                           "identitySchema":  "stackchan.byte-tree.v1",
+                           "treeSha256":  "5B4E535525647CDBF78B9E22D8344D713C751DFE6F2F2929B888D1D45F4E5028",
+                           "fileCount":  287,
+                           "bytes":  3396185
+                       },
+                       {
+                           "name":  "project-libdeps-stackchan",
+                           "phase":  "postBuild",
+                           "identitySchema":  "stackchan.canonical-libdeps.v1",
+                           "treeSha256":  "79C18DC5078CAB8A35CCB4DAD385FDCB2BFB11126C778975F74C8F4B7096279B",
+                           "fileCount":  1516,
+                           "bytes":  322711060
+                       },
+                       {
+                           "name":  "project-libdeps-stackchan_servo_calibration",
+                           "phase":  "postBuild",
+                           "identitySchema":  "stackchan.canonical-libdeps.v1",
+                           "treeSha256":  "79C18DC5078CAB8A35CCB4DAD385FDCB2BFB11126C778975F74C8F4B7096279B",
+                           "fileCount":  1516,
+                           "bytes":  322711060
+                       },
+                       {
+                           "name":  "project-libdeps-stackchan_release_full",
+                           "phase":  "postBuild",
+                           "identitySchema":  "stackchan.canonical-libdeps.v1",
+                           "treeSha256":  "74B343038114CC2E90927E1C641B14D47806EA0759BF0FED711235B61C705273",
+                           "fileCount":  1146,
+                           "bytes":  318248745
+                       }
+                   ]
+}

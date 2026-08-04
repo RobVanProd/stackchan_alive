@@ -19,14 +19,13 @@ Qualification audit found that the preserved `4d31de41` public full image
 autonomous refresh at boot. That package remains immutable historical evidence and is superseded
 for physical qualification. The selected correction keeps the public full profile motion-off at
 boot and explicitly disables autonomous boot refresh; it is committed as
-`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. Release-governance changes through `3bf07730` are
-committed and published on draft PR #220. Diagnostic packaging is available, but release-grade
-packaging and release-eligible verification currently fail closed because no reviewed exact
-toolchain allowlist exists. The current uncommitted selector-authority slice binds per-environment
-`boot_app0.bin` bytes to reviewed framework identity/size/SHA-256, closes flash and publication
-reopen races, and writes the selector at `0xE000`; its diagnostic v13 rehearsal passed. The clean
-reproducible replacement image, rollback proof, and
-physical qualification are still pending.
+`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. Release-governance and OTA-selector authority are
+committed through `e52826a4a130f00718e20e71e5aea0f1cbc050ff` and published on draft PR #220.
+The current worktree adds a Luna-reviewed 24-component exact-host toolchain allowlist, independent
+Git-pack semantic decoding, pre/post-build identity records, independent rebuild enforcement, and
+authority propagation through operational callers. The policy, semantic, adversarial verifier,
+caller-integration, and broad reproducibility contracts pass. This dirty worktree is not a release
+input: the clean governed package, rollback proof, and physical qualification are still pending.
 
 Fresh bounded `/debug` evidence now shows the live runtime request, autonomous state, motion, servo
 rail, torque, and both power authorities off. Firmware self-reports confirmed `app0` and expected
@@ -47,10 +46,10 @@ dimensional projection behind controlled-source final-actuator and physical-safe
 
 - Repository: `RobVanProd/stackchan_alive`
 - Working branch: `codex/aliveness-repository-truth`
-- Current committed release-governance head: `3bf07730960cbbcfd502c0157434abb157ee1cc8`
-  (`ci: isolate compiler normalization probe`), including the firmware source correction at
+- Current committed release-governance head: `e52826a4a130f00718e20e71e5aea0f1cbc050ff`
+  (`fix: bind OTA selector release authority`), including the firmware source correction at
   `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`.
-- Current worktree: dirty only for the OTA-selector-authority/install/publication slice and completed evidence
+- Current worktree: dirty for the reviewed toolchain/semantic-verifier integration and evidence
   reconciliation; it must not be described as a clean package or installed image until committed.
 - HTTP-containment contract-scope maintenance commit (test file only):
   `aa7dfb9ca077704dca84bc5635fbb2142e13e47c`
@@ -75,15 +74,14 @@ switched because live services use that checkout. Milestone 0 work uses the isol
 
 Selected experiment: `M0-004`, exact-source reproducible firmware and release-command governance.
 
-- **Observed behavior:** The boot-motion prerequisite and release-governance slice are committed
-  through `3bf07730`; the current dirty slice is limited to selector-authority packaging/install,
-  publication integrity, and state reconciliation. Diagnostic v13 is explicitly dirty,
+- **Observed behavior:** The boot-motion prerequisite, release-governance, and selector-authority
+  slice are committed through `e52826a4`. Diagnostic v13 is explicitly dirty,
   diagnostic-only, non-release-eligible,
   non-flashable, and does not prove firmware reproducibility. It contains three exact 8,192-byte
-  selectors and the operational flasher rejects it before flash preparation. No tracked
-  reviewed toolchain allowlist exists. Fresh canonical dependency evidence covers only the
-  `stackchan` environment, and the current Git/runtime and packed-object semantics are not fully
-  byte-authorized.
+  selectors and the operational flasher rejects it before flash preparation. The tracked reviewed
+  allowlist covers 24 exact-host components. Independent B/C evidence matches all three canonical
+  libdeps identities, and the reviewed semantic verifier decodes and validates Git pack/index/rev
+  mappings. No clean governed package has run from the final committed source yet.
 - **Primary hypothesis:** Deterministic build inputs, exact source/package binding, safe ZIP
   handling, hardened publication commands, and an independently reviewed executable/toolchain
   allowlist can make a clean three-environment two-cycle package auditable without weakening
@@ -93,12 +91,11 @@ Selected experiment: `M0-004`, exact-source reproducible firmware and release-co
   differ; a diagnostic package is accepted for release, flash, or hardware qualification; a hostile
   ZIP escapes or bypasses inventories; or publication mutates remote state before exact repository,
   commit, tag, asset, and package verification.
-- **Current decision:** Keep release-grade packaging and release-eligible verification fail closed
-  before Git or build-tool execution. Preserve diagnostic packaging only for verifier development.
-  Do not create or promote an allowlist from the same untrusted host evidence. PostBuild and
-  candidate generation remain disabled until all three environments and the remaining Git/runtime
-  semantics have independent authority.
-- **Frozen baseline:** Committed source/governance head `3bf07730`, the contained production bridge,
+- **Current decision:** Commit and review the completed toolchain-integration slice, then run the
+  governed package only from that exact clean commit with all six explicit authorities. Preserve
+  diagnostic packages as non-authorizing verifier fixtures. Do not flash until the exact package,
+  rollback, passive P1, and supervised stop gates pass.
+- **Frozen baseline:** Committed source/governance head `e52826a4`, the contained production bridge,
   installed firmware with only self-reported expected SHA `69d3db27...8ebfa8`, the verified private backup, voice/vision/model workers, OTA and
   camera authorization, automatic recovery, the 50 ms face gate, actuator ownership, and all
   physical evidence.
@@ -542,11 +539,10 @@ qualifies the installed firmware or authorizes a service restart.
   packaging and `RequireReleaseEligible` refuse before unauthenticated tools; diagnostic packages
   cannot authorize release, flashing, distribution, or hardware qualification; managed ZIP,
   pinned system commands, disabled Git/LFS hooks/filters, and hostile shim tests remain intact.
-- Independent toolchain review passes the PreBuild analysis after adding full Python-installation
-  hashing, exact import isolation including `PYTHONOPTIMIZE`, canonical source/build-byte binding,
-  and source/HEAD/ref/commit mutation tests. No tracked reviewed allowlist exists. PostBuild and
-  candidate generation remain disabled because fresh evidence does not cover all three packaged
-  environments and Git/runtime pack semantics are not yet independently byte-authorized.
+- Independent toolchain review recomputed all 24 tracked allowlist components and matched clean
+  B/C libdeps identities for all three packaged environments. The source-bound semantic verifier
+  fully decodes the reviewed Git pack formats; PreBuild and environment-filtered pre/post-build
+  assertions, caller propagation, and adversarial checkout-gate contracts pass.
 - Current regressions pass: native firmware logic 294/294, bridge 567/567, trusted-facts smoke with
   zero model invocations and zero audio, and the full-system-soak/current-lead/archive synthetic
   evidence contracts. These are source/contract results, not current hardware qualification.

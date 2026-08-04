@@ -13,6 +13,15 @@ component, so `python312.zip`, `DLLs`, `Lib`, every site-package, `python.exe`, 
 `Scripts` are bound together. Both PlatformIO core `penv` trees, platforms, frameworks, compiler
 packages, and tools are also hashed.
 
+The reviewed pioarduino core is sealed before allowlist review with
+`tools/seal_pioarduino_release_core.ps1`. Upstream `penv_setup.py` keyed its pinned core URL as
+`platformio`, while the installed distribution is named `pioarduino-core`; that mismatch caused
+every build to reinstall the same 6.1.18 core and alternately swap `urllib3` 2.7.0/1.26.20. The
+seal recognizes both names while retaining the exact v6.1.18 comparison and URL. It accepts only
+the reviewed original SHA-256, writes and verifies a private original-byte backup, atomically
+installs only the reviewed patched SHA-256, and also validates the backup on already-sealed runs.
+It is a trusted-source provisioning step, not an archive-side authority or a package-time repair.
+
 The Python claim additionally requires an exact process isolation state. The caller must set
 `PYTHONNOUSERSITE=1`, `PYTHONSAFEPATH=1`, `PYTHONDONTWRITEBYTECODE=1`, `PYTHONHASHSEED=0`,
 `PYTHONUTF8=1`, and `PYTHONIOENCODING=utf-8`, and must remove the ambient Python, virtualenv, and
@@ -23,7 +32,7 @@ as both prefix values, and exactly this ordered import path: `python312.zip`, `D
 installation root, and `Lib/site-packages`. Any `.pth`, `.egg-link`, `sitecustomize.py`, or
 `usercustomize.py` anywhere under the installation fails closed before the runtime is started.
 
-The analysis-only post-build `.pio/libdeps` identity uses `stackchan.canonical-libdeps.v1`. Every source, header, build
+The post-build `.pio/libdeps` identity uses `stackchan.canonical-libdeps.v1`. Every source, header, build
 script, hidden executable file, and registry-package byte remains exact. Only five proven
 package-manager/VCS representation classes are canonicalized, each with separate validation:
 
@@ -44,18 +53,28 @@ state remain exact records. The fresh-install shape and exact requirement set ar
 each of the three release environments, so stale libraries or duplicate version directories are
 rejected before candidate generation.
 
-This canonical form is not currently eligible release evidence. The local parser validates pack,
-index, and reverse-index checksums and binds the advertised Git object-ID set, but it does not
-independently decode every packed object/delta to prove that index object-to-offset mappings match
-the pack. Calling an installed `git verify-pack` would move that trust to an executable/runtime not
-yet included in the exact pre-build identity. Fresh reproducibility evidence also exists only for
-`stackchan`, not the other two release environments. Therefore `PostBuild` and candidate generation
-are deliberately disabled and fail closed.
+`verify_git_pack_semantics.py` independently decodes the observed SHA-1 Git pack formats, including
+OFS/REF deltas, and proves object-to-offset, CRC, reverse-index, object-ID, and checksum linkage under
+bounded resource limits. Its own source bytes are a reviewed pre-build component. Clean B/C roots
+independently produced identical canonical libdeps identities for all three release environments.
+Those closures permit reviewed `PostBuild` assertions and candidate generation; they do not by
+themselves establish a reproducible release package or authorize hardware use.
 
 ## Integration API
 
-Dot-source the helper and call the assertion immediately before the first build. `PostBuild` is a
-reserved fail-closed phase until the dependency trust limits below are closed.
+Dot-source the helper and call `PreBuild` before the first trusted Git/build-tool execution. After
+each environment's dependency staging, call its environment-filtered `PostBuild` assertion before
+clean/build, then repeat it after the build. The packager and independent verifier enforce this
+ordering and require the complete record set.
+
+The guarded PreBuild holds read leases for existing bytes, recursive namespace watchers, and a
+namespace baseline until final closure. After the allowlist comparison and isolated Python probe
+succeed, it stores an immutable copy of the observed PreBuild records bound to the exact allowlist
+hash, platform key, four installed roots, and three executable paths. Guarded PostBuild first
+performs a namespace-verified mutation barrier, revalidates every cached record against the current
+leased allowlist, and then hashes only the fresh environment libdeps. It never reuses a cache after
+the PreBuild scope closes, across a different authority binding, or in the PreBuild scope itself.
+This removes repeated multi-gigabyte reads without allowing same-path or create/delete drift.
 
 ```powershell
 . tools/release_toolchain_identity.ps1
@@ -68,23 +87,37 @@ $env:PYTHONIOENCODING = 'utf-8'
 # Also clear every forbidden override named by Assert-StackchanPythonImportIsolation.
 $roots = @{
   pythonHome = 'C:\path\to\Python312'
+  gitHome = 'C:\Program Files\Git'
   legacyCore = 'C:\path\to\.platformio'
   releaseCore = 'C:\spio\pioarduino'
   projectRoot = (Get-Location).Path
+  libdepsRoot = (Join-Path (Get-Location).Path '.pio/libdeps')
 }
+$leaseState = New-StackchanToolchainLeaseState
 Assert-StackchanReleaseToolchainIdentity `
   -AllowlistPath tools/release_toolchain_identity_allowlist.json `
   -RootMap $roots `
   -PlatformioExecutable C:\path\to\Python312\Scripts\platformio.exe `
   -PythonExecutable C:\path\to\Python312\python.exe `
-  -Phase PreBuild
-# Run the governed clean build here. This remains intentionally blocked:
+  -GitExecutable 'C:\Program Files\Git\cmd\git.exe' `
+  -Phase PreBuild `
+  -LeaseState $leaseState `
+  -LeaseScope pre-build
+# Stage dependencies for one environment, authenticate them, then build.
 Assert-StackchanReleaseToolchainIdentity `
   -AllowlistPath tools/release_toolchain_identity_allowlist.json `
   -RootMap $roots `
   -PlatformioExecutable C:\path\to\Python312\Scripts\platformio.exe `
   -PythonExecutable C:\path\to\Python312\python.exe `
-  -Phase PostBuild
+  -GitExecutable 'C:\Program Files\Git\cmd\git.exe' `
+  -Phase PostBuild `
+  -Environment stackchan `
+  -LeaseState $leaseState `
+  -LeaseScope cycle-a
+# Close each detached-worktree dependency scope before removing that worktree.
+Close-StackchanToolchainLeaseScope -LeaseState $leaseState -Scope cycle-a -RequireUnchanged
+# Final success requires the full guarded namespace closure.
+Close-StackchanToolchainLeaseState -LeaseState $leaseState -RequireUnchanged
 ```
 
 The selected PlatformIO and Python executables must resolve to the reviewed Python installation.
@@ -96,43 +129,44 @@ inherit, not a separate `python -I` mode that the package invocation does not us
 
 ## Review/update workflow
 
-`new_release_toolchain_identity_candidate.ps1` writes an unreviewed candidate under
-`output/private/toolchain-identity-candidates/`. It refuses to overwrite the tracked allowlist.
+`new_release_toolchain_identity_candidate.ps1` writes a new, unreviewed, create-only candidate
+under `output/private/toolchain-identity-candidates/`. It refuses output elsewhere and cannot
+overwrite the tracked allowlist.
 Review the exact package sources, every component, the 22 version pins in
 `requirements-firmware-release.txt`, and the candidate diff. Only then may a reviewer set
 `review.status=reviewed` and record non-empty `reviewer` and `reason` fields in a committed
 allowlist. Never promote a candidate merely because it was generated by the same host being
-checked. Candidate generation includes PostBuild and therefore currently refuses every candidate.
-All three environments need independent fresh-install evidence, and Git pack semantics need an
-independently trusted validator, before a new candidate can be reviewed.
+checked. The current tracked policy was promoted only after independent recomputation of all 24
+components, source-byte confirmation, and clean B/C canonical equality for all three environments.
+Every future candidate requires a fresh independent review; the current review cannot transfer to
+changed bytes.
 
 ## Retained analysis evidence
 
-The only retained pristine external tree used by this slice is
-`D:\CodexArtifacts\stackchan-toolchain-libdeps-repro-2`. For `stackchan`, its canonical identity is
-`4D18A5A5A8F385BA8CB6A88429F82240797459A76A2716A8A209D4223AA104F8` over 1,243 raw files and
-166,158,472 raw bytes, producing 1,237 canonical records and 165,978,723 canonical bytes.
+The retained clean B/C roots are `D:\CodexArtifacts\stackchan-toolchain-all-repro-b` and
+`D:\CodexArtifacts\stackchan-toolchain-all-repro-c`. Both independently match these reviewed
+canonical libdeps identities:
 
-`D:\CodexArtifacts\stackchan-toolchain-libdeps-repro` was mutated by a build and is discarded. It
-is not used for equality, reproducibility, Git representation, or any other supporting claim.
-The contract instead creates two controlled local clones independently. It verifies canonical
-equality across distinct PlatformIO install timestamps and tests that actual source bytes,
-`builder.py`, HEAD, the branch ref, the complete reviewed commit, hooks, remote configuration,
-package metadata, and pack corruption remain bound or fail closed.
+- `stackchan` and `stackchan_servo_calibration`:
+  `79C18DC5078CAB8A35CCB4DAD385FDCB2BFB11126C778975F74C8F4B7096279B`;
+- `stackchan_release_full`:
+  `74B343038114CC2E90927E1C641B14D47806EA0759BF0FED711235B61C705273`.
 
-The earlier candidate
-`release_toolchain_identity_allowlist_candidate_20260803-143148.json` is rejected: it used raw
-libdeps identities and captured a stale extra `M5GFX@0.2.24` tree. No tracked reviewed allowlist
-exists.
+The failed A root and older candidates remain rejected evidence and are not release inputs. The
+reviewed tracked allowlist was derived from candidate
+`release_toolchain_identity_allowlist_candidate_20260803-201018.json`, candidate SHA-256
+`7E89C23B11783E66228A0A7C12F94E7AB0A0BC85D393ACF4A7C46F1AEE594CF4`. Promotion approved only
+the byte policy; release eligibility still requires the packager/verifier record and artifact gates.
 
 ## Portability and CI limit
 
 An installed-byte candidate is explicitly scoped as `exact-host-installed-bytes` and
 `portableAcrossHosts=false`. A local Windows candidate is not a GitHub-hosted-runner identity.
 Hosted `setup-python` baselines, path-embedded bytecode, unpinned wheel files, and PlatformIO-owned
-`penv` contents can differ even when visible versions match. No reviewed allowlist is committed
-until that environment exists, so release verification must fail closed rather than silently
-claiming toolchain eligibility.
+`penv` contents can differ even when visible versions match. The tag release job therefore targets
+the explicitly provisioned `stackchan-release-toolchain-20260803` self-hosted Windows runner and
+passes repository-variable paths as explicit arguments. A missing, different, or hosted toolchain
+fails the reviewed identity rather than silently claiming equivalence.
 
 A portable CI design requires a fixed-path isolated Python environment, a reviewed wheelhouse with
 SHA-256-pinned requirements installed using `--require-hashes --no-deps`, bytecode generation
@@ -140,20 +174,20 @@ disabled (`PYTHONDONTWRITEBYTECODE=1`) with bytecode absent before use, and sepa
 allowlists for each OS/architecture/runtime image. Exact version pins alone are necessary but not
 sufficient. This repository's current offline evidence cannot supply trustworthy wheel hashes.
 
-The current pre-build proof still does not byte-identify Windows system DLLs, the kernel, or every
-program a package may resolve from `PATH`. The import closure is exact only under the required
-process environment and reported `sys.path`. This is a host-installed-byte policy, not a claim
-that Python or PlatformIO is hermetic from the operating system. The Git executable used during
-analysis is also not byte-identified; it cannot authorize PostBuild, which remains disabled.
+The current pre-build proof still does not byte-identify Windows system DLLs or the kernel. The
+import closure is exact only under the required process environment and reported `sys.path`. The
+packager and verifier constrain `PATH`, reject ambient Python/Git/PlatformIO overrides, and bind the
+complete selected Git and Python installations, but this remains a host-installed-byte policy—not
+a claim that the operating system itself is hermetic.
 
-The rejected raw candidate covered more than 6.1 GB on the reviewed Windows host; a strict pass exceeded two
-minutes in local measurement. That cost is intentional and should be paid once before and once
-after the governed release build, not on ordinary developer builds.
+The reviewed PreBuild closure covers about 5.98 GiB and 88,000 files on the Windows host. That full
+byte cost is intentional and is paid once per governed packager/verifier process. Subsequent
+guarded PostBuild checks still verify every watched namespace and revalidate the cached records,
+but rehash only the selected environment's fresh libdeps. Ordinary developer builds do not run
+this release-authorizing proof.
 
-The analysis parser relies on Git's SHA-1 object identity and supports only the observed formats:
-index v2, pack index v2, reverse index v1, and SHA-1 packs. It validates checksums, reverse-index
-permutations, pack linkage, sources, commits, and object-ID inventories, but does not fully decode
-pack deltas or prove index offsets/CRCs against decoded objects. New index, hash, extension,
-loose-object, or package-manager metadata formats require review and a contract update. Until an
-exactly identified Git/runtime or an independent pack decoder closes this gap, PostBuild remains
-disabled rather than treating a useful analysis identity as release authorization.
+The semantic verifier relies on Git's SHA-1 object identity and supports the reviewed formats: Git
+pack v2/v3, pack index v2, reverse index v1, repository index v2, and SHA-1 objects. It fully decodes
+ordinary and delta objects and proves offsets, CRCs, reverse mapping, and checksums with explicit
+resource caps. New hash algorithms, index/pack extensions, or package-manager metadata formats
+require review and a contract update; unknown forms fail closed.

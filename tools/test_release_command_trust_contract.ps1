@@ -24,20 +24,20 @@ foreach ($scriptPath in @(
   }
 }
 
-$packageFailureOffset = $packageText.IndexOf('if (-not $SkipBuild)', [StringComparison]::Ordinal)
+$packageFailureOffset = $packageText.IndexOf('Assert-StackchanReleaseToolchainIdentity', [StringComparison]::Ordinal)
 $packageGitOffset = $packageText.IndexOf(
   '$releaseBootstrapGitCommand = Get-Command', [StringComparison]::Ordinal)
 if ($packageFailureOffset -lt 0 -or $packageGitOffset -lt 0 -or
     $packageFailureOffset -ge $packageGitOffset -or
-    -not $packageText.Contains('Release-grade packaging is fail-closed before Git or build-tool execution')) {
-  throw 'Release-grade packaging is not fail-closed before its first Git resolution.'
+    -not $packageText.Contains('pre-Git byte authority mismatch')) {
+  throw 'Release-grade packaging does not authenticate exact toolchain bytes before Git resolution.'
 }
-$verifyFailureOffset = $verifyText.IndexOf('if ($RequireReleaseEligible)', [StringComparison]::Ordinal)
+$verifyFailureOffset = $verifyText.IndexOf('Assert-StackchanReleaseToolchainIdentity', [StringComparison]::Ordinal)
 $verifyGitOffset = $verifyText.IndexOf('$trustedGitCommand = Get-Command', [StringComparison]::Ordinal)
 if ($verifyFailureOffset -lt 0 -or $verifyGitOffset -lt 0 -or
     $verifyFailureOffset -ge $verifyGitOffset -or
-    -not $verifyText.Contains('Release-eligible verification is fail-closed before Git or build-tool execution')) {
-  throw 'Release-eligible verification is not fail-closed before its first Git resolution.'
+    -not $verifyText.Contains('pre-Git byte authority mismatch')) {
+  throw 'Release-eligible verification does not authenticate exact toolchain bytes before Git resolution.'
 }
 
 foreach ($forbidden in @('& powershell.exe', '& subst.exe', '& tar.exe', 'git-lfs')) {
@@ -155,8 +155,8 @@ try {
 } catch {
   $message = $_.Exception.Message
   if ($Verifier) {
-    if ($message -notlike '*Release-eligible verification is fail-closed before Git or build-tool execution*') { throw }
-  } elseif ($message -notlike '*Release-grade packaging is fail-closed before Git or build-tool execution*') {
+    if ($message -notlike '*Release-eligible verification requires explicit -GitExecutable authority*') { throw }
+  } elseif ($message -notlike '*Release packaging requires explicit -GitExecutable authority*') {
     throw
   }
 }

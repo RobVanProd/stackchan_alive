@@ -2,11 +2,39 @@
 
 This project can produce a pre-device review release now and a hardware-validated release later.
 
+Release-authorizing tools run only from the exact clean trusted source checkout. A downloaded or
+extracted archive does not confer release authority, even when it contains copies of the helper
+scripts. Use the six-value `$releaseToolchain` splat below for every eligible verify, flash,
+evidence, publication, audit, and promotion command.
+
 ## Local Package
 
 ```powershell
-.\tools\package_release.cmd -Version <version>
+$releaseToolchain = @{
+  ToolchainAllowlistPath = (Resolve-Path tools\release_toolchain_identity_allowlist.json).Path
+  GitExecutable = 'C:\Program Files\Git\cmd\git.exe'
+  PythonExecutable = 'C:\path\to\reviewed\Python312\python.exe'
+  PlatformioExecutable = 'C:\path\to\reviewed\Python312\Scripts\pio.exe'
+  LegacyCoreDir = 'C:\path\to\reviewed\.platformio'
+  ReleaseCoreDir = 'C:\spio\pioarduino'
+}
+.\tools\package_release.ps1 -Version <version> @releaseToolchain
 ```
+
+All five executable/core paths are mandatory for a release-grade build; the tracked allowlist path
+is shown explicitly so the invocation is auditable. Paths are not identities. The entry point
+leases and hashes the reviewed allowlist, identity helper, semantic pack verifier, selected Git,
+Python, PlatformIO, and both core trees before trusted Git/build-tool execution. A different host
+or same-version installation fails closed.
+
+The exact self-hosted pioarduino core must already contain the reviewed sealed
+`platforms/espressif32/builder/penv_setup.py` bytes. Provision an original matching core only from
+the clean trusted source checkout with
+`tools/seal_pioarduino_release_core.ps1 -ReleaseCoreDir C:\spio\pioarduino`, then regenerate and
+independently review the installed-byte allowlist. Do not run the seal during packaging and do not
+treat a packaged copy as authority. Its two-line distribution-name correction prevents the pinned
+6.1.18 core from reinstalling itself and mutating the authenticated penv on every build; the
+toolchain lifetime guard still rejects any later penv or platform mutation.
 
 The package is written under `output/release/<version>/` and includes safe display-only,
 servo-calibration, and secret-free full-online firmware binaries; preview media; an expression
@@ -44,8 +72,14 @@ waits for at least a 65-second start-time boundary, compares the firmware BIN an
 and partition-table hashes, and packages only the verified second-cycle artifacts. The cycles use
 different short detached clean worktree paths of different lengths, pinned to the captured commit,
 plus a distinct initially empty PlatformIO compiled-artifact cache per cycle/environment. The proof
-records six identity attestations and binds both cycles to the manifest commit and epoch. Exact
-cycle-B package inventories, license files, and package metadata are captured before that build
+records 13 toolchain observations—one PreBuild record plus pre-execution and post-build records for
+each environment in both cycles—and six source identity attestations, binding both cycles to the
+manifest commit and epoch. The process retains the authenticated PreBuild bytes and namespace
+watchers for its lifetime. PostBuild observations reuse only an immutable,
+exact-authority-bound copy of the already compared PreBuild records after a full namespace
+barrier, then freshly hash the selected libdeps. Cache reuse cannot cross allowlists, installed
+roots, executables, or a closed PreBuild scope. Exact cycle-B package inventories, license files,
+and package metadata are captured before that build
 worktree is removed. The captured platform directory is the exact path reported by verbose
 PlatformIO resolution, and shared-core package evidence is limited to resolved package names;
 unrelated installed packages are excluded. Release dependency provenance never falls back to the
@@ -84,7 +118,7 @@ After the exact branch commit's `Firmware` workflow passes, rebuild the hardware
 with observed prerelease CI provenance:
 
 ```powershell
-.\tools\package_release.cmd -Version <version> -ObserveCandidateActions
+.\tools\package_release.ps1 -Version <version> -ObserveCandidateActions @releaseToolchain
 ```
 
 This mode fails unless every observed `Firmware` run for the exact commit completed successfully
@@ -98,7 +132,10 @@ with separate PlatformIO cores, and snapshots each successful build before the n
 replace shared packages. On Windows the pioarduino core stays at the short physical path
 `C:\spio\pioarduino` even when a temporary `subst` drive shortens the checkout. Generated package
 reports must use package-relative paths; the verifier rejects host-specific absolute paths.
-Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`. Use `tools/flash_release_firmware.cmd` to flash the exact binaries from a verified ZIP instead of rebuilding during arrival-day testing.
+Release packages also include reference copies of flash, evidence-capture, and package-verification
+helpers under `tools/`; those copies are not an authority root. Use the trusted checkout's
+`tools/flash_release_firmware.ps1 ... @releaseToolchain` path to flash the exact binaries from a
+verified ZIP instead of rebuilding during arrival-day testing.
 For the companion C8 distribution path, run `tools/export_companion_release_evidence.cmd`
 after Android APK or desktop package artifacts are built. It writes
 `COMPANION_RELEASE_EVIDENCE.json/md` with artifact SHA256s, git commit,
@@ -254,8 +291,8 @@ If the native logic test step reports missing `gcc`/`g++`, run `.\tools\check_na
 Verify the package before sharing it:
 
 ```powershell
-.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -RequireReleaseEligible
-.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_<version>.zip
+.\tools\verify_release_package.ps1 -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -RequireReleaseEligible @releaseToolchain
+.\tools\run_device_preflight.ps1 -PackageZip output\release\stackchan_alive_<version>.zip @releaseToolchain
 ```
 
 Voice review samples are verified as part of the package gate. To check only the generated Stackchan Spark Synth WAVs and notes:
@@ -326,13 +363,13 @@ preserve upstream notices; they do not choose a license for Stackchan: Alive its
 Dry-run the release-binary flasher before connecting hardware:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware display_only -DryRun -Monitor -Port COM3
+.\tools\flash_release_firmware.ps1 -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware display_only -DryRun -Monitor -Port COM3 @releaseToolchain
 ```
 
 Create a hardware evidence packet when testing a physical device:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\start_hardware_evidence.ps1 -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
 Packet creation copies the tested ZIP and records `logs/package_verify.log`. Promotion evidence must include that successful package-verification transcript unless the verifier is run with `-AllowMissingPackage` for a diagnostic-only packet.
@@ -344,18 +381,24 @@ Verifier self-tests can generate an explicit diagnostic-only synthetic packet:
 .\tools\generate_synthetic_hardware_evidence.cmd -Version <version> -PackageZip output\release\stackchan_alive_<version>.zip -Verify
 ```
 
-Synthetic packets are written under `output/hardware-evidence-diagnostic/`, include `BENCH_STATUS.md/json`, copied voice-gate reports, and a real `RUN_ROLLOUT_STATUS.cmd` to exercise the same handoff path as real packets. They are rejected by `tools\verify_hardware_evidence.cmd` unless `-AllowSyntheticEvidence` is passed. Do not use them as rollout evidence.
+Synthetic packets are written under `output/hardware-evidence-diagnostic/`, include
+`BENCH_STATUS.md/json` and copied voice-gate reports. Their `RUN_ROLLOUT_STATUS.cmd` is an explicit
+diagnostic refusal, because a synthetic packet has no exact-host release authority. They are
+rejected by `tools\verify_hardware_evidence.cmd` unless `-AllowSyntheticEvidence` is passed. Do
+not use them as rollout evidence.
 
 To prepare the release for arrival-day testing in one no-hardware-safe step:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\prepare_device_arrival.ps1 -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
-If you only have an extracted release ZIP, run the same helper from inside the extracted package folder:
+If the ZIP was downloaded elsewhere, stay in the trusted source checkout and pass its absolute
+path. Never run the packaged helper as authority:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+$packageZip = (Resolve-Path 'C:\Downloads\stackchan_alive_<version>.zip').Path
+.\tools\prepare_device_arrival.ps1 -ReleaseTag <version> -PackageZip $packageZip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
 Before promoting a prerelease, verify the completed hardware evidence packet:
@@ -369,7 +412,7 @@ the ready aggregate Companion v1 packet, GitHub Actions status, and production v
 verification:
 
 ```powershell
-.\tools\verify_consumer_promotion.cmd `
+.\tools\verify_consumer_promotion.ps1 `
   -Version <version> `
   -PackageZip output\release\stackchan_alive_<version>.zip `
   -EvidenceRoot output\hardware-evidence\<packet-folder> `
@@ -379,7 +422,8 @@ verification:
   -CameraFollowSummaryPath <camera-summary.json> `
   -BodySensorReportPath <body-sensor-report.json> `
   -FullSystemSoakSummaryPath <full-soak-summary.json> `
-  -MinFinalSoakDurationSeconds 28800
+  -MinFinalSoakDurationSeconds 28800 `
+  @releaseToolchain
 ```
 
 `-ExpectedCommit` pins the public package, CI, and any CI exception to the release commit.
@@ -408,6 +452,13 @@ For validated releases, push a tag:
 git tag <version>
 git push origin <version>
 ```
+
+The release job runs only on a Windows x64 self-hosted runner labeled
+`stackchan-release-toolchain-20260803`. Configure the repository variables
+`STACKCHAN_RELEASE_GIT_EXECUTABLE`, `STACKCHAN_RELEASE_PYTHON_EXECUTABLE`,
+`STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE`, `STACKCHAN_RELEASE_LEGACY_CORE_DIR`, and
+`STACKCHAN_RELEASE_RELEASE_CORE_DIR` to the exact reviewed roots on that runner. A
+GitHub-hosted `windows-latest` runner is not equivalent to the current exact-host allowlist.
 
 The release workflow builds both firmware variants, runs native logic tests, compile-checks
 the embedded test firmware, renders preview media, creates and verifies an auditable package,
@@ -501,7 +552,7 @@ If GitHub Actions cannot run, the manual helper remains available for a firmware
 publication:
 
 ```powershell
-.\tools\publish_release.cmd -Version <version> -Repo RobVanProd/stackchan_alive -CreateTag -PushCurrentBranch -PushTag
+.\tools\publish_release.ps1 -Version <version> -Repo RobVanProd/stackchan_alive -CreateTag -PushCurrentBranch -PushTag @releaseToolchain
 ```
 
 The manual helper requires an explicit `owner/name` repository target, verifies the local ZIP,
@@ -513,7 +564,7 @@ companion release asset contract by itself.
 Audit an existing GitHub release after publication:
 
 ```powershell
-.\tools\verify_published_release.cmd -Version <version>
+.\tools\verify_published_release.ps1 -Version <version> @releaseToolchain
 ```
 
 The published-release verifier checks the firmware and companion asset set, compares sizes and
@@ -528,7 +579,7 @@ plus ZIP SHA256 sidecar, validates the sidecar, and runs the package verifier on
 For a single post-publish operator summary, run:
 
 ```powershell
-.\tools\audit_published_release.cmd -Version <version>
+.\tools\audit_published_release.ps1 -Version <version> @releaseToolchain
 ```
 
 The audit wraps the published-release verifier, refreshes GitHub Actions status, exports rollout status without requiring hardware evidence, and writes `RELEASE_AUDIT.md/json` under `output/release-audit/<version>/`. The publish helper runs the same audit with `-UploadToRelease` so the audit files are attached to the GitHub release after upload verification.
@@ -537,7 +588,7 @@ Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, ima
 sheet, video, GIF, voice samples, voice hash report, release notes, readiness report, and checksums:
 
 ```powershell
-.\tools\share_release.cmd -Version <version>
+.\tools\share_release.ps1 -Version <version> @releaseToolchain
 ```
 
 Add `-OpenLocal` to open the host-only local page automatically after the readiness probe passes.
@@ -545,11 +596,11 @@ For same-network phone/laptop review without Cloudflare, add `-Lan`. The helper 
 It also writes `OPEN_LOCAL_SHARE.cmd`, `LAN_TROUBLESHOOTING.md`, and `share_probe_report.json` with adapter metadata, virtual/VPN/no-gateway notes, and host-side reachability probes for the loopback and LAN candidate URLs. If a phone cannot open a LAN URL, first run `OPEN_LOCAL_SHARE.cmd` on the Windows host to prove the server is alive, then use the troubleshooting file and try a non-virtual candidate on the same Wi-Fi/LAN before falling back to Cloudflare.
 If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for remote review. The script writes the static share folder under `output/share/<version>/`.
 If `cloudflared` is not installed, add `-DownloadCloudflared` to place a local copy under `output/tools/` before starting the tunnel.
-Run `tools/share_release.cmd` from the trusted source checkout. Version and commit authority come
+Run `tools/share_release.ps1` with `@releaseToolchain` from the trusted source checkout. Version and commit authority come
 from explicit arguments or trusted Git state, never from an unverified package manifest; the tool
 verifies release eligibility before creating the temporary ZIP under `output/share/<version>/`.
 When the quick tunnel URL is available, the script prints the public `trycloudflare.com` URL, writes it to `output/share/<version>/PUBLIC_URL.txt`, writes process and URL state to `share_status.json`, and keeps the local server plus tunnel running in hidden background processes. For `-Lan`, use the first printed same-network URL unless the machine is on a VPN-only or isolated network. A local-only share is acceptable for same-machine or LAN review after `verify_share_release.cmd` passes; the evidence packet writes the pinned URL to `share/VERIFIED_URL.txt`.
-For a no-server static integrity check, run `tools/verify_share_release.cmd -Version <version> -Offline` after `tools/share_release.cmd -Version <version> -NoServe`. This writes `share_static_verification_report.json` with an `offline-static:` URL marker; it proves the share folder contents and hashes, but it is not hosted-media evidence because no URL was probed.
+For a no-server static integrity check, run `tools/verify_share_release.cmd -Version <version> -Offline` after `tools/share_release.ps1 -Version <version> -NoServe @releaseToolchain`. This writes `share_static_verification_report.json` with an `offline-static:` URL marker; it proves the share folder contents and hashes, but it is not hosted-media evidence because no URL was probed.
 Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending a public
 tunnel URL; omit `-RequirePublicUrl` for local or LAN review. It checks the handoff page plus the
 preview media, production voice hashes, readiness report, ZIP, sidecar, and package checksums.

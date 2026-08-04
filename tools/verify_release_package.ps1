@@ -5,19 +5,86 @@ param(
   [string]$ExpectedCommit,
   [string]$ExpectedSourceEpoch,
   [switch]$AllowDirtyPackage,
-  [switch]$RequireReleaseEligible
+  [switch]$RequireReleaseEligible,
+  [string]$ToolchainAllowlistPath,
+  [string]$GitExecutable,
+  [string]$PythonExecutable,
+  [string]$PlatformioExecutable,
+  [string]$LegacyCoreDir,
+  [string]$ReleaseCoreDir
 )
 
 $ErrorActionPreference = "Stop"
 $script:verificationCleanupReady = $false
 
-if ($RequireReleaseEligible) {
-  throw @'
-Release-eligible verification is fail-closed before Git or build-tool execution. No tracked
-reviewed exact toolchain allowlist currently authorizes the Git executable, PlatformIO/Python
-launchers, their complete runtime inputs, and the post-build dependency state. Diagnostic package
-verification remains available without -RequireReleaseEligible and cannot establish eligibility.
-'@
+$verifierToolchainAllowlistSha256 = '30607EB46546E49CB72A231C98CDB62FE5987D24252237821F344C1E1B797A5D' # reviewed allowlist SHA-256
+$verifierToolchainIdentityHelperSha256 = '35D688C55E3CF7694B8E8644813A5C8658E2D26DE78DCF8331E62445DDC49BE4' # reviewed identity helper SHA-256
+$verifierToolchainSemanticVerifierSha256 = '649DE0BBF4A966ADF389A4C2F98190B87958E2ECCC1DF15A6E6FE04D86A4BEBA' # reviewed semantic verifier SHA-256
+$verifierToolchainPreBuild = $null
+$script:verifierToolchainIdentityRecords = [System.Collections.Generic.List[object]]::new()
+$script:verifierToolchainReadLeases = [System.Collections.Generic.List[IO.FileStream]]::new()
+$script:verifierToolchainLeaseState = $null
+
+function Add-VerifierToolchainReadLease {
+  param([Parameter(Mandatory = $true)][string]$LiteralPath)
+  $item = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+  if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Release verifier refuses a non-file or redirected lease target: $LiteralPath"
+  }
+  $lease = [IO.File]::Open(
+    $item.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  $script:verifierToolchainReadLeases.Add($lease) | Out-Null
+}
+
+function Get-VerifierBootstrapSha256 {
+  param([Parameter(Mandatory = $true)][string]$LiteralPath)
+  $item = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+  if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Release verifier refuses a non-file or redirected bootstrap input: $LiteralPath"
+  }
+  $stream = [IO.File]::Open($item.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ([BitConverter]::ToString($hasher.ComputeHash($stream)) -replace '-', '').ToUpperInvariant()
+  } finally {
+    $hasher.Dispose()
+    $stream.Dispose()
+  }
+}
+
+function Close-VerifierToolchainResources {
+  if ($null -ne $script:verifierToolchainLeaseState -and
+      -not [bool]$script:verifierToolchainLeaseState.closed) {
+    $closeCommand = Get-Command -Name Close-StackchanToolchainLeaseState `
+      -CommandType Function -ErrorAction SilentlyContinue
+    if ($null -eq $closeCommand) {
+      throw 'Verifier toolchain guard exists but its cleanup function is unavailable.'
+    }
+    Close-StackchanToolchainLeaseState -LeaseState $script:verifierToolchainLeaseState
+  }
+  foreach ($lease in @($script:verifierToolchainReadLeases)) {
+    $lease.Dispose()
+  }
+  $script:verifierToolchainReadLeases.Clear()
+}
+
+trap {
+  $verificationFailure = $_
+  if ($script:verificationCleanupReady -and
+      $null -ne (Get-Command -Name Remove-VerificationExtraction `
+        -CommandType Function -ErrorAction SilentlyContinue)) {
+    try {
+      Remove-VerificationExtraction
+    } catch {
+      Write-Warning 'Could not remove failed verifier ZIP extraction; the input ZIP remains authoritative.'
+    }
+  }
+  try {
+    Close-VerifierToolchainResources
+  } catch {
+    Write-Warning "Could not fully release verifier toolchain resources: $($_.Exception.Message)"
+  }
+  throw $verificationFailure
 }
 
 $ambientGitOverrides = @(Get-ChildItem Env: | Where-Object { $_.Name -like 'GIT_*' })
@@ -53,12 +120,85 @@ if ($verifierPowerShellItem.Attributes -band [System.IO.FileAttributes]::Reparse
     [string]$verifierPowerShellItem.Extension -cne '.exe') {
   throw "Release verification refuses a redirected or non-EXE PowerShell command: $verifierPowerShellExecutable"
 }
-$trustedGitCommand = Get-Command -Name git -CommandType Application -ErrorAction SilentlyContinue |
-  Select-Object -First 1
-if ($null -eq $trustedGitCommand) {
-  throw 'Release verification requires a Git application executable; functions, aliases, and scripts are refused.'
+if ($RequireReleaseEligible) {
+  $requiredToolchainArguments = [ordered]@{
+    GitExecutable = $GitExecutable
+    PythonExecutable = $PythonExecutable
+    PlatformioExecutable = $PlatformioExecutable
+    LegacyCoreDir = $LegacyCoreDir
+    ReleaseCoreDir = $ReleaseCoreDir
+  }
+  foreach ($entry in $requiredToolchainArguments.GetEnumerator()) {
+    if ([string]::IsNullOrWhiteSpace([string]$entry.Value)) {
+      throw "Release-eligible verification requires explicit -$($entry.Key) authority."
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($ToolchainAllowlistPath)) {
+    $ToolchainAllowlistPath = Join-Path $PSScriptRoot 'release_toolchain_identity_allowlist.json'
+  }
+  $ToolchainAllowlistPath = (Get-Item -LiteralPath $ToolchainAllowlistPath -Force -ErrorAction Stop).FullName
+  $identityHelperPath = Join-Path $PSScriptRoot 'release_toolchain_identity.ps1'
+  $semanticVerifierPath = Join-Path $PSScriptRoot 'verify_git_pack_semantics.py'
+  foreach ($input in @(
+      [ordered]@{ path = $ToolchainAllowlistPath; expected = $verifierToolchainAllowlistSha256; label = 'allowlist' },
+      [ordered]@{ path = $identityHelperPath; expected = $verifierToolchainIdentityHelperSha256; label = 'identity helper' },
+      [ordered]@{ path = $semanticVerifierPath; expected = $verifierToolchainSemanticVerifierSha256; label = 'semantic verifier' })) {
+    Add-VerifierToolchainReadLease -LiteralPath ([string]$input.path)
+    if ([string]$input.expected -notmatch '^[0-9A-F]{64}$' -or
+        (Get-VerifierBootstrapSha256 -LiteralPath ([string]$input.path)) -cne [string]$input.expected) {
+      throw "Release verifier pre-Git byte authority mismatch: $([string]$input.label)"
+    }
+  }
+  $requiredPythonEnvironment = [ordered]@{
+    PYTHONNOUSERSITE = '1'; PYTHONSAFEPATH = '1'; PYTHONDONTWRITEBYTECODE = '1'
+    PYTHONHASHSEED = '0'; PYTHONUTF8 = '1'; PYTHONIOENCODING = 'utf-8'
+  }
+  $unexpectedPythonEnvironment = @(Get-ChildItem Env: | Where-Object {
+    $_.Name -like 'PYTHON*' -and -not $requiredPythonEnvironment.Contains($_.Name)
+  })
+  if ($unexpectedPythonEnvironment.Count -ne 0) {
+    throw "Release verifier refuses ambient Python overrides: $(@($unexpectedPythonEnvironment.Name | Sort-Object) -join ', ')"
+  }
+  foreach ($entry in $requiredPythonEnvironment.GetEnumerator()) {
+    $existing = [Environment]::GetEnvironmentVariable([string]$entry.Key, [EnvironmentVariableTarget]::Process)
+    if (-not [string]::IsNullOrWhiteSpace($existing) -and $existing -cne [string]$entry.Value) {
+      throw "Release verifier refuses ambient Python override: $($entry.Key)"
+    }
+    [Environment]::SetEnvironmentVariable(
+      [string]$entry.Key, [string]$entry.Value, [EnvironmentVariableTarget]::Process)
+  }
+  . $identityHelperPath
+  $script:verifierToolchainLeaseState = New-StackchanToolchainLeaseState
+  $resolvedGitExecutable = (Get-Item -LiteralPath $GitExecutable -Force -ErrorAction Stop).FullName
+  $resolvedPythonExecutable = (Get-Item -LiteralPath $PythonExecutable -Force -ErrorAction Stop).FullName
+  $resolvedPlatformioExecutable = (Get-Item -LiteralPath $PlatformioExecutable -Force -ErrorAction Stop).FullName
+  $resolvedLegacyCore = (Get-Item -LiteralPath $LegacyCoreDir -Force -ErrorAction Stop).FullName
+  $resolvedReleaseCore = (Get-Item -LiteralPath $ReleaseCoreDir -Force -ErrorAction Stop).FullName
+  foreach ($executable in @($resolvedGitExecutable, $resolvedPythonExecutable, $resolvedPlatformioExecutable)) {
+    Add-VerifierToolchainReadLease -LiteralPath $executable
+  }
+  $verifierToolchainRootMap = @{
+    pythonHome = Split-Path -Parent $resolvedPythonExecutable
+    gitHome = Split-Path -Parent (Split-Path -Parent $resolvedGitExecutable)
+    legacyCore = $resolvedLegacyCore
+    releaseCore = $resolvedReleaseCore
+    projectRoot = [string]$repoRoot
+    libdepsRoot = Join-Path ([string]$repoRoot) '.pio/libdeps'
+  }
+  $verifierToolchainPreBuild = Assert-StackchanReleaseToolchainIdentity `
+    -AllowlistPath $ToolchainAllowlistPath -RootMap $verifierToolchainRootMap `
+    -PlatformioExecutable $resolvedPlatformioExecutable `
+    -PythonExecutable $resolvedPythonExecutable -GitExecutable $resolvedGitExecutable `
+    -Phase PreBuild -LeaseState $script:verifierToolchainLeaseState -LeaseScope 'pre-build'
+  $trustedGitExecutable = $resolvedGitExecutable
+} else {
+  $trustedGitCommand = Get-Command -Name git -CommandType Application -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -eq $trustedGitCommand) {
+    throw 'Release verification requires a Git application executable; functions, aliases, and scripts are refused.'
+  }
+  $trustedGitExecutable = (Resolve-Path -LiteralPath ([string]$trustedGitCommand.Source)).Path
 }
-$trustedGitExecutable = (Resolve-Path -LiteralPath ([string]$trustedGitCommand.Source)).Path
 $trustedGitDisabledHooksPath = Join-Path $repoRoot (
   "output/private/disabled-verifier-git-hooks-$PID-" + [guid]::NewGuid().ToString('N'))
 $trustedNullAttributesPath = if ($env:OS -eq 'Windows_NT') { 'NUL' } else { '/dev/null' }
@@ -92,7 +232,15 @@ function Invoke-TrustedVerifierGit {
   try {
     $env:GIT_NO_REPLACE_OBJECTS = '1'
     $env:GIT_ATTR_NOSYSTEM = '1'
+    if ($null -ne $script:verifierToolchainLeaseState) {
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context 'before trusted verifier Git execution'
+    }
     & $script:trustedGitExecutable @gitArguments
+    if ($null -ne $script:verifierToolchainLeaseState) {
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context 'after trusted verifier Git execution'
+    }
   } finally {
     if ($null -eq $previousNoReplaceObjects) {
       Remove-Item Env:\GIT_NO_REPLACE_OBJECTS -ErrorAction SilentlyContinue
@@ -343,17 +491,6 @@ function Assert-ReleaseZipSidecar {
 }
 
 $script:verificationCleanupReady = $true
-trap {
-  $verificationFailure = $_
-  if ($script:verificationCleanupReady) {
-    try {
-      Remove-VerificationExtraction
-    } catch {
-      Write-Warning "Could not remove failed verifier ZIP extraction; the input ZIP remains authoritative."
-    }
-  }
-  throw $verificationFailure
-}
 
 if (-not [string]::IsNullOrWhiteSpace($ZipPath)) {
   if (-not (Test-Path -LiteralPath $ZipPath)) {
@@ -869,33 +1006,9 @@ function Assert-OperationalPackageGitBindings {
 function Assert-OperationalFirmwareMatchesTrustedRebuild {
   if (-not $RequireReleaseEligible) { return }
 
-  $pioExecutable = Get-StackchanPlatformioCommand
-  $pioCommands = @(Get-Command -Name $pioExecutable -CommandType Application -ErrorAction SilentlyContinue)
-  if ($pioCommands.Count -ne 1) {
-    throw 'Operational release verification requires PlatformIO for an independent firmware rebuild.'
-  }
-  $pioExecutable = (Resolve-Path -LiteralPath ([string]$pioCommands[0].Source)).Path
-  $pioVersion = ((@(& $pioExecutable --version 2>&1) | Out-String).Trim())
-  if ($LASTEXITCODE -ne 0 -or $pioVersion -cne 'PlatformIO Core, version 6.1.19' -or
-      [string]$dependencyLock.platformioCore -cne $pioVersion) {
-    throw "Operational independent rebuild requires the packaged PlatformIO Core 6.1.19 identity."
-  }
-  $pioExecutableSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $pioExecutable).Hash.ToUpperInvariant()
-  $defaultCoreDir = Get-StackchanPlatformioCoreDir
-  if ([string]::IsNullOrWhiteSpace($defaultCoreDir) -or
-      -not (Test-Path -LiteralPath $defaultCoreDir -PathType Container)) {
-    throw 'Operational independent rebuild could not resolve the installed PlatformIO core directory.'
-  }
-  $defaultCoreDir = (Resolve-Path -LiteralPath $defaultCoreDir).Path
-  $releaseCoreDir = if ($env:OS -eq 'Windows_NT') {
-    Join-Path ([System.IO.Path]::GetPathRoot($env:SystemRoot)) 'spio/pioarduino'
-  } else {
-    Join-Path ([System.IO.Path]::GetTempPath()) 'stackchan-pio-release-cores/pioarduino'
-  }
-  if (-not (Test-Path -LiteralPath $releaseCoreDir -PathType Container)) {
-    throw "Operational independent rebuild is missing the release PlatformIO core: $releaseCoreDir"
-  }
-  $releaseCoreDir = (Resolve-Path -LiteralPath $releaseCoreDir).Path
+  $pioExecutable = $resolvedPlatformioExecutable
+  $defaultCoreDir = $resolvedLegacyCore
+  $releaseCoreDir = $resolvedReleaseCore
   $rebuildEvidenceParent = Join-Path $resolvedVerifierRoot 'output/private/operational-firmware-rebuilds'
   New-Item -ItemType Directory -Force -Path $rebuildEvidenceParent | Out-Null
   $packageChecksumsPath = Join-PackagePath 'SHA256SUMS.txt'
@@ -922,7 +1035,8 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
   $worktreeAdded = $false
   $environmentNames = @(
     'PLATFORMIO_CORE_DIR', 'PLATFORMIO_BUILD_CACHE_DIR',
-    'STACKCHAN_EXPECTED_BUILD_COMMIT', 'STACKCHAN_EXPECTED_BUILD_EPOCH'
+    'STACKCHAN_EXPECTED_BUILD_COMMIT', 'STACKCHAN_EXPECTED_BUILD_EPOCH',
+    'PYTHONSAFEPATH', 'PATH'
   )
   $savedEnvironment = @{}
   foreach ($environmentName in $environmentNames) {
@@ -946,6 +1060,27 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
         $rebuildDirty.Count -ne 0) {
       throw 'Operational verifier independent rebuild worktree is not the exact clean release commit.'
     }
+    Remove-Item Env:\PYTHONSAFEPATH -ErrorAction SilentlyContinue
+    $env:PATH = @(
+      (Split-Path -Parent $resolvedPlatformioExecutable),
+      (Split-Path -Parent $resolvedPythonExecutable),
+      (Split-Path -Parent $resolvedGitExecutable),
+      (Join-Path ([Environment]::GetFolderPath('Windows')) 'System32'),
+      (Join-Path ([Environment]::GetFolderPath('Windows')) 'System32/WindowsPowerShell/v1.0')
+    ) -join [IO.Path]::PathSeparator
+    Assert-StackchanReleaseBuildPythonEnvironment -ProjectRoot $rebuildWorktree
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $script:verifierToolchainLeaseState -Context 'before PlatformIO version execution'
+    $pioVersion = ((@(& $pioExecutable --version 2>&1) | Out-String).Trim())
+    $pioVersionExit = $LASTEXITCODE
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $script:verifierToolchainLeaseState -Context 'after PlatformIO version execution'
+    if ($pioVersionExit -ne 0 -or $pioVersion -cne 'PlatformIO Core, version 6.1.19' -or
+        [string]$dependencyLock.platformioCore -cne $pioVersion) {
+      throw "Operational independent rebuild requires the packaged PlatformIO Core 6.1.19 identity."
+    }
+    $pioExecutableSha256 = (
+      Get-FileHash -Algorithm SHA256 -LiteralPath $pioExecutable).Hash.ToUpperInvariant()
 
     $buildSpecs = @(
       [ordered]@{ environment = 'stackchan'; packageDir = 'display_only'; coreDir = $defaultCoreDir },
@@ -959,17 +1094,62 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
       $env:STACKCHAN_EXPECTED_BUILD_COMMIT = $ExpectedCommit
       $env:STACKCHAN_EXPECTED_BUILD_EPOCH = $ExpectedSourceEpoch
       New-Item -ItemType Directory -Path $env:PLATFORMIO_BUILD_CACHE_DIR | Out-Null
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "before $environment dependency staging"
+      $dependencyStageOutput = @(& $pioExecutable 'pkg' 'install' '-d' $rebuildWorktree '-e' $environment 2>&1)
+      $dependencyStageExit = $LASTEXITCODE
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment dependency staging"
+      $dependencyStageOutput | Set-Content -LiteralPath (
+        Join-Path $rebuildEvidenceRoot "$environment-dependency-stage.log") -Encoding UTF8
+      if ($dependencyStageExit -ne 0) {
+        throw "Operational dependency staging failed: $environment (exit $dependencyStageExit)."
+      }
+      $env:PYTHONSAFEPATH = '1'
+      $dependencyRootMap = @{
+        pythonHome = [string]$verifierToolchainRootMap.pythonHome
+        gitHome = [string]$verifierToolchainRootMap.gitHome
+        legacyCore = [string]$verifierToolchainRootMap.legacyCore
+        releaseCore = [string]$verifierToolchainRootMap.releaseCore
+        projectRoot = $rebuildWorktree
+        libdepsRoot = Join-Path $rebuildWorktree '.pio/libdeps'
+      }
+      $preExecutionIdentity = Assert-StackchanReleaseToolchainIdentity `
+        -AllowlistPath $ToolchainAllowlistPath -RootMap $dependencyRootMap `
+        -PlatformioExecutable $resolvedPlatformioExecutable `
+        -PythonExecutable $resolvedPythonExecutable -GitExecutable $resolvedGitExecutable `
+        -Phase PostBuild -Environment $environment `
+        -LeaseState $script:verifierToolchainLeaseState -LeaseScope 'independent-rebuild'
+      $script:verifierToolchainIdentityRecords.Add([ordered]@{
+        stage = 'preExecution'; environment = $environment; result = $preExecutionIdentity
+      }) | Out-Null
+      Remove-Item Env:\PYTHONSAFEPATH -ErrorAction SilentlyContinue
       foreach ($phase in @('clean', 'build')) {
         $pioArguments = @('run', '-d', $rebuildWorktree, '-e', $environment)
         if ($phase -eq 'clean') { $pioArguments += @('-t', 'clean') }
+        Assert-StackchanToolchainLeaseStateUnchanged `
+          -LeaseState $script:verifierToolchainLeaseState -Context "before $environment $phase"
         $phaseOutput = @(& $pioExecutable @pioArguments 2>&1)
         $phaseExit = $LASTEXITCODE
+        Assert-StackchanToolchainLeaseStateUnchanged `
+          -LeaseState $script:verifierToolchainLeaseState -Context "after $environment $phase"
         $phaseOutput | Set-Content -LiteralPath (
           Join-Path $rebuildEvidenceRoot "$environment-$phase.log") -Encoding UTF8
         if ($phaseExit -ne 0) {
           throw "Operational independent firmware rebuild failed: $environment/$phase (exit $phaseExit)."
         }
       }
+      $env:PYTHONSAFEPATH = '1'
+      $postBuildIdentity = Assert-StackchanReleaseToolchainIdentity `
+        -AllowlistPath $ToolchainAllowlistPath -RootMap $dependencyRootMap `
+        -PlatformioExecutable $resolvedPlatformioExecutable `
+        -PythonExecutable $resolvedPythonExecutable -GitExecutable $resolvedGitExecutable `
+        -Phase PostBuild -Environment $environment `
+        -LeaseState $script:verifierToolchainLeaseState -LeaseScope 'independent-rebuild'
+      $script:verifierToolchainIdentityRecords.Add([ordered]@{
+        stage = 'postBuild'; environment = $environment; result = $postBuildIdentity
+      }) | Out-Null
+      Remove-Item Env:\PYTHONSAFEPATH -ErrorAction SilentlyContinue
       foreach ($artifact in @('firmware.bin', 'firmware.elf', 'bootloader.bin', 'partitions.bin', 'boot_app0.bin')) {
         $rebuiltPath = if ($artifact -ceq 'boot_app0.bin') {
           [string](Assert-StackchanReleaseFrameworkOtaSelector `
@@ -1017,8 +1197,12 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
           sha256 = $rebuiltHash
         }) | Out-Null
       }
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "before $environment dependency inventory"
       $packageListOutput = @(& $pioExecutable 'pkg' 'list' '-d' $rebuildWorktree '-e' $environment 2>&1)
       $packageListExit = $LASTEXITCODE
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment dependency inventory"
       $packageListOutput | Set-Content -LiteralPath (
         Join-Path $rebuildEvidenceRoot "$environment-pkg-list.log") -Encoding UTF8
       if ($packageListExit -ne 0) {
@@ -1042,8 +1226,12 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
             -DifferenceObject $actualDependencyIdentity -CaseSensitive).Count -ne 0) {
         throw "Operational independent dependency inventory does not match package evidence: $environment"
       }
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "before $environment verbose dependency inventory"
       $verbosePackageOutput = @(& $pioExecutable 'pkg' 'list' '-d' $rebuildWorktree '-e' $environment '-v' 2>&1)
       $verbosePackageExit = $LASTEXITCODE
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment verbose dependency inventory"
       $verbosePackageOutput | Set-Content -LiteralPath (
         Join-Path $rebuildEvidenceRoot "$environment-pkg-list-verbose.log") -Encoding UTF8
       if ($verbosePackageExit -ne 0) {
@@ -1053,6 +1241,25 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
         -VerbosePackageList ($verbosePackageOutput -join "`n") -PlatformioCoreDir ([string]$spec.coreDir)
       if ([string]$platformSource.sourceLeaf -cne [string]$expectedEnvironmentLock.platformSourceLeaf) {
         throw "Operational independent platform source does not match package evidence: $environment"
+      }
+    }
+    $independentIdentityRecords = @($script:verifierToolchainIdentityRecords)
+    if (@($independentIdentityRecords | Where-Object stage -ceq 'preExecution').Count -ne 3 -or
+        @($independentIdentityRecords | Where-Object stage -ceq 'postBuild').Count -ne 3) {
+      throw 'Operational rebuild did not record all three pre-execution and post-build dependency identities.'
+    }
+    foreach ($identityRecord in $independentIdentityRecords) {
+      $packagedStageRecords = if ([string]$identityRecord.stage -ceq 'preExecution') {
+        @($toolchainIdentity.preExecution)
+      } else {
+        @($toolchainIdentity.postBuild)
+      }
+      $packagedMatches = @($packagedStageRecords | Where-Object {
+        [string]$_.environment -ceq [string]$identityRecord.environment -and
+          [string]$_.result.observationSha256 -ceq [string]$identityRecord.result.observationSha256
+      })
+      if ([string]$identityRecord.result.status -cne 'verified' -or $packagedMatches.Count -ne 2) {
+        throw "Operational rebuild toolchain identity does not match both packaged cycles: $([string]$identityRecord.stage)/$([string]$identityRecord.environment)"
       }
     }
     $postBuildCommit = (Invoke-TrustedVerifierGit -Arguments @(
@@ -1076,12 +1283,23 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
       platformioVersion = $pioVersion
       defaultPlatformioCore = $defaultCoreDir
       releasePlatformioCore = $releaseCoreDir
+      toolchainIdentity = [ordered]@{
+        allowlistSha256 = $verifierToolchainAllowlistSha256
+        identityHelperSha256 = $verifierToolchainIdentityHelperSha256
+        semanticVerifierSha256 = $verifierToolchainSemanticVerifierSha256
+        preBuild = $verifierToolchainPreBuild
+        preExecution = @($script:verifierToolchainIdentityRecords | Where-Object stage -ceq 'preExecution')
+        postBuild = @($script:verifierToolchainIdentityRecords | Where-Object stage -ceq 'postBuild')
+      }
       verifiedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
       records = @($rebuildRecords)
     }
     $successfulAttestationJson = $successfulAttestation | ConvertTo-Json -Depth 6
     $successfulAttestationJson | Set-Content -LiteralPath (
       Join-Path $rebuildEvidenceRoot 'operational_firmware_rebuild.json') -Encoding UTF8
+    Close-StackchanToolchainLeaseScope `
+      -LeaseState $script:verifierToolchainLeaseState -Scope 'independent-rebuild' `
+      -RequireUnchanged -Context 'independent rebuild final authenticated namespace'
     Invoke-TrustedVerifierGit -Arguments @(
       '-C', $resolvedVerifierRoot, 'worktree', 'remove', '--force', $rebuildWorktree) | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -2106,7 +2324,7 @@ if ($visionModelSha256 -ne "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json", "-RequireArtifacts", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android\screen-off-soak\", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "Stackchan Spark Bright Robot Playback Aid", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json", "-RequireArtifacts", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.ps1", "@releaseToolchain", "archive does not confer release authority", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android\screen-off-soak\", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "Stackchan Spark Bright Robot Playback Aid", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -2144,6 +2362,38 @@ foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalU
 foreach ($pattern in @("Production RVC Voice", "model.pth", "model.index", "production-release-verified")) {
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing production RVC marker: $pattern"
+  }
+}
+
+$packageAuthorityDocPaths = @(
+  'README.md', 'QUICKSTART.md', 'ARRIVAL_DAY_RUNBOOK.md',
+  'docs/RELEASE_PROCESS.md', 'docs/DEVICE_BRINGUP.md', 'docs/ROLLOUT_CHECKLIST.md',
+  'docs/BRIDGE_AI_QUALIFICATION.md', 'docs/COMPANION_APP_GAP_ANALYSIS.md')
+$packageAuthorityToolPattern = '(?im)(?:^|[\\/])(?:package_release|verify_release_package|run_device_preflight|flash_release_firmware|start_hardware_evidence|prepare_device_arrival|start_bridge_ai_supervised_qualification|verify_consumer_promotion|publish_release|audit_published_release|verify_published_release|share_release|export_rollout_status)\.(?:cmd|ps1)'
+$packageAuthorityCmdPattern = '(?im)(?:^|[\\/])(?:package_release|verify_release_package|run_device_preflight|flash_release_firmware|start_hardware_evidence|prepare_device_arrival|start_bridge_ai_supervised_qualification|verify_consumer_promotion|publish_release|audit_published_release|verify_published_release|share_release|export_rollout_status)\.cmd'
+foreach ($relativePath in $packageAuthorityDocPaths) {
+  $authorityText = Get-Content -LiteralPath (Join-PackagePath $relativePath) -Raw
+  if ($authorityText -notmatch '(?i)archive\s+does\s+not\s+confer\s+release\s+authority') {
+    throw "Packaged operator document omits the archive authority boundary: $relativePath"
+  }
+  if ($authorityText -match '(?is)(from inside|inside).{0,80}extracted.{0,240}(?:prepare_device_arrival|flash_release_firmware|start_hardware_evidence)\.(?:cmd|ps1)') {
+    throw "Packaged operator document authorizes an extracted archive: $relativePath"
+  }
+  foreach ($match in [regex]::Matches($authorityText, '(?ms)```powershell\s*(.*?)\s*```')) {
+    $block = [string]$match.Groups[1].Value
+    if ($block -notmatch $packageAuthorityToolPattern) { continue }
+    $isNoPackagePreflightSelfTest = $block.Trim() -ceq '.\tools\run_device_preflight.cmd'
+    $missingLiteralAuthority = @(
+      @('ToolchainAllowlistPath', 'GitExecutable', 'PythonExecutable',
+        'PlatformioExecutable', 'LegacyCoreDir', 'ReleaseCoreDir') | Where-Object {
+        -not $block.Contains('-' + $_)
+      })
+    if (($block -match $packageAuthorityCmdPattern -and -not $isNoPackagePreflightSelfTest) -or
+        (-not $isNoPackagePreflightSelfTest -and
+         -not $block.Contains('@releaseToolchain') -and
+         $missingLiteralAuthority.Count -ne 0)) {
+      throw "Packaged operator document contains an authority-less release command: $relativePath"
+    }
   }
 }
 foreach ($pattern in @(
@@ -2486,7 +2736,7 @@ foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contr
 
 foreach ($docPath in @("README.md", "docs/RELEASE_PROCESS.md")) {
   $publishDocText = Get-Content -LiteralPath (Join-PackagePath $docPath) -Raw
-  foreach ($pattern in @("publish_release.cmd", "-PushCurrentBranch", "-PushTag", "audit_published_release.cmd")) {
+  foreach ($pattern in @("publish_release.ps1", "@releaseToolchain", "-PushCurrentBranch", "-PushTag", "audit_published_release.ps1")) {
     if ($publishDocText -notmatch [regex]::Escape($pattern)) {
       throw "$docPath missing safe publish guidance: $pattern"
     }
@@ -4110,6 +4360,7 @@ if (-not ($envs -contains "stackchan") -or
 }
 
 $firmwareReproducibility = $manifest.firmwareReproducibility
+$toolchainIdentity = $manifest.toolchainIdentity
 if ([bool]$manifest.diagnosticPackage) {
   if (-not $Version.StartsWith("diagnostic-", [System.StringComparison]::Ordinal) -or
       $manifest.commitRole -ne "package-source-only-not-firmware-identity" -or
@@ -4126,10 +4377,45 @@ if ([bool]$manifest.diagnosticPackage) {
       $firmwareReproducibility.hookCoverage -ne "not-run-skip-build" -or
       $firmwareReproducibility.releaseOverridePolicy -ne "diagnostic-artifacts-unbound" -or
       $firmwareReproducibility.scope -ne "unknown/unbound-skip-build; copied pre-existing outputs whose source identity is not established" -or
-      $manifest.servoDefault -ne "boot and motion state unverified; copied firmware identity is unknown; do not flash") {
+      $manifest.servoDefault -ne "boot and motion state unverified; copied firmware identity is unknown; do not flash" -or
+      [string]$toolchainIdentity.status -cne 'not-applicable-diagnostic-skip-build' -or
+      @($toolchainIdentity.preExecution).Count -ne 0 -or @($toolchainIdentity.postBuild).Count -ne 0) {
     throw "Diagnostic manifest must leave copied firmware identity unbound and forbid release and hardware use"
   }
 } else {
+  $packagedToolchainFiles = [ordered]@{
+    'tools/release_toolchain_identity_allowlist.json' = $verifierToolchainAllowlistSha256
+    'tools/release_toolchain_identity.ps1' = $verifierToolchainIdentityHelperSha256
+    'tools/verify_git_pack_semantics.py' = $verifierToolchainSemanticVerifierSha256
+  }
+  foreach ($entry in $packagedToolchainFiles.GetEnumerator()) {
+    $packagedHash = (Get-FileHash -LiteralPath (Join-PackagePath ([string]$entry.Key)) `
+      -Algorithm SHA256).Hash.ToUpperInvariant()
+    if ($packagedHash -cne [string]$entry.Value) {
+      throw "Packaged release toolchain authority mismatch: $($entry.Key)"
+    }
+  }
+  $preExecutionIdentity = @($toolchainIdentity.preExecution)
+  $postBuildIdentity = @($toolchainIdentity.postBuild)
+  $invalidToolchainRecords = @($preExecutionIdentity + $postBuildIdentity | Where-Object {
+    [string]$_.result.status -cne 'verified' -or
+      [string]$_.result.allowlistSha256 -cne $verifierToolchainAllowlistSha256 -or
+      [string]$_.result.observationSha256 -notmatch '^[0-9A-F]{64}$'
+  })
+  $expectedCycleEnvironmentKeys = @(
+    foreach ($cycle in @('cycle-a', 'cycle-b')) {
+      foreach ($environment in @('stackchan', 'stackchan_servo_calibration', 'stackchan_release_full')) {
+        "$cycle/$environment"
+      }
+    }
+  )
+  $actualPreExecutionKeys = @($preExecutionIdentity | ForEach-Object {
+    "$([string]$_.cycle)/$([string]$_.environment)"
+  } | Sort-Object)
+  $actualPostBuildKeys = @($postBuildIdentity | ForEach-Object {
+    "$([string]$_.cycle)/$([string]$_.environment)"
+  } | Sort-Object)
+  $expectedCycleEnvironmentKeys = @($expectedCycleEnvironmentKeys | Sort-Object)
   if ($null -eq $firmwareReproducibility -or
       $manifest.commitRole -ne "package-and-firmware-source" -or
       $manifest.packageSourceIsolationPolicy -ne "detached-clean-worktree-pinned-to-package-commit" -or
@@ -4146,7 +4432,18 @@ if ([bool]$manifest.diagnosticPackage) {
       $firmwareReproducibility.contract -ne "tools/test_firmware_reproducible_build_contract.ps1" -or
       $firmwareReproducibility.hookCoverage -ne "exactly-one-effective-hook" -or
       $firmwareReproducibility.releaseOverridePolicy -ne "release-overrides-fail-closed" -or
-      $firmwareReproducibility.scope -ne "same host/core paths and clean commit across distinct prefix-mapped project roots, canonical recorded PlatformIO toolchain/configuration, and no listed ambient build overrides") {
+      $firmwareReproducibility.scope -ne "same host/core paths and clean commit across distinct prefix-mapped project roots, canonical recorded PlatformIO toolchain/configuration, and no listed ambient build overrides" -or
+      [string]$toolchainIdentity.status -cne 'verified-reviewed-toolchain-and-two-cycle-dependencies' -or
+      [string]$toolchainIdentity.allowlistSha256 -cne $verifierToolchainAllowlistSha256 -or
+      [string]$toolchainIdentity.identityHelperSha256 -cne $verifierToolchainIdentityHelperSha256 -or
+      [string]$toolchainIdentity.semanticVerifierSha256 -cne $verifierToolchainSemanticVerifierSha256 -or
+      [string]$toolchainIdentity.preBuild.status -cne 'verified' -or
+      [string]$toolchainIdentity.preBuild.allowlistSha256 -cne $verifierToolchainAllowlistSha256 -or
+      [string]$toolchainIdentity.preBuild.observationSha256 -cne [string]$verifierToolchainPreBuild.observationSha256 -or
+      $preExecutionIdentity.Count -ne 6 -or $postBuildIdentity.Count -ne 6 -or
+      ($actualPreExecutionKeys -join "`n") -cne ($expectedCycleEnvironmentKeys -join "`n") -or
+      ($actualPostBuildKeys -join "`n") -cne ($expectedCycleEnvironmentKeys -join "`n") -or
+      $invalidToolchainRecords.Count -ne 0) {
     throw "Manifest firmwareReproducibility provenance is missing or invalid"
   }
   if (-not [string]::IsNullOrWhiteSpace($ExpectedSourceEpoch) -and
@@ -5555,7 +5852,7 @@ if ([bool]$manifest.diagnosticPackage) {
     throw "Diagnostic READINESS_REPORT.md contains readiness claims"
   }
 } else {
-  foreach ($pattern in @($Version, $ExpectedCommit, "Status: test-ready prerelease", "Consumer rollout: blocked pending hardware validation", "Proven Without Hardware", "Required Physical Qualification", "Historical private paired-reference evidence", "source commit and firmware SHA-256", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "Owner approval has not been recorded for this candidate")) {
+  foreach ($pattern in @($Version, $ExpectedCommit, "Status: test-ready prerelease", "Consumer rollout: blocked pending hardware validation", "Proven Without Hardware", "Required Physical Qualification", "Historical private paired-reference evidence", "source commit and firmware SHA-256", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "Owner approval has not been recorded for this candidate", "exact clean trusted source checkout", "archive does not confer release authority")) {
     if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
       throw "READINESS_REPORT.md missing expected text: $pattern"
     }
@@ -5593,7 +5890,11 @@ if ([bool]$manifest.diagnosticPackage) {
     }
   }
 } else {
-  if ($readinessJson.diagnosticPackage -eq $true -or $readinessJson.status -ne "test-ready-prerelease") {
+  if ($readinessJson.diagnosticPackage -eq $true -or
+      $readinessJson.status -ne "test-ready-prerelease" -or
+      $null -ne $readinessJson.nextOperatorCommand -or
+      [string]$readinessJson.nextOperatorGuidance -notmatch 'trusted source checkout' -or
+      [string]$readinessJson.nextOperatorGuidance -notmatch 'archive does not confer release authority') {
     throw "readiness_report.json status mismatch: $($readinessJson.status)"
   }
   if ($readinessJson.consumerRollout -ne "blocked-pending-hardware-validation") {
@@ -5779,6 +6080,12 @@ if ($RequireReleaseEligible -and
 
 Assert-OperationalFirmwareMatchesTrustedRebuild
 
+if ($RequireReleaseEligible) {
+  Close-StackchanToolchainLeaseState `
+    -LeaseState $script:verifierToolchainLeaseState -RequireUnchanged `
+    -Context 'completed release-eligible verification'
+}
+
 if ([bool]$manifest.diagnosticPackage) {
   Write-Host "Diagnostic archive integrity verified; release and hardware use forbidden:"
 } else {
@@ -5787,3 +6094,4 @@ if ([bool]$manifest.diagnosticPackage) {
 Write-Host $packageRootPath
 
 Remove-VerificationExtraction
+Close-VerifierToolchainResources

@@ -22,11 +22,12 @@ SEC-002 package correction (2026-08-03): do not flash the preserved `4d31de41` p
 SHA-256 `4256F2E5...B31055` for a no-motion gate. That exact image was built with motion request and
 autonomous refresh enabled at boot. The source correction now makes the public full profile inherit
 motion-off, explicitly disables autonomous boot refresh, and is committed as
-`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. It is still not an install candidate until release
-command/toolchain trust is independently closed, two clean builds match for all three packaged
-environments, and the resulting exact package is verified and reviewed. Release-grade packaging
-currently refuses to run because no reviewed exact toolchain allowlist exists; diagnostic packages
-are never flash or qualification inputs. The release package/flasher source now requires an OTA
+`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. It is still not an install candidate until the
+current reviewed-toolchain integration is committed, the governed two-cycle package build and
+independent rebuild match for all three packaged environments, and the exact package is verified
+and reviewed. The 24-component exact-host allowlist has passed independent recomputation, but no
+clean governed package has been produced from this worktree yet; diagnostic packages are never
+flash or qualification inputs. The release package/flasher source requires an OTA
 selector bound to the exact legacy/release framework identities, 8,192-byte size, and reviewed
 SHA-256, and deterministically writes it at `0xE000` between the partition table and application.
 The operational flasher accepts only an explicit release ZIP, second-verifies a locked private
@@ -197,13 +198,17 @@ steps are in `docs/HARDWARE_FEATURE_ROADMAP.md` under **Optional 64 GB microSD**
 
 ## 1. Create The Evidence Packet
 
-From the extracted release folder:
+Run this from the exact clean trusted source checkout after defining the six-value
+`$releaseToolchain` splat in `docs/RELEASE_PROCESS.md`. A downloaded or extracted archive does not
+confer release authority; pass its ZIP path to the source-side helper:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\prepare_device_arrival.ps1 -ReleaseTag <version> -PackageZip <absolute-path-to-downloaded-zip> -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
-Before plugging in hardware, open `companion/evidence/c6-evidence/EVIDENCE.md` from the same release folder. It should show the committed C6 desktop companion brain-supervision gate passing, including GUI-driven Python brain start, simulated turns, restart, and diagnostics export.
+Before plugging in hardware, open `companion/evidence/c6-evidence/EVIDENCE.md` from the verified
+package for reference. It should show the committed C6 desktop companion brain-supervision gate
+passing, including GUI-driven Python brain start, simulated turns, restart, and diagnostics export.
 
 Open the newest folder under `output\hardware-evidence\`. Run every command below from that packet folder unless noted otherwise.
 

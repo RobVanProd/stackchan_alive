@@ -665,7 +665,7 @@ if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
 if ($AllowDirtyPackage) {
   $verifyPackageCommand += " -AllowDirtyPackage"
 }
-$rolloutStatusCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\export_rollout_status.ps1`" -Version $Version $rolloutPackageArg -EvidenceRoot `"%~dp0.`" -ExpectedCommit $ExpectedCommit -OutDir `"%~dp0.`""
+$rolloutStatusCommand = "echo Diagnostic-only synthetic packet: rollout-status generation requires the exact trusted source checkout and six exact-host toolchain authorities. The archive does not confer release authority."
 
 $commandFiles = @{
   "RUN_PLAY_LEAD_VOICE.cmd" = "echo Synthetic diagnostic packet. Use a real hardware packet for target speaker playback."

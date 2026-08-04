@@ -16,6 +16,12 @@ param(
   [string]$ExpectedFirmwareSourceCommit,
   [string]$Repo = "RobVanProd/stackchan_alive",
   [string]$ActionsStatusPath,
+  [string]$ToolchainAllowlistPath,
+  [string]$GitExecutable,
+  [string]$PythonExecutable,
+  [string]$PlatformioExecutable,
+  [string]$LegacyCoreDir,
+  [string]$ReleaseCoreDir,
   [switch]$AllowExternalAccountCiBlock
 )
 
@@ -410,7 +416,11 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   $verifyPackage = Join-Path $PSScriptRoot "verify_release_package.ps1"
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage `
     -Version $Version -ZipPath $promotionPackageZipPath `
-    -ExpectedCommit $ExpectedCommit -RequireReleaseEligible
+    -ExpectedCommit $ExpectedCommit -RequireReleaseEligible `
+    -ToolchainAllowlistPath $ToolchainAllowlistPath `
+    -GitExecutable $GitExecutable -PythonExecutable $PythonExecutable `
+    -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir
   if ($LASTEXITCODE -ne 0) {
     throw "Operational release ZIP verification failed before consumer-promotion extraction."
   }
@@ -435,7 +445,12 @@ $packageRootPath = (Resolve-Path $PackageRoot).Path
 
 try {
   $verifyPackage = Join-Path $PSScriptRoot "verify_release_package.ps1"
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage -Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit -RequireReleaseEligible
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage `
+    -Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit `
+    -RequireReleaseEligible -ToolchainAllowlistPath $ToolchainAllowlistPath `
+    -GitExecutable $GitExecutable -PythonExecutable $PythonExecutable `
+    -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir
   if ($LASTEXITCODE -ne 0) {
     throw "Release package verification failed."
   }

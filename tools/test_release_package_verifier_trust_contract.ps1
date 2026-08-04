@@ -361,8 +361,9 @@ $releaseEligibleIfStatements = @($verifyAst.EndBlock.Statements | Where-Object {
     $_.Clauses[0].Item1.Extent.Text -eq '$RequireReleaseEligible'
 })
 $releaseFrontDoorGates = @($releaseEligibleIfStatements | Where-Object {
-  $_.Extent.Text.Contains(
-    'Release-eligible verification is fail-closed before Git or build-tool execution')
+  $_.Extent.Text.Contains('requiredToolchainArguments') -and
+    $_.Extent.Text.Contains('Assert-StackchanReleaseToolchainIdentity') -and
+    $_.Extent.Text.Contains('pre-Git byte authority mismatch')
 })
 $releaseEligibilityGates = @($releaseEligibleIfStatements | Where-Object {
   $_.Extent.Text.Contains(
@@ -370,8 +371,8 @@ $releaseEligibilityGates = @($releaseEligibleIfStatements | Where-Object {
 })
 if ($releaseFrontDoorGates.Count -ne 1 -or
     $releaseFrontDoorGates[0].Extent.EndOffset -ge
-      $verifyText.IndexOf('$trustedGitCommand = Get-Command', [StringComparison]::Ordinal)) {
-  throw 'Operational verifier must fail closed before resolving Git for eligible verification'
+      $verifyText.IndexOf('$trustedGitDisabledHooksPath = Join-Path', [StringComparison]::Ordinal)) {
+  throw 'Operational verifier must authenticate exact toolchain bytes before trusted Git setup'
 }
 if ($releaseEligibilityGates.Count -ne 1) {
   throw 'Operational verifier must contain exactly one top-level trusted checkout gate'
@@ -393,7 +394,7 @@ $preGateCodeCommands = @($verifyAst.FindAll({
   }
   $commandName = [string]$node.GetCommandName()
   if ($node.InvocationOperator -eq [System.Management.Automation.Language.TokenKind]::Dot) {
-    return $true
+    return $node.Extent.Text -cne '. $identityHelperPath'
   }
   if ($node.InvocationOperator -eq [System.Management.Automation.Language.TokenKind]::Ampersand) {
     return $node.Extent.Text -cne '& $script:trustedGitExecutable @gitArguments'
@@ -432,6 +433,21 @@ $bootstrapGitFunctions = @($verifyAst.FindAll({
 }, $true))
 if ($bootstrapGitFunctions.Count -ne 1) {
   throw 'Operational verifier trusted Git bootstrap is ambiguous'
+}
+$canonicalBlobHashFunctions = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Get-CanonicalGitBlobHash'
+}, $true))
+$earlyDiagnosticGates = @($verifyAst.EndBlock.Statements | Where-Object {
+  $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+    $_.Clauses.Count -eq 1 -and
+    $_.Clauses[0].Item1.Extent.Text -ceq
+      'Test-Path -LiteralPath $eligibilityManifestPath -PathType Leaf' -and
+    $_.Extent.Text.Contains('Operational release verification refuses diagnostic packages.')
+})
+if ($canonicalBlobHashFunctions.Count -ne 1 -or $earlyDiagnosticGates.Count -ne 1) {
+  throw 'Operational verifier checkout-gate harness inputs are ambiguous'
 }
 $bootstrapGitText = $bootstrapGitFunctions[0].Extent.Text
 foreach ($requiredBootstrap in @(
@@ -497,7 +513,7 @@ foreach ($requiredRebuildMarker in @(
   'Assert-StackchanReleaseFrameworkOtaSelector',
   'Get-StackchanReleaseOtaSelectorPolicy',
   'Two-cycle proof does not match reviewed OTA selector authority:',
-  "Get-Command -Name `$pioExecutable -CommandType Application",
+  '`$pioExecutable = `$resolvedPlatformioExecutable',
   "`$pioVersion -cne 'PlatformIO Core, version 6.1.19'",
   '[string]$dependencyLock.platformioCore -cne $pioVersion',
   "@(& `$pioExecutable 'pkg' 'list' '-d' `$rebuildWorktree '-e' `$environment 2>&1)",
@@ -505,7 +521,11 @@ foreach ($requiredRebuildMarker in @(
   '-DifferenceObject $actualDependencyIdentity -CaseSensitive',
   'Get-StackchanVerbosePlatformSource',
   '[string]$spec.coreDir',
-  '[string]$expectedEnvironmentLock.platformSourceLeaf'
+  '[string]$expectedEnvironmentLock.platformSourceLeaf',
+  "@(& `$pioExecutable 'pkg' 'install' '-d' `$rebuildWorktree '-e' `$environment 2>&1)",
+  'Assert-StackchanReleaseToolchainIdentity',
+  '-Phase PostBuild -Environment $environment',
+  'Assert-StackchanReleaseBuildPythonEnvironment'
 )) {
   $marker = $requiredRebuildMarker.Replace('`$', '$')
   if (-not $operationalRebuildText.Contains($marker)) {
@@ -539,6 +559,10 @@ foreach ($evidenceField in @(
   'platformioVersion = $pioVersion',
   'defaultPlatformioCore = $defaultCoreDir',
   'releasePlatformioCore = $releaseCoreDir',
+  'toolchainIdentity = [ordered]@{',
+  'allowlistSha256 = $verifierToolchainAllowlistSha256',
+  'preExecution = @($script:verifierToolchainIdentityRecords',
+  'postBuild = @($script:verifierToolchainIdentityRecords',
   'records = @($rebuildRecords)'
 )) {
   if (-not $operationalRebuildText.Contains($evidenceField)) {
@@ -573,30 +597,22 @@ foreach ($failureProbeMarker in @(
   }
 }
 $publicVerifierGuards = @($packageAst.EndBlock.Statements | Where-Object {
-  if ($_ -isnot [System.Management.Automation.Language.IfStatementAst] -or
-      $_.Clauses.Count -ne 1 -or
-      $_.Clauses[0].Item1.Extent.Text -ne '-not $SkipBuild') {
-    return $false
-  }
-  $directStatements = @($_.Clauses[0].Item2.Statements)
-  $directAppends = @($directStatements | Where-Object {
-    $_ -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-      $_.Left.Extent.Text -eq '$packageVerifyArgs' -and
-      $_.Operator -eq [System.Management.Automation.Language.TokenKind]::PlusEquals -and
-      $_.Right.Extent.Text -eq '"-RequireReleaseEligible"'
-  })
-  return ($directStatements.Count -eq 1 -and $directAppends.Count -eq 1)
+  $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+    $_.Clauses.Count -eq 1 -and $_.Clauses[0].Item1.Extent.Text -eq '-not $SkipBuild' -and
+    $_.Extent.Text.Contains("'-RequireReleaseEligible'") -and
+    $_.Extent.Text.Contains("'-ToolchainAllowlistPath'") -and
+    $_.Extent.Text.Contains("'-GitExecutable'")
 })
 $publicVerifierGuardStatements = if ($publicVerifierGuards.Count -eq 1) {
   @($publicVerifierGuards[0].Clauses[0].Item2.Statements)
-} else {
-  @()
-}
+} else { @() }
 $publicVerifierRequireAppends = @($publicVerifierGuardStatements | Where-Object {
   $_ -is [System.Management.Automation.Language.AssignmentStatementAst] -and
     $_.Left.Extent.Text -eq '$packageVerifyArgs' -and
     $_.Operator -eq [System.Management.Automation.Language.TokenKind]::PlusEquals -and
-    $_.Right.Extent.Text -eq '"-RequireReleaseEligible"'
+    $_.Right.Extent.Text.Contains("'-RequireReleaseEligible'") -and
+    $_.Right.Extent.Text.Contains("'-ToolchainAllowlistPath'") -and
+    $_.Right.Extent.Text.Contains("'-ReleaseCoreDir'")
 })
 $publicVerifierArgumentAssignments = @($packageAst.EndBlock.Statements | Where-Object {
   $_ -is [System.Management.Automation.Language.AssignmentStatementAst] -and
@@ -1179,12 +1195,9 @@ printf executed > '$($markerPath.Replace('\', '/'))'
   }
 }
 
-$releaseEligibilityUnavailable = $verifyText.Contains(
-  'Release-eligible verification is fail-closed before Git or build-tool execution')
-if (-not $releaseEligibilityUnavailable) {
-  $epochTrustRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
-    'stackchan-epoch-trust-contract-' + [guid]::NewGuid().ToString('N'))
-  try {
+$epochTrustRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+  'stackchan-epoch-trust-contract-' + [guid]::NewGuid().ToString('N'))
+try {
   $epochTools = Join-Path $epochTrustRoot 'tools'
   New-Item -ItemType Directory -Force -Path $epochTools | Out-Null
   foreach ($relative in @(
@@ -1193,6 +1206,7 @@ if (-not $releaseEligibilityUnavailable) {
     'release_zip_safety.ps1',
     'release_dependency_evidence.ps1',
     'release_git_trust.ps1',
+    'release_ota_selector_policy.ps1',
     'platformio_resolver.ps1'
   )) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $relative) -Destination $epochTools
@@ -1209,6 +1223,43 @@ with open("filter_expected.bin", "rb") as expected:
 '@ | Set-Content -LiteralPath (Join-Path $epochTrustRoot 'filter_clean.py') -Encoding ASCII
   Copy-Item -LiteralPath (Join-Path $epochTools 'release_dependency_evidence.ps1') `
     -Destination (Join-Path $epochTrustRoot 'filter_expected.bin')
+  $gateHarnessPath = Join-Path $epochTools 'release_checkout_gate_harness.ps1'
+  $gateHarnessText = @(
+@'
+param(
+  [Parameter(Mandatory = $true)][string]$ExpectedCommit,
+  [Parameter(Mandatory = $true)][string]$ExpectedSourceEpoch,
+  [Parameter(Mandatory = $true)][string]$GitExecutable,
+  [string]$PackageRoot,
+  [switch]$AllowDirtyPackage
+)
+$ErrorActionPreference = 'Stop'
+$RequireReleaseEligible = $true
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+Set-Location $repoRoot
+$script:trustedGitExecutable = (Get-Item -LiteralPath $GitExecutable -Force -ErrorAction Stop).FullName
+$script:trustedGitDisabledHooksPath = Join-Path $repoRoot (
+  'output/private/disabled-verifier-git-hooks-' + $PID + '-' + [guid]::NewGuid().ToString('N'))
+$script:trustedNullAttributesPath = if ($env:OS -eq 'Windows_NT') { 'NUL' } else { '/dev/null' }
+if (Test-Path -LiteralPath $script:trustedGitDisabledHooksPath) {
+  throw "Verifier Git disabled-hooks sentinel unexpectedly exists: $script:trustedGitDisabledHooksPath"
+}
+'@
+    $bootstrapGitFunctions[0].Extent.Text
+    $canonicalBlobHashFunctions[0].Extent.Text
+    $releaseEligibilityGate.Extent.Text
+@'
+if (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  $packageRootPath = (Resolve-Path -LiteralPath $PackageRoot).Path
+  $eligibilityManifestPath = Join-Path $packageRootPath 'release_manifest.json'
+'@
+    $earlyDiagnosticGates[0].Extent.Text
+@'
+}
+'@
+  ) -join "`r`n`r`n"
+  [IO.File]::WriteAllText(
+    $gateHarnessPath, $gateHarnessText, (New-Object Text.UTF8Encoding($false)))
   $earlyDiagnosticRoot = Join-Path $epochTrustRoot 'package'
   New-Item -ItemType Directory -Path $earlyDiagnosticRoot | Out-Null
   [ordered]@{
@@ -1229,16 +1280,21 @@ with open("filter_expected.bin", "rb") as expected:
   $epochCommit = (& git -C $epochTrustRoot rev-parse HEAD).Trim()
   $epochValue = (& git -C $epochTrustRoot show -s --format=%ct HEAD).Trim()
   $wrongEpoch = if ($epochValue -eq '1') { '2' } else { '1' }
+  $fixtureGitCommand = Get-Command git -CommandType Application -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -eq $fixtureGitCommand) {
+    throw 'Checkout-gate fixture requires a Git application'
+  }
+  $fixtureGitExecutable = (
+    Resolve-Path -LiteralPath ([string]$fixtureGitCommand.Source)).Path
+  $gateBaseArgs = @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $gateHarnessPath,
+    '-ExpectedCommit', $epochCommit, '-GitExecutable', $fixtureGitExecutable)
   $previousErrorPreference = $ErrorActionPreference
   try {
     $ErrorActionPreference = 'Continue'
-    $epochOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
-      -File (Join-Path $epochTools 'verify_release_package.ps1') `
-      -Version 'epoch-contract' `
-      -PackageRoot (Join-Path $epochTrustRoot 'missing-package') `
-      -ExpectedCommit $epochCommit `
-      -ExpectedSourceEpoch $wrongEpoch `
-      -RequireReleaseEligible 2>&1)
+    $epochOutput = @(& powershell.exe @gateBaseArgs `
+      -ExpectedSourceEpoch $wrongEpoch 2>&1)
     $epochExit = $LASTEXITCODE
   } finally {
     $ErrorActionPreference = $previousErrorPreference
@@ -1250,14 +1306,11 @@ with open("filter_expected.bin", "rb") as expected:
   $previousErrorPreference = $ErrorActionPreference
   try {
     $ErrorActionPreference = 'Continue'
-    $earlyDiagnosticOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
-      -File (Join-Path $epochTools 'verify_release_package.ps1') `
-      -Version 'diagnostic-early-contract' `
+    $earlyDiagnosticOutput = @(& powershell.exe @gateBaseArgs `
       -PackageRoot $earlyDiagnosticRoot `
-      -ExpectedCommit $epochCommit `
       -ExpectedSourceEpoch $epochValue `
       -AllowDirtyPackage `
-      -RequireReleaseEligible 2>&1)
+      2>&1)
     $earlyDiagnosticExit = $LASTEXITCODE
   } finally {
     $ErrorActionPreference = $previousErrorPreference
@@ -1272,6 +1325,7 @@ with open("filter_expected.bin", "rb") as expected:
     'release_zip_safety.ps1',
     'release_dependency_evidence.ps1',
     'release_git_trust.ps1',
+    'release_ota_selector_policy.ps1',
     'platformio_resolver.ps1'
   )) {
     $preGateMarker = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -1284,13 +1338,8 @@ with open("filter_expected.bin", "rb") as expected:
     $previousErrorPreference = $ErrorActionPreference
     try {
       $ErrorActionPreference = 'Continue'
-      $dirtyHelperOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $epochTools 'verify_release_package.ps1') `
-        -Version 'dirty-helper-contract' `
-        -PackageRoot (Join-Path $epochTrustRoot 'missing-package') `
-        -ExpectedCommit $epochCommit `
-        -ExpectedSourceEpoch $epochValue `
-        -RequireReleaseEligible 2>&1)
+      $dirtyHelperOutput = @(& powershell.exe @gateBaseArgs `
+        -ExpectedSourceEpoch $epochValue 2>&1)
       $dirtyHelperExit = $LASTEXITCODE
     } finally {
       $ErrorActionPreference = $previousErrorPreference
@@ -1338,13 +1387,8 @@ with open("filter_expected.bin", "rb") as expected:
       $previousErrorPreference = $ErrorActionPreference
       try {
         $ErrorActionPreference = 'Continue'
-        $hiddenOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
-          -File (Join-Path $epochTools 'verify_release_package.ps1') `
-          -Version 'hidden-helper-contract' `
-          -PackageRoot (Join-Path $epochTrustRoot 'missing-package') `
-          -ExpectedCommit $epochCommit `
-          -ExpectedSourceEpoch $epochValue `
-          -RequireReleaseEligible 2>&1)
+        $hiddenOutput = @(& powershell.exe @gateBaseArgs `
+          -ExpectedSourceEpoch $epochValue 2>&1)
         $hiddenExit = $LASTEXITCODE
       } finally {
         $ErrorActionPreference = $previousErrorPreference
@@ -1384,13 +1428,8 @@ with open("filter_expected.bin", "rb") as expected:
     $previousErrorPreference = $ErrorActionPreference
     try {
       $ErrorActionPreference = 'Continue'
-      $filteredOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $epochTools 'verify_release_package.ps1') `
-        -Version 'custom-filter-helper-contract' `
-        -PackageRoot (Join-Path $epochTrustRoot 'missing-package') `
-        -ExpectedCommit $epochCommit `
-        -ExpectedSourceEpoch $epochValue `
-        -RequireReleaseEligible 2>&1)
+      $filteredOutput = @(& powershell.exe @gateBaseArgs `
+        -ExpectedSourceEpoch $epochValue 2>&1)
       $filteredExit = $LASTEXITCODE
     } finally {
       $ErrorActionPreference = $previousErrorPreference
@@ -1421,13 +1460,8 @@ with open("filter_expected.bin", "rb") as expected:
     $previousErrorPreference = $ErrorActionPreference
     try {
       $ErrorActionPreference = 'Continue'
-      $infoAttributesOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $epochTools 'verify_release_package.ps1') `
-        -Version 'info-attributes-helper-contract' `
-        -PackageRoot (Join-Path $epochTrustRoot 'missing-package') `
-        -ExpectedCommit $epochCommit `
-        -ExpectedSourceEpoch $epochValue `
-        -RequireReleaseEligible 2>&1)
+      $infoAttributesOutput = @(& powershell.exe @gateBaseArgs `
+        -ExpectedSourceEpoch $epochValue 2>&1)
       $infoAttributesExit = $LASTEXITCODE
     } finally {
       $ErrorActionPreference = $previousErrorPreference
@@ -1448,6 +1482,8 @@ with open("filter_expected.bin", "rb") as expected:
   New-Item -ItemType Directory -Path $nestedVerifierRoot -Force | Out-Null
   Copy-Item -LiteralPath (Join-Path $epochTools 'verify_release_package.ps1') `
     -Destination $nestedVerifierRoot
+  $nestedHarnessPath = Join-Path $nestedVerifierRoot 'release_checkout_gate_harness.ps1'
+  Copy-Item -LiteralPath $gateHarnessPath -Destination $nestedHarnessPath
   $nestedMarker = Join-Path $epochTrustRoot 'NESTED_HELPER_EXECUTED.txt'
   $nestedMarkerLiteral = $nestedMarker.Replace("'", "''")
   ("[System.IO.File]::WriteAllText('$nestedMarkerLiteral', 'executed')`r`n" +
@@ -1457,12 +1493,11 @@ with open("filter_expected.bin", "rb") as expected:
   try {
     $ErrorActionPreference = 'Continue'
     $nestedOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
-      -File (Join-Path $nestedVerifierRoot 'verify_release_package.ps1') `
-      -Version 'nested-ignored-contract' `
-      -PackageRoot (Join-Path $epochTrustRoot 'missing-package') `
+      -File $nestedHarnessPath `
       -ExpectedCommit $epochCommit `
+      -GitExecutable $fixtureGitExecutable `
       -ExpectedSourceEpoch $epochValue `
-      -RequireReleaseEligible 2>&1)
+      2>&1)
     $nestedExit = $LASTEXITCODE
   } finally {
     $ErrorActionPreference = $previousErrorPreference
@@ -1481,8 +1516,6 @@ with open("filter_expected.bin", "rb") as expected:
       [System.IO.Directory]::Delete($epochTrustRoot, $true)
     }
   }
-}
-
 $zipContractRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
   'stackchan-verifier-zip-contract-' + [guid]::NewGuid().ToString('N'))
 try {

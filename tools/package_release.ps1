@@ -3,7 +3,13 @@ param(
   [switch]$SkipBuild,
   [switch]$AllowDirty,
   [switch]$ObserveCandidateActions,
-  [switch]$ReleaseShortPathChild
+  [switch]$ReleaseShortPathChild,
+  [string]$ToolchainAllowlistPath,
+  [string]$GitExecutable,
+  [string]$PythonExecutable,
+  [string]$PlatformioExecutable,
+  [string]$LegacyCoreDir,
+  [string]$ReleaseCoreDir
 )
 
 $ErrorActionPreference = "Stop"
@@ -68,23 +74,172 @@ if ($unexpectedGitOverrides.Count -gt 0) {
   throw "Release packaging refuses ambient Git overrides: $($unexpectedGitNames -join ', ')"
 }
 
-if (-not $SkipBuild) {
-  throw @'
-Release-grade packaging is fail-closed before Git or build-tool execution. No tracked reviewed
-exact toolchain allowlist currently authorizes the Git executable, PlatformIO/Python launchers,
-their complete runtime inputs, and the post-build dependency state. Diagnostic packaging remains
-available only with -SkipBuild -AllowDirty; it is never release eligible.
-'@
+$releaseBootstrapNullAttributes = if ($env:OS -eq 'Windows_NT') { 'NUL' } else { '/dev/null' }
+$releaseToolchainAllowlistSha256 = '30607EB46546E49CB72A231C98CDB62FE5987D24252237821F344C1E1B797A5D' # reviewed allowlist SHA-256
+$releaseToolchainIdentityHelperSha256 = '35D688C55E3CF7694B8E8644813A5C8658E2D26DE78DCF8331E62445DDC49BE4' # reviewed identity helper SHA-256
+$releaseToolchainSemanticVerifierSha256 = '649DE0BBF4A966ADF389A4C2F98190B87958E2ECCC1DF15A6E6FE04D86A4BEBA' # reviewed semantic verifier SHA-256
+$releaseToolchainPreBuild = $null
+$script:releaseToolchainIdentityRecords = [System.Collections.Generic.List[object]]::new()
+$releaseToolchainEligible = $false
+$releaseToolchainIdentityEvidence = $null
+$script:releaseToolchainReadLeases = [System.Collections.Generic.List[IO.FileStream]]::new()
+$script:releaseToolchainLeaseState = $null
+
+function Add-ReleaseToolchainReadLease {
+  param([Parameter(Mandatory = $true)][string]$LiteralPath)
+  $item = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+  if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Release bootstrap refuses a non-file or redirected lease target: $LiteralPath"
+  }
+  $lease = [IO.File]::Open(
+    $item.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  $script:releaseToolchainReadLeases.Add($lease) | Out-Null
 }
 
-$releaseBootstrapNullAttributes = if ($env:OS -eq 'Windows_NT') { 'NUL' } else { '/dev/null' }
-$releaseBootstrapGitCommand = Get-Command -Name git -CommandType Application -ErrorAction SilentlyContinue |
-  Select-Object -First 1
-if ($null -eq $releaseBootstrapGitCommand) {
-  throw 'Release packaging requires a Git application executable; functions, aliases, and scripts are refused.'
+function Get-ReleaseBootstrapSha256 {
+  param([Parameter(Mandatory = $true)][string]$LiteralPath)
+  $item = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+  if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Release bootstrap refuses a non-file or redirected input: $LiteralPath"
+  }
+  $stream = [IO.File]::Open($item.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ([BitConverter]::ToString($hasher.ComputeHash($stream)) -replace '-', '').ToUpperInvariant()
+  } finally {
+    $hasher.Dispose()
+    $stream.Dispose()
+  }
 }
-$releaseBootstrapGitExecutable = (
-  Resolve-Path -LiteralPath ([string]$releaseBootstrapGitCommand.Source)).Path
+
+function Close-ReleaseToolchainResources {
+  if ($null -ne $script:releaseToolchainLeaseState -and
+      -not [bool]$script:releaseToolchainLeaseState.closed) {
+    $closeCommand = Get-Command -Name Close-StackchanToolchainLeaseState `
+      -CommandType Function -ErrorAction SilentlyContinue
+    if ($null -eq $closeCommand) {
+      throw 'Release toolchain guard exists but its cleanup function is unavailable.'
+    }
+    Close-StackchanToolchainLeaseState -LeaseState $script:releaseToolchainLeaseState
+  }
+  foreach ($lease in @($script:releaseToolchainReadLeases)) {
+    $lease.Dispose()
+  }
+  $script:releaseToolchainReadLeases.Clear()
+}
+
+trap {
+  $packageFailure = $_
+  if ($script:releaseSourceCleanupReady -and
+      $null -ne (Get-Command -Name Remove-ReleaseSourceWorktree `
+        -CommandType Function -ErrorAction SilentlyContinue)) {
+    try {
+      Remove-ReleaseSourceWorktree
+    } catch {
+      Write-Warning 'Could not clean the exact release source worktree; it remains preserved for inspection.'
+    }
+  }
+  try {
+    Close-ReleaseToolchainResources
+  } catch {
+    Write-Warning "Could not fully release package toolchain resources: $($_.Exception.Message)"
+  }
+  throw $packageFailure
+}
+
+if (-not $SkipBuild) {
+  $requiredToolchainArguments = [ordered]@{
+    GitExecutable = $GitExecutable
+    PythonExecutable = $PythonExecutable
+    PlatformioExecutable = $PlatformioExecutable
+    LegacyCoreDir = $LegacyCoreDir
+    ReleaseCoreDir = $ReleaseCoreDir
+  }
+  foreach ($entry in $requiredToolchainArguments.GetEnumerator()) {
+    if ([string]::IsNullOrWhiteSpace([string]$entry.Value)) {
+      throw "Release packaging requires explicit -$($entry.Key) authority."
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($ToolchainAllowlistPath)) {
+    $ToolchainAllowlistPath = Join-Path $PSScriptRoot 'release_toolchain_identity_allowlist.json'
+  }
+  $ToolchainAllowlistPath = (Get-Item -LiteralPath $ToolchainAllowlistPath -Force -ErrorAction Stop).FullName
+  $identityHelperPath = Join-Path $PSScriptRoot 'release_toolchain_identity.ps1'
+  $semanticVerifierPath = Join-Path $PSScriptRoot 'verify_git_pack_semantics.py'
+  $bootstrapInputs = @(
+    [ordered]@{ path = $ToolchainAllowlistPath; expected = $releaseToolchainAllowlistSha256; label = 'allowlist' },
+    [ordered]@{ path = $identityHelperPath; expected = $releaseToolchainIdentityHelperSha256; label = 'identity helper' },
+    [ordered]@{ path = $semanticVerifierPath; expected = $releaseToolchainSemanticVerifierSha256; label = 'semantic verifier' }
+  )
+  foreach ($input in $bootstrapInputs) {
+    if ([string]$input.expected -notmatch '^[0-9A-F]{64}$') {
+      throw "Release packaging has no reviewed pre-Git byte authority for the $([string]$input.label)."
+    }
+    Add-ReleaseToolchainReadLease -LiteralPath ([string]$input.path)
+    $actual = Get-ReleaseBootstrapSha256 -LiteralPath ([string]$input.path)
+    if ($actual -cne [string]$input.expected) {
+      throw "Release packaging pre-Git byte authority mismatch: $([string]$input.label)"
+    }
+  }
+  $requiredPythonEnvironment = [ordered]@{
+    PYTHONNOUSERSITE = '1'
+    PYTHONSAFEPATH = '1'
+    PYTHONDONTWRITEBYTECODE = '1'
+    PYTHONHASHSEED = '0'
+    PYTHONUTF8 = '1'
+    PYTHONIOENCODING = 'utf-8'
+  }
+  $unexpectedPythonEnvironment = @(Get-ChildItem Env: | Where-Object {
+    $_.Name -like 'PYTHON*' -and -not $requiredPythonEnvironment.Contains($_.Name)
+  })
+  if ($unexpectedPythonEnvironment.Count -ne 0) {
+    throw "Release packaging refuses ambient Python overrides: $(@($unexpectedPythonEnvironment.Name | Sort-Object) -join ', ')"
+  }
+  foreach ($entry in $requiredPythonEnvironment.GetEnumerator()) {
+    $existing = [Environment]::GetEnvironmentVariable(
+      [string]$entry.Key, [EnvironmentVariableTarget]::Process)
+    if (-not [string]::IsNullOrWhiteSpace($existing) -and $existing -cne [string]$entry.Value) {
+      throw "Release packaging refuses ambient Python override: $($entry.Key)"
+    }
+    [Environment]::SetEnvironmentVariable(
+      [string]$entry.Key, [string]$entry.Value, [EnvironmentVariableTarget]::Process)
+  }
+  . $identityHelperPath
+  $script:releaseToolchainLeaseState = New-StackchanToolchainLeaseState
+  $resolvedGitExecutable = (Get-Item -LiteralPath $GitExecutable -Force -ErrorAction Stop).FullName
+  $resolvedPythonExecutable = (Get-Item -LiteralPath $PythonExecutable -Force -ErrorAction Stop).FullName
+  $resolvedPlatformioExecutable = (Get-Item -LiteralPath $PlatformioExecutable -Force -ErrorAction Stop).FullName
+  $resolvedLegacyCore = (Get-Item -LiteralPath $LegacyCoreDir -Force -ErrorAction Stop).FullName
+  $resolvedReleaseCore = (Get-Item -LiteralPath $ReleaseCoreDir -Force -ErrorAction Stop).FullName
+  foreach ($executable in @($resolvedGitExecutable, $resolvedPythonExecutable, $resolvedPlatformioExecutable)) {
+    Add-ReleaseToolchainReadLease -LiteralPath $executable
+  }
+  $releaseToolchainRootMap = @{
+    pythonHome = Split-Path -Parent $resolvedPythonExecutable
+    gitHome = Split-Path -Parent (Split-Path -Parent $resolvedGitExecutable)
+    legacyCore = $resolvedLegacyCore
+    releaseCore = $resolvedReleaseCore
+    projectRoot = (Get-Item -LiteralPath (Split-Path -Parent $PSScriptRoot) -Force).FullName
+    libdepsRoot = Join-Path (Split-Path -Parent $PSScriptRoot) '.pio/libdeps'
+  }
+  $releaseToolchainPreBuild = Assert-StackchanReleaseToolchainIdentity `
+    -AllowlistPath $ToolchainAllowlistPath -RootMap $releaseToolchainRootMap `
+    -PlatformioExecutable $resolvedPlatformioExecutable `
+    -PythonExecutable $resolvedPythonExecutable -GitExecutable $resolvedGitExecutable `
+    -Phase PreBuild -LeaseState $script:releaseToolchainLeaseState -LeaseScope 'pre-build'
+  $script:releaseToolchainIdentityRecords.Add([ordered]@{
+    stage = 'preBuild'; cycle = $null; environment = $null; result = $releaseToolchainPreBuild
+  }) | Out-Null
+  $releaseBootstrapGitExecutable = $resolvedGitExecutable
+} else {
+  $releaseBootstrapGitCommand = Get-Command -Name git -CommandType Application -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -eq $releaseBootstrapGitCommand) {
+    throw 'Release packaging requires a Git application executable; functions, aliases, and scripts are refused.'
+  }
+  $releaseBootstrapGitExecutable = (
+    Resolve-Path -LiteralPath ([string]$releaseBootstrapGitCommand.Source)).Path
+}
 function Invoke-ReleaseBootstrapGit {
   param(
     [Parameter(Mandatory = $true)][string]$Root,
@@ -109,7 +264,15 @@ function Invoke-ReleaseBootstrapGit {
   try {
     $env:GIT_NO_REPLACE_OBJECTS = '1'
     $env:GIT_ATTR_NOSYSTEM = '1'
+    if ($null -ne $script:releaseToolchainLeaseState) {
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:releaseToolchainLeaseState -Context 'before trusted Git execution'
+    }
     & $script:releaseBootstrapGitExecutable @gitArguments
+    if ($null -ne $script:releaseToolchainLeaseState) {
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:releaseToolchainLeaseState -Context 'after trusted Git execution'
+    }
   } finally {
     if ($null -eq $previousNoReplaceObjects) {
       Remove-Item Env:\GIT_NO_REPLACE_OBJECTS -ErrorAction SilentlyContinue
@@ -207,6 +370,15 @@ function Assert-ReleaseBootstrapTrust {
   $bootstrapFiles = @(
     '.gitattributes', 'tools/package_release.ps1',
     'tools/test_firmware_reproducible_build_contract.ps1',
+    'tools/test_release_toolchain_integration_contract.ps1',
+    'tools/test_release_toolchain_documentation_contract.ps1',
+    'tools/test_release_toolchain_cache_contract.ps1',
+    'tools/seal_pioarduino_release_core.ps1',
+    'tools/release_toolchain_identity.ps1',
+    'tools/release_toolchain_identity_allowlist.json',
+    'tools/verify_git_pack_semantics.py',
+    'tools/test_git_pack_semantic_verifier.py',
+    'tools/test_release_toolchain_identity_contract.ps1',
     'tools/platformio_resolver.ps1', 'tools/preview_python_resolver.ps1',
     'tools/release_asset_contract.ps1', 'tools/firmware_reproducibility_failure.ps1',
     'tools/release_source_binding.ps1', 'tools/release_dependency_evidence.ps1',
@@ -434,6 +606,12 @@ if (
     if ($SkipBuild) { $childArgs += "-SkipBuild" }
     if ($AllowDirty) { $childArgs += "-AllowDirty" }
     if ($ObserveCandidateActions) { $childArgs += "-ObserveCandidateActions" }
+    if ($ToolchainAllowlistPath) { $childArgs += @('-ToolchainAllowlistPath', $ToolchainAllowlistPath) }
+    if ($GitExecutable) { $childArgs += @('-GitExecutable', $GitExecutable) }
+    if ($PythonExecutable) { $childArgs += @('-PythonExecutable', $PythonExecutable) }
+    if ($PlatformioExecutable) { $childArgs += @('-PlatformioExecutable', $PlatformioExecutable) }
+    if ($LegacyCoreDir) { $childArgs += @('-LegacyCoreDir', $LegacyCoreDir) }
+    if ($ReleaseCoreDir) { $childArgs += @('-ReleaseCoreDir', $ReleaseCoreDir) }
     & $script:releasePowerShellExecutable @childArgs
     $childExit = $LASTEXITCODE
   } finally {
@@ -470,6 +648,9 @@ if ($LASTEXITCODE -ne 0) {
 . (Join-Path $PSScriptRoot "release_dependency_evidence.ps1")
 . (Join-Path $PSScriptRoot "release_git_trust.ps1")
 . (Join-Path $PSScriptRoot "release_ota_selector_policy.ps1")
+if (-not $SkipBuild) {
+  $script:StackchanPlatformioCommand = $resolvedPlatformioExecutable
+}
 
 $credentialHygieneJson = (& (Join-Path $PSScriptRoot "check_release_credential_hygiene.ps1") -Root $repoRoot -Json | Out-String)
 $credentialHygieneReport = $credentialHygieneJson | ConvertFrom-Json
@@ -478,7 +659,11 @@ if ($credentialHygieneReport.status -ne "release-credential-hygiene-ready" -or [
 }
 Write-Host $credentialHygieneJson.Trim()
 
-$releaseLegacyPlatformioCore = Get-StackchanPlatformioCoreDir
+$releaseLegacyPlatformioCore = if ($SkipBuild) {
+  Get-StackchanPlatformioCoreDir
+} else {
+  $resolvedLegacyCore
+}
 if ([string]::IsNullOrWhiteSpace($releaseLegacyPlatformioCore) -and
     -not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
   $legacyCoreFallback = Join-Path $env:USERPROFILE '.platformio'
@@ -503,6 +688,7 @@ function Get-ReleasePlatformioCoreDir {
   param([string]$Environment)
 
   if ($Environment -eq "stackchan_release_full") {
+    if (-not $SkipBuild) { return $resolvedReleaseCore }
     return Join-Path $releasePlatformioCoreRoot "pioarduino"
   }
   return $releaseLegacyPlatformioCore
@@ -523,6 +709,7 @@ function Invoke-StackchanReleasePlatformio {
     [string]$BuildCacheDir,
     [string]$ExpectedCommit,
     [string]$ExpectedEpoch,
+    [string]$BuildProjectRoot,
     [string[]]$Arguments
   )
 
@@ -530,6 +717,8 @@ function Invoke-StackchanReleasePlatformio {
   $previousBuildCacheDir = $env:PLATFORMIO_BUILD_CACHE_DIR
   $previousExpectedCommit = $env:STACKCHAN_EXPECTED_BUILD_COMMIT
   $previousExpectedEpoch = $env:STACKCHAN_EXPECTED_BUILD_EPOCH
+  $previousPythonSafePath = $env:PYTHONSAFEPATH
+  $previousProcessPath = $env:PATH
   try {
     $env:PLATFORMIO_CORE_DIR = Get-ReleasePlatformioCoreDir -Environment $Environment
     if (-not [string]::IsNullOrWhiteSpace($BuildCacheDir)) {
@@ -544,7 +733,29 @@ function Invoke-StackchanReleasePlatformio {
       $env:STACKCHAN_EXPECTED_BUILD_COMMIT = $ExpectedCommit
       $env:STACKCHAN_EXPECTED_BUILD_EPOCH = $ExpectedEpoch
     }
+    if (-not $SkipBuild) {
+      if ([string]::IsNullOrWhiteSpace($BuildProjectRoot)) {
+        throw 'Release PlatformIO execution requires one explicit BuildProjectRoot.'
+      }
+      Remove-Item Env:\PYTHONSAFEPATH -ErrorAction SilentlyContinue
+      $env:PATH = @(
+        (Split-Path -Parent $resolvedPlatformioExecutable),
+        (Split-Path -Parent $resolvedPythonExecutable),
+        (Split-Path -Parent $resolvedGitExecutable),
+        (Join-Path ([Environment]::GetFolderPath('Windows')) 'System32'),
+        (Join-Path ([Environment]::GetFolderPath('Windows')) 'System32/WindowsPowerShell/v1.0')
+      ) -join [IO.Path]::PathSeparator
+      Assert-StackchanReleaseBuildPythonEnvironment -ProjectRoot $BuildProjectRoot
+    }
+    if ($null -ne $script:releaseToolchainLeaseState) {
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:releaseToolchainLeaseState -Context 'before PlatformIO execution'
+    }
     Invoke-StackchanPlatformio @Arguments
+    if ($null -ne $script:releaseToolchainLeaseState) {
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:releaseToolchainLeaseState -Context 'after PlatformIO execution'
+    }
   } finally {
     if ($null -eq $previousCoreDir) {
       Remove-Item Env:\PLATFORMIO_CORE_DIR -ErrorAction SilentlyContinue
@@ -566,6 +777,12 @@ function Invoke-StackchanReleasePlatformio {
     } else {
       $env:STACKCHAN_EXPECTED_BUILD_EPOCH = $previousExpectedEpoch
     }
+    if ($null -eq $previousPythonSafePath) {
+      Remove-Item Env:\PYTHONSAFEPATH -ErrorAction SilentlyContinue
+    } else {
+      $env:PYTHONSAFEPATH = $previousPythonSafePath
+    }
+    $env:PATH = $previousProcessPath
   }
 }
 
@@ -718,6 +935,7 @@ function Invoke-LoggedReleasePlatformio {
     [Parameter(Mandatory = $true)][string]$BuildCacheDir,
     [Parameter(Mandatory = $true)][string]$ExpectedCommit,
     [Parameter(Mandatory = $true)][string]$ExpectedEpoch,
+    [Parameter(Mandatory = $true)][string]$BuildProjectRoot,
     [Parameter(Mandatory = $true)][string[]]$Arguments,
     [Parameter(Mandatory = $true)][string]$LogPath,
     [Parameter(Mandatory = $true)][string]$Description
@@ -731,6 +949,7 @@ function Invoke-LoggedReleasePlatformio {
       -BuildCacheDir $BuildCacheDir `
       -ExpectedCommit $ExpectedCommit `
       -ExpectedEpoch $ExpectedEpoch `
+      -BuildProjectRoot $BuildProjectRoot `
       -Arguments $Arguments 2>&1 | ForEach-Object {
         $line = [string]$_
         $lines.Add($line)
@@ -786,6 +1005,7 @@ function Save-BuildDependencySnapshot {
     -BuildCacheDir $BuildCacheDir `
     -ExpectedCommit $ExpectedCommit `
     -ExpectedEpoch $ExpectedEpoch `
+    -BuildProjectRoot $BuildProjectRoot `
     -Arguments @('pkg', 'list', '-d', $BuildProjectRoot, '-e', $Environment) `
     -LogPath (Join-Path $environmentRoot 'pkg-list.txt') `
     -Description "$Environment dependency inventory")
@@ -794,6 +1014,7 @@ function Save-BuildDependencySnapshot {
     -BuildCacheDir $BuildCacheDir `
     -ExpectedCommit $ExpectedCommit `
     -ExpectedEpoch $ExpectedEpoch `
+    -BuildProjectRoot $BuildProjectRoot `
     -Arguments @('pkg', 'list', '-d', $BuildProjectRoot, '-e', $Environment, '-v') `
     -LogPath (Join-Path $environmentRoot 'pkg-list-verbose.txt') `
     -Description "$Environment verbose dependency inventory")
@@ -802,6 +1023,7 @@ function Save-BuildDependencySnapshot {
     -BuildCacheDir $BuildCacheDir `
     -ExpectedCommit $ExpectedCommit `
     -ExpectedEpoch $ExpectedEpoch `
+    -BuildProjectRoot $BuildProjectRoot `
     -Arguments @('--version') `
     -LogPath (Join-Path $environmentRoot 'platformio-version.txt') `
     -Description "$Environment PlatformIO version capture" | Out-Null
@@ -866,6 +1088,34 @@ function Invoke-FirmwareBuildCycle {
       -BuildCacheDir $environmentBuildCache `
       -ExpectedCommit $ExpectedCommit `
       -ExpectedEpoch $ExpectedEpoch `
+      -BuildProjectRoot $BuildProjectRoot `
+      -Arguments @('pkg', 'install', '-d', $BuildProjectRoot, '-e', $environment) `
+      -LogPath (Join-Path $CycleRoot "logs/$environment-dependency-stage.log") `
+      -Description "$CycleName/$environment dependency staging" | Out-Null
+    $dependencyRootMap = @{
+      pythonHome = [string]$releaseToolchainRootMap.pythonHome
+      gitHome = [string]$releaseToolchainRootMap.gitHome
+      legacyCore = [string]$releaseToolchainRootMap.legacyCore
+      releaseCore = [string]$releaseToolchainRootMap.releaseCore
+      projectRoot = $BuildProjectRoot
+      libdepsRoot = Join-Path $BuildProjectRoot '.pio/libdeps'
+    }
+    $preExecutionIdentity = Assert-StackchanReleaseToolchainIdentity `
+      -AllowlistPath $ToolchainAllowlistPath -RootMap $dependencyRootMap `
+      -PlatformioExecutable $resolvedPlatformioExecutable `
+      -PythonExecutable $resolvedPythonExecutable -GitExecutable $resolvedGitExecutable `
+      -Phase PostBuild -Environment $environment `
+      -LeaseState $script:releaseToolchainLeaseState -LeaseScope $CycleName
+    $script:releaseToolchainIdentityRecords.Add([ordered]@{
+      stage = 'preExecution'; cycle = $CycleName; environment = $environment
+      result = $preExecutionIdentity
+    }) | Out-Null
+    Invoke-LoggedReleasePlatformio `
+      -Environment $environment `
+      -BuildCacheDir $environmentBuildCache `
+      -ExpectedCommit $ExpectedCommit `
+      -ExpectedEpoch $ExpectedEpoch `
+      -BuildProjectRoot $BuildProjectRoot `
       -Arguments @("run", "-d", $BuildProjectRoot, "-e", $environment, "-t", "clean") `
       -LogPath (Join-Path $CycleRoot "logs/$environment-clean.log") `
       -Description "$CycleName/$environment clean" | Out-Null
@@ -879,9 +1129,20 @@ function Invoke-FirmwareBuildCycle {
       -BuildCacheDir $environmentBuildCache `
       -ExpectedCommit $ExpectedCommit `
       -ExpectedEpoch $ExpectedEpoch `
+      -BuildProjectRoot $BuildProjectRoot `
       -Arguments @("run", "-d", $BuildProjectRoot, "-e", $environment) `
       -LogPath (Join-Path $CycleRoot "logs/$environment-build.log") `
       -Description "$CycleName/$environment build" | Out-Null
+    $postBuildIdentity = Assert-StackchanReleaseToolchainIdentity `
+      -AllowlistPath $ToolchainAllowlistPath -RootMap $dependencyRootMap `
+      -PlatformioExecutable $resolvedPlatformioExecutable `
+      -PythonExecutable $resolvedPythonExecutable -GitExecutable $resolvedGitExecutable `
+      -Phase PostBuild -Environment $environment `
+      -LeaseState $script:releaseToolchainLeaseState -LeaseScope $CycleName
+    $script:releaseToolchainIdentityRecords.Add([ordered]@{
+      stage = 'postBuild'; cycle = $CycleName; environment = $environment
+      result = $postBuildIdentity
+    }) | Out-Null
     Copy-BuildArtifacts `
       -Environment $environment `
       -BuildDir (Join-Path $BuildProjectRoot ".pio/build/$environment") `
@@ -1001,17 +1262,6 @@ function Remove-ReleaseSourceWorktree {
 }
 
 $script:releaseSourceCleanupReady = $true
-trap {
-  $packageFailure = $_
-  if ($script:releaseSourceCleanupReady) {
-    try {
-      Remove-ReleaseSourceWorktree
-    } catch {
-      Write-Warning "Could not clean the exact release source worktree; it remains preserved for inspection."
-    }
-  }
-  throw $packageFailure
-}
 
 if (-not $SkipBuild) {
   # The three profiles span two PlatformIO core roots. Each proof cycle uses a
@@ -1063,6 +1313,9 @@ if (-not $SkipBuild) {
       -ExpectedEpoch $canonicalBuildEpoch `
       -Phase "reproducibility proof post-cycle-a" `
       -ProjectRoot $activeBuildSourceRoot
+    Close-StackchanToolchainLeaseScope `
+      -LeaseState $script:releaseToolchainLeaseState -Scope 'cycle-a' `
+      -RequireUnchanged -Context 'cycle-a final authenticated namespace'
     Invoke-ReleaseGit -Arguments @(
       '-C', $repoRoot, 'worktree', 'remove', '--force', $activeBuildSourceRoot)
     if ($LASTEXITCODE -ne 0) { throw "Could not remove the cycle-a detached firmware worktree." }
@@ -1098,6 +1351,9 @@ if (-not $SkipBuild) {
       -ExpectedEpoch $canonicalBuildEpoch `
       -Phase "reproducibility proof post-cycle-b" `
       -ProjectRoot $activeBuildSourceRoot
+    Close-StackchanToolchainLeaseScope `
+      -LeaseState $script:releaseToolchainLeaseState -Scope 'cycle-b' `
+      -RequireUnchanged -Context 'cycle-b final authenticated namespace'
 
     if ($cycleAArtifacts.Count -ne 15 -or $cycleBArtifacts.Count -ne 15) {
       throw "Firmware reproducibility proof did not produce all 15 artifacts per cycle."
@@ -1160,6 +1416,38 @@ if (-not $SkipBuild) {
       Write-Warning "Could not fully copy failed build evidence; leaving the exact failed worktree attached."
     }
     throw $buildFailure.Exception
+  }
+  $identityRecords = @($script:releaseToolchainIdentityRecords)
+  $preExecutionRecords = @($identityRecords | Where-Object { [string]$_.stage -ceq 'preExecution' })
+  $postBuildRecords = @($identityRecords | Where-Object { [string]$_.stage -ceq 'postBuild' })
+  $invalidIdentityRecords = @($identityRecords | Where-Object {
+    [string]$_.result.status -cne 'verified' -or
+      [string]$_.result.allowlistSha256 -cne $releaseToolchainAllowlistSha256 -or
+      [string]$_.result.observationSha256 -notmatch '^[0-9A-F]{64}$'
+  })
+  if ($identityRecords.Count -ne 13 -or $preExecutionRecords.Count -ne 6 -or
+      $postBuildRecords.Count -ne 6 -or $invalidIdentityRecords.Count -ne 0) {
+    throw 'Release toolchain identity did not verify PreBuild plus pre-execution/post-build dependency state for both cycles.'
+  }
+  $reviewedAllowlist = Get-Content -LiteralPath $ToolchainAllowlistPath -Raw | ConvertFrom-Json
+  Assert-StackchanToolchainLeaseStateUnchanged `
+    -LeaseState $script:releaseToolchainLeaseState `
+    -Context 'release toolchain eligibility decision' -VerifyNamespace
+  $releaseToolchainEligible = $true
+  $releaseToolchainIdentityEvidence = [ordered]@{
+    schema = 'stackchan.release-toolchain-package-evidence.v1'
+    status = 'verified-reviewed-toolchain-and-two-cycle-dependencies'
+    platformKey = [string]$releaseToolchainPreBuild.platformKey
+    allowlistSha256 = $releaseToolchainAllowlistSha256
+    identityHelperSha256 = $releaseToolchainIdentityHelperSha256
+    semanticVerifierSha256 = $releaseToolchainSemanticVerifierSha256
+    review = $reviewedAllowlist.review
+    gitExecutable = $resolvedGitExecutable
+    pythonExecutable = $resolvedPythonExecutable
+    platformioExecutable = $resolvedPlatformioExecutable
+    preBuild = $releaseToolchainPreBuild
+    preExecution = $preExecutionRecords
+    postBuild = $postBuildRecords
   }
   $builtFirmwareCache = $cycleBRoot
   Assert-ReleaseSourceIdentity `
@@ -1507,6 +1795,7 @@ Copy-Item -LiteralPath "site/index.html" -Destination $siteDir
 Copy-Item -LiteralPath "site/privacy/index.html" -Destination $privacySiteDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/COMPANION_APP_GAP_ANALYSIS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CONVERSATION_V2_ROADMAP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CREATING_PERSONAS.md" -Destination $docsDir
@@ -1763,6 +2052,15 @@ foreach ($file in $companionEvidenceFiles) {
 
 $releaseTools = @(
   "tools/package_release.ps1",
+  "tools/release_toolchain_identity.ps1",
+  "tools/release_toolchain_identity_allowlist.json",
+  "tools/verify_git_pack_semantics.py",
+  "tools/test_git_pack_semantic_verifier.py",
+  "tools/test_release_toolchain_identity_contract.ps1",
+  "tools/test_release_toolchain_integration_contract.ps1",
+  "tools/test_release_toolchain_documentation_contract.ps1",
+  "tools/test_release_toolchain_cache_contract.ps1",
+  "tools/seal_pioarduino_release_core.ps1",
   "tools/firmware_reproducibility_proof.ps1",
   "tools/test_firmware_reproducibility_proof_contract.ps1",
   "tools/firmware_reproducibility_failure.ps1",
@@ -2710,6 +3008,19 @@ $manifest = [ordered]@{
     }
     proof = $firmwareReproducibilityProof
   }
+  toolchainIdentity = if ($SkipBuild) {
+    [ordered]@{
+      schema = 'stackchan.release-toolchain-package-evidence.v1'
+      status = 'not-applicable-diagnostic-skip-build'
+      allowlistSha256 = $null
+      identityHelperSha256 = $null
+      semanticVerifierSha256 = $null
+      preExecution = @()
+      postBuild = @()
+    }
+  } else {
+    $releaseToolchainIdentityEvidence
+  }
   servoDefault = if ($SkipBuild) {
     "boot and motion state unverified; copied firmware identity is unknown; do not flash"
   } else {
@@ -2724,10 +3035,10 @@ $manifest = [ordered]@{
   packageSourceIsolationPolicy = if ($SkipBuild) { "diagnostic-mutable-source-unbound" } else { "detached-clean-worktree-pinned-to-package-commit" }
   packageSourceCommit = if ($SkipBuild) { $null } else { $canonicalBuildCommit }
   packageSourceEpoch = if ($SkipBuild) { $null } else { $canonicalBuildEpoch }
-  releaseEligible = (-not $SkipBuild)
-  hardwareValidationEligible = (-not $SkipBuild)
-  distributionEligible = (-not $SkipBuild)
-  flashEligible = (-not $SkipBuild)
+  releaseEligible = ($releaseToolchainEligible -and (-not $SkipBuild))
+  hardwareValidationEligible = ($releaseToolchainEligible -and (-not $SkipBuild))
+  distributionEligible = ($releaseToolchainEligible -and (-not $SkipBuild))
+  flashEligible = ($releaseToolchainEligible -and (-not $SkipBuild))
   dirty = ($sourceDirtyFiles.Count -gt 0)
   dirtyFiles = @($sourceDirtyFiles)
   generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
@@ -3012,10 +3323,11 @@ $readinessReport = [ordered]@{
   } else {
     "Promotion requires source-matched supervised hardware qualification, bridge AI qualification, the required soak, successful release checks, and explicit owner approval."
   }
-  nextOperatorCommand = if ($SkipBuild) {
-    $null
+  nextOperatorCommand = $null
+  nextOperatorGuidance = if ($SkipBuild) {
+    'Diagnostic packages have no arrival or hardware authority.'
   } else {
-    ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
+    'Return to the exact clean trusted source checkout, define the six-value releaseToolchain splat from docs/RELEASE_PROCESS.md, and pass this ZIP to tools/prepare_device_arrival.ps1. The archive does not confer release authority.'
   }
 }
 
@@ -3226,9 +3538,10 @@ Owner approval has not been recorded for this candidate. Promotion requires sour
 supervised hardware qualification, bridge AI qualification, the required soak, successful
 release checks, and explicit owner approval.
 
-Recommended arrival command from the extracted package:
-
-    $($readinessReport.nextOperatorCommand)
+Arrival authority is intentionally not embedded in this archive. Return to the exact clean trusted
+source checkout, define the six-value ``releaseToolchain`` splat from ``docs/RELEASE_PROCESS.md``,
+and pass this ZIP to ``tools/prepare_device_arrival.ps1``. The archive does not confer release
+authority.
 "@ | Set-Content -Path (Join-Path $outDir "READINESS_REPORT.md") -Encoding UTF8
 }
 
@@ -3430,7 +3743,14 @@ if ($AllowDirty) {
   $packageVerifyArgs += "-AllowDirtyPackage"
 }
 if (-not $SkipBuild) {
-  $packageVerifyArgs += "-RequireReleaseEligible"
+  $packageVerifyArgs += @(
+    '-RequireReleaseEligible',
+    '-ToolchainAllowlistPath', $ToolchainAllowlistPath,
+    '-GitExecutable', $resolvedGitExecutable,
+    '-PythonExecutable', $resolvedPythonExecutable,
+    '-PlatformioExecutable', $resolvedPlatformioExecutable,
+    '-LegacyCoreDir', $resolvedLegacyCore,
+    '-ReleaseCoreDir', $resolvedReleaseCore)
 }
 $previousVerifyErrorPreference = $ErrorActionPreference
 try {
@@ -3455,7 +3775,12 @@ if (-not $SkipBuild) {
   $builtFirmwareCache = $null
   $firmwareBuildCacheRoot = $null
   $firmwareDependencySnapshotRoot = $null
+  Close-StackchanToolchainLeaseState `
+    -LeaseState $script:releaseToolchainLeaseState -RequireUnchanged `
+    -Context 'completed governed release package'
 }
+
+Close-ReleaseToolchainResources
 
 if ($SkipBuild) {
   Write-Host "Diagnostic archive only -- release and hardware use forbidden:"

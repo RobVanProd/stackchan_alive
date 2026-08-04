@@ -176,9 +176,15 @@ foreach ($required in @(
 if ($packageText.Contains('Join-Path $repoRoot ([string]$asset.source_path)')) {
   throw 'Persona WAV packaging still reads from the mutable main checkout'
 }
-$sourceCleanupStart = $packageText.IndexOf('function Remove-ReleaseSourceWorktree')
-$sourceCleanupEnd = $packageText.IndexOf('trap {', $sourceCleanupStart)
-$sourceCleanupText = $packageText.Substring($sourceCleanupStart, $sourceCleanupEnd - $sourceCleanupStart)
+$sourceCleanupFunctions = @($packageAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Remove-ReleaseSourceWorktree'
+}, $true))
+if ($sourceCleanupFunctions.Count -ne 1) {
+  throw 'Commit-bound package source cleanup function is missing or ambiguous.'
+}
+$sourceCleanupText = $sourceCleanupFunctions[0].Extent.Text
 if (-not $sourceCleanupText.Contains('full-failed-worktree-retained-attached') -or
     -not $sourceCleanupText.Contains('is a package failure; the full worktree remains attached') -or
     -not $sourceCleanupText.Contains('source root is missing while its worktree is registered') -or

@@ -17,7 +17,13 @@ param(
   [int]$MinReplyWindows = 100,
   [switch]$OperatorPresent,
   [switch]$ConfirmMotionOff,
-  [switch]$Json
+  [switch]$Json,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -55,6 +61,9 @@ try {
   $PackageVerifyOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
     -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
     -Version $PackageVersion -ZipPath $PackageZipPath -ExpectedCommit $SourceCommit `
+    -ToolchainAllowlistPath $ToolchainAllowlistPath -GitExecutable $GitExecutable `
+    -PythonExecutable $PythonExecutable -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir `
     -RequireReleaseEligible 2>&1)
   $PackageVerifyExit = $LASTEXITCODE
 } finally {

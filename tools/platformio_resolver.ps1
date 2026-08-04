@@ -102,6 +102,11 @@ function Invoke-StackchanUtf8Process {
     [string[]]$Arguments = @()
   )
 
+  $resolvedCommand = Resolve-StackchanExactApplicationExecutable -Candidate $Command
+  if ($null -eq $resolvedCommand) {
+    throw "Command did not start its resolved native executable: $(Format-StackchanCommand (@($Command) + $Arguments))"
+  }
+  $Command = $resolvedCommand
   $previousPythonIoEncoding = $env:PYTHONIOENCODING
   $previousPythonUtf8 = $env:PYTHONUTF8
   $previousOutputEncoding = $OutputEncoding
@@ -112,8 +117,23 @@ function Invoke-StackchanUtf8Process {
     $env:PYTHONUTF8 = "1"
     $OutputEncoding = $utf8
     [Console]::OutputEncoding = $utf8
-    & $Command @Arguments
-    $processExitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+      # Windows PowerShell presents native stderr as ErrorRecord objects. Do
+      # not let the inherited Stop policy unwind while the authenticated child
+      # is still running; consume its complete lifecycle, then classify the
+      # native exit explicitly below.
+      $ErrorActionPreference = "Continue"
+      $nativeExitSentinel = [int]::MinValue
+      $global:LASTEXITCODE = $nativeExitSentinel
+      & $Command @Arguments
+      $processExitCode = $global:LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($processExitCode -eq $nativeExitSentinel) {
+      throw "Command did not start its resolved native executable: $(Format-StackchanCommand (@($Command) + $Arguments))"
+    }
     if ($processExitCode -ne 0) {
       throw "Command failed with exit code $processExitCode`: $(Format-StackchanCommand (@($Command) + $Arguments))"
     }

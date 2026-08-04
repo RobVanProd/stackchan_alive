@@ -1,9 +1,19 @@
 Set-StrictMode -Version Latest
 
-$script:StackchanToolchainIdentitySchema = 'stackchan.release-toolchain-identity.v2'
+$script:StackchanToolchainIdentitySchema = 'stackchan.release-toolchain-identity.v3'
 $script:StackchanToolchainInventorySchema = 'stackchan.byte-tree.v1'
 $script:StackchanCanonicalLibdepsSchema = 'stackchan.canonical-libdeps.v1'
 $script:StackchanCanonicalGitLibrarySchema = 'stackchan.canonical-git-library.v1'
+$script:StackchanGitPackSemanticVerifierPath = Join-Path $PSScriptRoot 'verify_git_pack_semantics.py'
+
+function Get-StackchanGitPackVerifierPython {
+  $command = Get-Command -Name python -CommandType Application -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -eq $command) {
+    throw 'Git pack semantic verification requires an explicit Python application executable.'
+  }
+  return [IO.Path]::GetFullPath([string]$command.Source)
+}
 
 function Get-StackchanReleaseToolchainPlatformKey {
   if ($env:OS -eq 'Windows_NT') {
@@ -24,7 +34,7 @@ function Assert-StackchanPythonImportIsolationState {
   param(
     [Parameter(Mandatory = $true)]$Probe,
     [Parameter(Mandatory = $true)][string]$PythonHome,
-    [Parameter(Mandatory = $true)][string]$PythonExecutable
+    [string]$PythonExecutable = (Get-StackchanGitPackVerifierPython)
   )
 
   $pythonRoot = (Get-Item -LiteralPath $PythonHome -Force -ErrorAction Stop).FullName.TrimEnd('\', '/')
@@ -70,7 +80,7 @@ function Assert-StackchanPythonImportIsolationState {
 function Assert-StackchanPythonImportIsolation {
   param(
     [Parameter(Mandatory = $true)][string]$PythonHome,
-    [Parameter(Mandatory = $true)][string]$PythonExecutable
+    [string]$PythonExecutable = (Get-StackchanGitPackVerifierPython)
   )
 
   $requiredEnvironment = [ordered]@{
@@ -147,6 +157,677 @@ print(json.dumps({
   }
   Assert-StackchanPythonImportIsolationState `
     -Probe $probe -PythonHome $pythonRoot -PythonExecutable $PythonExecutable
+}
+
+function Assert-StackchanReleaseBuildPythonEnvironment {
+  param([Parameter(Mandatory = $true)][string]$ProjectRoot)
+
+  $requiredEnvironment = [ordered]@{
+    PYTHONNOUSERSITE = '1'
+    PYTHONDONTWRITEBYTECODE = '1'
+    PYTHONHASHSEED = '0'
+    PYTHONUTF8 = '1'
+    PYTHONIOENCODING = 'utf-8'
+  }
+  foreach ($entry in $requiredEnvironment.GetEnumerator()) {
+    if ([Environment]::GetEnvironmentVariable(
+        [string]$entry.Key, [EnvironmentVariableTarget]::Process) -cne [string]$entry.Value) {
+      throw "Release build Python environment requires $($entry.Key)=$($entry.Value)."
+    }
+  }
+  if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable(
+      'PYTHONSAFEPATH', [EnvironmentVariableTarget]::Process))) {
+    throw 'Release build Python environment requires PYTHONSAFEPATH to be unset so byte-identified PlatformIO tool packages can import their adjacent modules.'
+  }
+  $forbiddenEnvironment = @(
+    '__PYVENV_LAUNCHER__', '_PYTHON_HOST_PLATFORM',
+    'CONDA_DEFAULT_ENV', 'CONDA_PREFIX', 'VIRTUAL_ENV',
+    'PYTHONBREAKPOINT', 'PYTHONCASEOK', 'PYTHONCOERCECLOCALE', 'PYTHONDEBUG',
+    'PYTHONEXECUTABLE', 'PYTHONFAULTHANDLER', 'PYTHONHOME', 'PYTHONINSPECT',
+    'PYTHONINTMAXSTRDIGITS', 'PYTHONMALLOC', 'PYTHONNODEBUGRANGES', 'PYTHONPATH',
+    'PYTHONOPTIMIZE', 'PYTHONPERFSUPPORT', 'PYTHONPLATLIBDIR', 'PYTHONPROFILEIMPORTTIME',
+    'PYTHONPYCACHEPREFIX', 'PYTHONSTARTUP', 'PYTHONTRACEMALLOC', 'PYTHONUSERBASE',
+    'PYTHONWARNDEFAULTENCODING', 'PYTHONWARNINGS'
+  )
+  foreach ($name in $forbiddenEnvironment) {
+    if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable(
+        $name, [EnvironmentVariableTarget]::Process))) {
+      throw "Release build Python environment refuses ambient import/runtime override: $name"
+    }
+  }
+  $project = Get-Item -LiteralPath $ProjectRoot -Force -ErrorAction Stop
+  if (-not $project.PSIsContainer -or ($project.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'Release build project root is not one real directory.'
+  }
+  foreach ($name in @('.pth', '.egg-link', 'sitecustomize.py', 'usercustomize.py')) {
+    if (Test-Path -LiteralPath (Join-Path $project.FullName $name)) {
+      throw "Release build project root contains a Python import escape file: $name"
+    }
+  }
+}
+
+function New-StackchanToolchainLeaseState {
+  $pathComparer = if ($env:OS -eq 'Windows_NT') {
+    [StringComparer]::OrdinalIgnoreCase
+  } else {
+    [StringComparer]::Ordinal
+  }
+  return [pscustomobject][ordered]@{
+    schema = 'stackchan.toolchain-lifetime-lease.v1'
+    id = [guid]::NewGuid().ToString('N')
+    streams = [Collections.Generic.Dictionary[string, object]]::new($pathComparer)
+    watchers = [Collections.Generic.Dictionary[string, object]]::new($pathComparer)
+    violation = $null
+    violationEvidence = [Collections.Generic.List[object]]::new()
+    preBuildVerified = $false
+    preBuildComponents = @()
+    preBuildAuthorityKey = $null
+    preBuildScope = $null
+    closed = $false
+  }
+}
+
+function Copy-StackchanToolchainIdentityComponents {
+  param([Parameter(Mandatory = $true)][object[]]$Components)
+
+  return @($Components | ForEach-Object {
+    [pscustomobject][ordered]@{
+      name = [string]$_.name
+      phase = [string]$_.phase
+      identitySchema = [string]$_.identitySchema
+      treeSha256 = [string]$_.treeSha256
+      fileCount = [int]$_.fileCount
+      bytes = [long]$_.bytes
+    }
+  })
+}
+
+function Get-StackchanToolchainPreBuildAuthorityKey {
+  param(
+    [Parameter(Mandatory = $true)][string]$AllowlistPath,
+    [Parameter(Mandatory = $true)][hashtable]$RootMap,
+    [Parameter(Mandatory = $true)][string]$PlatformKey,
+    [Parameter(Mandatory = $true)][string]$PlatformioExecutable,
+    [Parameter(Mandatory = $true)][string]$PythonExecutable,
+    [Parameter(Mandatory = $true)][string]$GitExecutable
+  )
+
+  $parts = [Collections.Generic.List[string]]::new()
+  $parts.Add($PlatformKey) | Out-Null
+  $parts.Add([IO.Path]::GetFullPath((Get-Item -LiteralPath $AllowlistPath -Force).FullName)) | Out-Null
+  $parts.Add((Get-StackchanFileSha256 -LiteralPath $AllowlistPath)) | Out-Null
+  foreach ($rootKey in @('pythonHome', 'gitHome', 'legacyCore', 'releaseCore')) {
+    if (-not $RootMap.ContainsKey($rootKey) -or
+        [string]::IsNullOrWhiteSpace([string]$RootMap[$rootKey])) {
+      throw "Release toolchain cache authority is missing root: $rootKey"
+    }
+    $parts.Add([IO.Path]::GetFullPath((Get-Item -LiteralPath (
+          [string]$RootMap[$rootKey]) -Force -ErrorAction Stop).FullName).TrimEnd('\', '/')) | Out-Null
+  }
+  foreach ($executable in @($PlatformioExecutable, $PythonExecutable, $GitExecutable)) {
+    $parts.Add([IO.Path]::GetFullPath((Get-Item -LiteralPath $executable -Force -ErrorAction Stop).FullName)) | Out-Null
+  }
+  $comparisonText = if ($env:OS -eq 'Windows_NT') {
+    (@($parts) | ForEach-Object { $_.ToUpperInvariant() }) -join "`0"
+  } else {
+    @($parts) -join "`0"
+  }
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ([BitConverter]::ToString($hasher.ComputeHash(
+      [Text.Encoding]::UTF8.GetBytes("stackchan.prebuild-authority.v1`n$comparisonText`n"))) -replace '-', '').ToUpperInvariant()
+  } finally {
+    $hasher.Dispose()
+  }
+}
+
+function Assert-StackchanToolchainLeaseState {
+  param([Parameter(Mandatory = $true)]$LeaseState)
+
+  if ([string]$LeaseState.schema -cne 'stackchan.toolchain-lifetime-lease.v1' -or
+      [bool]$LeaseState.closed) {
+    throw 'Release toolchain lifetime lease state is invalid or already closed.'
+  }
+}
+
+function Add-StackchanToolchainFileLease {
+  param(
+    [Parameter(Mandatory = $true)]$LeaseState,
+    [Parameter(Mandatory = $true)][string]$LiteralPath,
+    [Parameter(Mandatory = $true)][string]$Scope
+  )
+
+  Assert-StackchanToolchainLeaseState -LeaseState $LeaseState
+  if ([string]::IsNullOrWhiteSpace($Scope)) {
+    throw 'Release toolchain file leases require a non-empty scope.'
+  }
+  $item = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+  if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Release toolchain lifetime lease refuses a non-file or redirected path: $LiteralPath"
+  }
+  $fullPath = [IO.Path]::GetFullPath($item.FullName)
+  if ($LeaseState.streams.ContainsKey($fullPath)) { return }
+  $stream = [IO.FileStream]::new(
+    $fullPath,
+    [IO.FileMode]::Open,
+    [IO.FileAccess]::Read,
+    [IO.FileShare]::Read,
+    4096,
+    [IO.FileOptions]::SequentialScan)
+  try {
+    $LeaseState.streams.Add($fullPath, [pscustomobject][ordered]@{
+      path = $fullPath
+      scope = $Scope
+      stream = $stream
+    })
+  } catch {
+    $stream.Dispose()
+    throw
+  }
+}
+
+function Add-StackchanToolchainTreeWatcher {
+  param(
+    [Parameter(Mandatory = $true)]$LeaseState,
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$Scope
+  )
+
+  Assert-StackchanToolchainLeaseState -LeaseState $LeaseState
+  $rootItem = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
+  if (-not $rootItem.PSIsContainer -or
+      ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Release toolchain lifetime watcher requires one real directory: $Root"
+  }
+  $resolvedRoot = [IO.Path]::GetFullPath($rootItem.FullName).TrimEnd('\', '/')
+  if ($LeaseState.watchers.ContainsKey($resolvedRoot)) { return }
+
+  $watcher = [IO.FileSystemWatcher]::new($resolvedRoot, '*')
+  $sourceIdentifiers = [Collections.Generic.List[string]]::new()
+  try {
+    $watcher.IncludeSubdirectories = $true
+    $watcher.InternalBufferSize = 65536
+    $watcher.NotifyFilter = (
+      [IO.NotifyFilters]::FileName -bor [IO.NotifyFilters]::DirectoryName -bor
+      [IO.NotifyFilters]::LastWrite -bor [IO.NotifyFilters]::Size -bor
+      [IO.NotifyFilters]::CreationTime -bor [IO.NotifyFilters]::Attributes -bor
+      [IO.NotifyFilters]::Security)
+    foreach ($eventName in @('Changed', 'Created', 'Deleted', 'Renamed', 'Error')) {
+      $sourceIdentifier = "stackchan-toolchain-$($LeaseState.id)-$([guid]::NewGuid().ToString('N'))-$eventName"
+      [void](Microsoft.PowerShell.Utility\Register-ObjectEvent `
+        -InputObject $watcher -EventName $eventName -SourceIdentifier $sourceIdentifier)
+      $sourceIdentifiers.Add($sourceIdentifier) | Out-Null
+    }
+    $LeaseState.watchers.Add($resolvedRoot, [pscustomobject][ordered]@{
+      root = $resolvedRoot
+      scope = $Scope
+      watcher = $watcher
+      sourceIdentifiers = @($sourceIdentifiers)
+      baselineNamespaceSha256 = $null
+    })
+    $watcher.EnableRaisingEvents = $true
+  } catch {
+    foreach ($sourceIdentifier in $sourceIdentifiers) {
+      Microsoft.PowerShell.Utility\Unregister-Event `
+        -SourceIdentifier $sourceIdentifier -ErrorAction SilentlyContinue
+      Microsoft.PowerShell.Utility\Remove-Event `
+        -SourceIdentifier $sourceIdentifier -ErrorAction SilentlyContinue
+    }
+    $watcher.Dispose()
+    throw
+  }
+}
+
+function Get-StackchanToolchainNamespaceSha256 {
+  param([Parameter(Mandatory = $true)][string]$Root)
+
+  $rootItem = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
+  if (-not $rootItem.PSIsContainer -or
+      ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Release toolchain namespace root is not one real directory: $Root"
+  }
+  $rootPath = $rootItem.FullName.TrimEnd('\', '/')
+  $queue = [Collections.Generic.Queue[object]]::new()
+  $queue.Enqueue([pscustomobject]@{ item = $rootItem; relative = '' })
+  $records = [Collections.Generic.List[string]]::new()
+  while ($queue.Count -gt 0) {
+    $current = $queue.Dequeue()
+    foreach ($item in @(Get-ChildItem -LiteralPath $current.item.FullName -Force -ErrorAction Stop)) {
+      if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "Release toolchain namespace refuses reparse points: $($item.FullName)"
+      }
+      $relative = if ([string]::IsNullOrEmpty([string]$current.relative)) {
+        [string]$item.Name
+      } else {
+        [string]$current.relative + '/' + [string]$item.Name
+      }
+      $relative = ConvertTo-StackchanSafeIdentityRelativePath $relative
+      if ($item.PSIsContainer) {
+        $records.Add("D`0$relative") | Out-Null
+        $queue.Enqueue([pscustomobject]@{ item = $item; relative = $relative })
+      } elseif ($item -is [IO.FileInfo]) {
+        $records.Add("F`0$relative") | Out-Null
+      } else {
+        throw "Unsupported release toolchain namespace entry: $($item.FullName)"
+      }
+    }
+  }
+  $ordered = [string[]]@($records)
+  [Array]::Sort($ordered, [StringComparer]::Ordinal)
+  $namespaceText = "stackchan.toolchain-namespace.v1`n" + (($ordered | ForEach-Object { "$_`n" }) -join '')
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ([BitConverter]::ToString($hasher.ComputeHash(
+      [Text.Encoding]::UTF8.GetBytes($namespaceText))) -replace '-', '').ToUpperInvariant()
+  } finally {
+    $hasher.Dispose()
+  }
+}
+
+function Set-StackchanToolchainTreeWatcherBaseline {
+  param(
+    [Parameter(Mandatory = $true)]$LeaseState,
+    [Parameter(Mandatory = $true)][string]$Root
+  )
+
+  Assert-StackchanToolchainLeaseState -LeaseState $LeaseState
+  $resolvedRoot = [IO.Path]::GetFullPath((Get-Item -LiteralPath $Root -Force -ErrorAction Stop).FullName).
+    TrimEnd('\', '/')
+  if (-not $LeaseState.watchers.ContainsKey($resolvedRoot)) {
+    throw "Release toolchain namespace has no active watcher: $resolvedRoot"
+  }
+  $record = $LeaseState.watchers[$resolvedRoot]
+  if ([string]::IsNullOrWhiteSpace([string]$record.baselineNamespaceSha256)) {
+    $record.baselineNamespaceSha256 = Get-StackchanToolchainNamespaceSha256 -Root $resolvedRoot
+  }
+}
+
+function Get-StackchanToolchainEventPathMetadata {
+  param([string]$LiteralPath)
+
+  $metadata = [ordered]@{
+    observedUtc = (Get-Date).ToUniversalTime().ToString('o')
+    path = $LiteralPath
+    exists = $false
+    isContainer = $null
+    length = $null
+    attributes = $null
+    creationTimeUtc = $null
+    lastWriteTimeUtc = $null
+    lastAccessTimeUtc = $null
+    accessSddl = $null
+    error = $null
+  }
+  if ([string]::IsNullOrWhiteSpace($LiteralPath)) {
+    return [pscustomobject]$metadata
+  }
+  try {
+    if (-not (Test-Path -LiteralPath $LiteralPath)) {
+      return [pscustomobject]$metadata
+    }
+    $item = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+    $metadata.exists = $true
+    $metadata.isContainer = [bool]$item.PSIsContainer
+    if (-not $item.PSIsContainer -and $item -is [IO.FileInfo]) {
+      $metadata.length = [long]$item.Length
+    }
+    $metadata.attributes = [string]$item.Attributes
+    $metadata.creationTimeUtc = $item.CreationTimeUtc.ToString('o')
+    $metadata.lastWriteTimeUtc = $item.LastWriteTimeUtc.ToString('o')
+    $metadata.lastAccessTimeUtc = $item.LastAccessTimeUtc.ToString('o')
+    try {
+      $acl = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
+      $sections = [Security.AccessControl.AccessControlSections]::Access -bor
+        [Security.AccessControl.AccessControlSections]::Owner -bor
+        [Security.AccessControl.AccessControlSections]::Group
+      $metadata.accessSddl = $acl.GetSecurityDescriptorSddlForm($sections)
+    } catch {
+      $metadata.error = "ACL: $($_.Exception.Message)"
+    }
+  } catch {
+    $metadata.error = $_.Exception.Message
+  }
+  return [pscustomobject]$metadata
+}
+
+function Add-StackchanToolchainQueuedEventEvidence {
+  param([Parameter(Mandatory = $true)]$LeaseState)
+
+  # Snapshot every watcher subscription before recording anything so evidence
+  # is ordered across the entire guarded state, rather than once per root.
+  # Events delivered after this snapshot remain queued for the next drain.
+  $queued = [Collections.Generic.List[object]]::new()
+  foreach ($watchRecord in @($LeaseState.watchers.Values)) {
+    foreach ($sourceIdentifier in @($watchRecord.sourceIdentifiers)) {
+      foreach ($eventRecord in @(Microsoft.PowerShell.Utility\Get-Event `
+            -SourceIdentifier $sourceIdentifier -ErrorAction SilentlyContinue)) {
+        $queued.Add([pscustomobject][ordered]@{
+          sourceIdentifier = [string]$sourceIdentifier
+          watchRecord = $watchRecord
+          eventRecord = $eventRecord
+        }) | Out-Null
+      }
+    }
+  }
+  if ($queued.Count -eq 0) { return 0 }
+
+  $orderedEvents = @($queued | Sort-Object `
+      @{ Expression = { [datetime]$_.eventRecord.TimeGenerated } },
+      @{ Expression = { [long]$_.eventRecord.EventIdentifier } },
+      @{ Expression = { [string]$_.sourceIdentifier } })
+  foreach ($queuedRecord in $orderedEvents) {
+    $eventRecord = $queuedRecord.eventRecord
+    $watchRecord = $queuedRecord.watchRecord
+    $eventArgs = $eventRecord.SourceEventArgs
+    $sourceIdentifier = [string]$queuedRecord.sourceIdentifier
+    $registeredEventName = if ($sourceIdentifier -match '-(Changed|Created|Deleted|Renamed|Error)$') {
+      [string]$Matches[1]
+    } else {
+      'Unknown'
+    }
+    $changeType = if ($null -ne $eventArgs -and
+        $null -ne $eventArgs.PSObject.Properties['ChangeType']) {
+      [string]$eventArgs.ChangeType
+    } else {
+      $registeredEventName
+    }
+    $fullPath = if ($null -ne $eventArgs -and
+        $null -ne $eventArgs.PSObject.Properties['FullPath']) {
+      [string]$eventArgs.FullPath
+    } else {
+      [string]$watchRecord.root
+    }
+    $name = if ($null -ne $eventArgs -and
+        $null -ne $eventArgs.PSObject.Properties['Name']) {
+      [string]$eventArgs.Name
+    } else { $null }
+    $oldFullPath = if ($null -ne $eventArgs -and
+        $null -ne $eventArgs.PSObject.Properties['OldFullPath']) {
+      [string]$eventArgs.OldFullPath
+    } else { $null }
+    $oldName = if ($null -ne $eventArgs -and
+        $null -ne $eventArgs.PSObject.Properties['OldName']) {
+      [string]$eventArgs.OldName
+    } else { $null }
+    $eventException = $null
+    if ($registeredEventName -ceq 'Error' -and $null -ne $eventArgs) {
+      try { $eventException = $eventArgs.GetException() } catch {}
+    }
+    $timeGeneratedUtc = ([datetime]$eventRecord.TimeGenerated).ToUniversalTime().ToString('o')
+    $observedUtc = (Get-Date).ToUniversalTime().ToString('o')
+    $evidence = [pscustomobject][ordered]@{
+      schema = 'stackchan.toolchain-watcher-event.v1'
+      ordinal = $LeaseState.violationEvidence.Count
+      eventIdentifier = [long]$eventRecord.EventIdentifier
+      sourceIdentifier = $sourceIdentifier
+      registeredEventName = $registeredEventName
+      changeType = $changeType
+      timeGeneratedUtc = $timeGeneratedUtc
+      observedUtc = $observedUtc
+      watcherRoot = [string]$watchRecord.root
+      watcherScope = [string]$watchRecord.scope
+      watcherNotifyFilter = [string]$watchRecord.watcher.NotifyFilter
+      fullPath = $fullPath
+      name = $name
+      oldFullPath = $oldFullPath
+      oldName = $oldName
+      errorType = if ($null -eq $eventException) { $null } else { $eventException.GetType().FullName }
+      errorMessage = if ($null -eq $eventException) { $null } else { $eventException.Message }
+      pathMetadata = Get-StackchanToolchainEventPathMetadata -LiteralPath $fullPath
+      oldPathMetadata = Get-StackchanToolchainEventPathMetadata -LiteralPath $oldFullPath
+      watcherRootMetadata = Get-StackchanToolchainEventPathMetadata -LiteralPath ([string]$watchRecord.root)
+      queueRemovalSucceeded = $false
+      queueRemovalError = $null
+    }
+    $LeaseState.violationEvidence.Add($evidence) | Out-Null
+    try {
+      Microsoft.PowerShell.Utility\Remove-Event `
+        -EventIdentifier ([int]$eventRecord.EventIdentifier) -ErrorAction Stop
+      $evidence.queueRemovalSucceeded = $true
+    } catch {
+      $evidence.queueRemovalError = $_.Exception.Message
+    }
+  }
+  $cumulativeEvidence = @($LeaseState.violationEvidence | Sort-Object `
+      @{ Expression = { [datetime]$_.timeGeneratedUtc } },
+      @{ Expression = { [long]$_.eventIdentifier } },
+      @{ Expression = { [string]$_.sourceIdentifier } })
+  $LeaseState.violationEvidence.Clear()
+  for ($ordinal = 0; $ordinal -lt $cumulativeEvidence.Count; $ordinal++) {
+    $cumulativeEvidence[$ordinal].ordinal = $ordinal
+    $LeaseState.violationEvidence.Add($cumulativeEvidence[$ordinal]) | Out-Null
+  }
+  $firstEvidence = $LeaseState.violationEvidence[0]
+  $firstSummary = "$([string]$firstEvidence.registeredEventName)/$([string]$firstEvidence.changeType) " +
+    "at $([string]$firstEvidence.fullPath) generatedUtc=$([string]$firstEvidence.timeGeneratedUtc)"
+  if ([string]::IsNullOrWhiteSpace([string]$LeaseState.violation) -or
+      [string]$LeaseState.violation -like 'filesystem watcher events=*') {
+    $LeaseState.violation = "filesystem watcher events=$($LeaseState.violationEvidence.Count) first=$firstSummary"
+  }
+  return $orderedEvents.Count
+}
+
+function Complete-StackchanToolchainQueuedEventDrain {
+  param(
+    [Parameter(Mandatory = $true)]$LeaseState,
+    [ValidateRange(1, 20)][int]$RequiredQuietPasses = 3,
+    [ValidateRange(1, 100)][int]$MaximumPasses = 40,
+    [ValidateRange(1, 1000)][int]$DelayMilliseconds = 25
+  )
+
+  $quietPasses = 0
+  $drainedEvents = 0
+  for ($pass = 1; $pass -le $MaximumPasses; $pass++) {
+    [Threading.Thread]::Sleep($DelayMilliseconds)
+    $drained = Add-StackchanToolchainQueuedEventEvidence -LeaseState $LeaseState
+    $drainedEvents += $drained
+    if ($drained -eq 0) {
+      $quietPasses++
+      if ($quietPasses -ge $RequiredQuietPasses) { return $drainedEvents }
+    } else {
+      $quietPasses = 0
+    }
+  }
+
+  $quiescenceFailure = "watcher event queue did not quiesce after $MaximumPasses passes"
+  if ([string]::IsNullOrWhiteSpace([string]$LeaseState.violation)) {
+    $LeaseState.violation = $quiescenceFailure
+  } elseif ([string]$LeaseState.violation -notlike "*$quiescenceFailure*") {
+    $LeaseState.violation = "$($LeaseState.violation); $quiescenceFailure"
+  }
+  return $drainedEvents
+}
+
+function Assert-StackchanToolchainLeaseStateUnchanged {
+  param(
+    [Parameter(Mandatory = $true)]$LeaseState,
+    [Parameter(Mandatory = $true)][string]$Context,
+    [switch]$VerifyNamespace
+  )
+
+  Assert-StackchanToolchainLeaseState -LeaseState $LeaseState
+  # FileSystemWatcher delivery is asynchronous. Existing inputs cannot be
+  # changed because their read leases deny write/delete sharing; this short
+  # drain interval makes transient new-path events observable before success.
+  [Threading.Thread]::Sleep(50)
+  foreach ($watchRecord in @($LeaseState.watchers.Values)) {
+    if (-not [bool]$watchRecord.watcher.EnableRaisingEvents) {
+      if ([string]::IsNullOrWhiteSpace([string]$LeaseState.violation)) {
+        $LeaseState.violation = "watcher disabled for $([string]$watchRecord.root)"
+      }
+    }
+    foreach ($sourceIdentifier in @($watchRecord.sourceIdentifiers)) {
+      $subscribers = @(Microsoft.PowerShell.Utility\Get-EventSubscriber `
+        -SourceIdentifier $sourceIdentifier -ErrorAction SilentlyContinue)
+      if ($subscribers.Count -ne 1) {
+        if ([string]::IsNullOrWhiteSpace([string]$LeaseState.violation)) {
+          $LeaseState.violation = "watcher subscription missing for $([string]$watchRecord.root)"
+        }
+      }
+    }
+  }
+  [void](Add-StackchanToolchainQueuedEventEvidence -LeaseState $LeaseState)
+  foreach ($watchRecord in @($LeaseState.watchers.Values)) {
+    if ($VerifyNamespace -and
+        [string]::IsNullOrWhiteSpace([string]$LeaseState.violation)) {
+      if ([string]::IsNullOrWhiteSpace([string]$watchRecord.baselineNamespaceSha256)) {
+        $LeaseState.violation = "watcher namespace baseline missing for $([string]$watchRecord.root)"
+        throw "Release toolchain changed after authentication during $Context`: $($LeaseState.violation)"
+      }
+      $actualNamespace = Get-StackchanToolchainNamespaceSha256 -Root ([string]$watchRecord.root)
+      if ($actualNamespace -cne [string]$watchRecord.baselineNamespaceSha256) {
+        $LeaseState.violation = "namespace drift at $([string]$watchRecord.root)"
+        throw "Release toolchain changed after authentication during $Context`: $($LeaseState.violation)"
+      }
+    }
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$LeaseState.violation)) {
+    throw "Release toolchain changed after authentication during $Context`: $($LeaseState.violation)"
+  }
+  if ($VerifyNamespace) {
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $LeaseState -Context "$Context post-namespace event drain"
+  }
+}
+
+function Close-StackchanToolchainLeaseScope {
+  param(
+    [Parameter(Mandatory = $true)]$LeaseState,
+    [Parameter(Mandatory = $true)][string]$Scope,
+    [switch]$RequireUnchanged,
+    [string]$Context = 'toolchain lease scope closure'
+  )
+
+  Assert-StackchanToolchainLeaseState -LeaseState $LeaseState
+  if ($RequireUnchanged) {
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $LeaseState -Context $Context -VerifyNamespace
+  }
+  $closingWatchers = @($LeaseState.watchers.Values | Where-Object {
+    [string]$_.scope -ceq $Scope
+  })
+  foreach ($record in $closingWatchers) {
+    $record.watcher.EnableRaisingEvents = $false
+  }
+  if ($closingWatchers.Count -gt 0) {
+    [void](Complete-StackchanToolchainQueuedEventDrain -LeaseState $LeaseState)
+  }
+  foreach ($record in $closingWatchers) {
+    foreach ($sourceIdentifier in @($record.sourceIdentifiers)) {
+      Microsoft.PowerShell.Utility\Unregister-Event `
+        -SourceIdentifier $sourceIdentifier -ErrorAction SilentlyContinue
+    }
+  }
+  if ($closingWatchers.Count -gt 0) {
+    [void](Complete-StackchanToolchainQueuedEventDrain -LeaseState $LeaseState)
+  }
+  foreach ($root in @($LeaseState.watchers.Keys)) {
+    $record = $LeaseState.watchers[$root]
+    if ([string]$record.scope -cne $Scope) { continue }
+    foreach ($sourceIdentifier in @($record.sourceIdentifiers)) {
+      Microsoft.PowerShell.Utility\Remove-Event `
+        -SourceIdentifier $sourceIdentifier -ErrorAction SilentlyContinue
+    }
+    $record.watcher.Dispose()
+    [void]$LeaseState.watchers.Remove($root)
+  }
+  foreach ($path in @($LeaseState.streams.Keys)) {
+    $record = $LeaseState.streams[$path]
+    if ([string]$record.scope -cne $Scope) { continue }
+    $record.stream.Dispose()
+    [void]$LeaseState.streams.Remove($path)
+  }
+  if ([string]$LeaseState.preBuildScope -ceq $Scope) {
+    $LeaseState.preBuildVerified = $false
+    $LeaseState.preBuildComponents = @()
+    $LeaseState.preBuildAuthorityKey = $null
+    $LeaseState.preBuildScope = $null
+  }
+  if ($RequireUnchanged -and
+      -not [string]::IsNullOrWhiteSpace([string]$LeaseState.violation)) {
+    throw "Release toolchain changed during guarded scope closure: $($LeaseState.violation)"
+  }
+}
+
+function Close-StackchanToolchainLeaseState {
+  param(
+    [Parameter(Mandatory = $true)]$LeaseState,
+    [switch]$RequireUnchanged,
+    [string]$Context = 'toolchain lease state closure'
+  )
+
+  if ([bool]$LeaseState.closed) { return }
+  if ($RequireUnchanged) {
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $LeaseState -Context $Context -VerifyNamespace
+  }
+  foreach ($record in @($LeaseState.watchers.Values)) {
+    $record.watcher.EnableRaisingEvents = $false
+  }
+  if ($LeaseState.watchers.Count -gt 0) {
+    [void](Complete-StackchanToolchainQueuedEventDrain -LeaseState $LeaseState)
+  }
+  foreach ($record in @($LeaseState.watchers.Values)) {
+    foreach ($sourceIdentifier in @($record.sourceIdentifiers)) {
+      Microsoft.PowerShell.Utility\Unregister-Event `
+        -SourceIdentifier $sourceIdentifier -ErrorAction SilentlyContinue
+    }
+  }
+  if ($LeaseState.watchers.Count -gt 0) {
+    [void](Complete-StackchanToolchainQueuedEventDrain -LeaseState $LeaseState)
+  }
+  foreach ($record in @($LeaseState.watchers.Values)) {
+    foreach ($sourceIdentifier in @($record.sourceIdentifiers)) {
+      Microsoft.PowerShell.Utility\Remove-Event `
+        -SourceIdentifier $sourceIdentifier -ErrorAction SilentlyContinue
+    }
+    $record.watcher.Dispose()
+  }
+  foreach ($record in @($LeaseState.streams.Values)) {
+    $record.stream.Dispose()
+  }
+  $LeaseState.watchers.Clear()
+  $LeaseState.streams.Clear()
+  $LeaseState.preBuildVerified = $false
+  $LeaseState.preBuildComponents = @()
+  $LeaseState.preBuildAuthorityKey = $null
+  $LeaseState.preBuildScope = $null
+  $LeaseState.closed = $true
+  if ($RequireUnchanged -and
+      -not [string]::IsNullOrWhiteSpace([string]$LeaseState.violation)) {
+    throw "Release toolchain changed during guarded state closure: $($LeaseState.violation)"
+  }
+}
+
+function Protect-StackchanToolchainTree {
+  param(
+    [Parameter(Mandatory = $true)]$LeaseState,
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$Scope
+  )
+
+  Add-StackchanToolchainTreeWatcher -LeaseState $LeaseState -Root $Root -Scope $Scope
+  $queue = [Collections.Generic.Queue[object]]::new()
+  $rootItem = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
+  $queue.Enqueue($rootItem)
+  while ($queue.Count -gt 0) {
+    $current = $queue.Dequeue()
+    foreach ($item in @(Get-ChildItem -LiteralPath $current.FullName -Force -ErrorAction Stop)) {
+      if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "Release toolchain lifetime lease refuses reparse points: $($item.FullName)"
+      }
+      if ($item.PSIsContainer) {
+        $queue.Enqueue($item)
+      } elseif ($item -is [IO.FileInfo]) {
+        Add-StackchanToolchainFileLease `
+          -LeaseState $LeaseState -LiteralPath $item.FullName -Scope $Scope
+      } else {
+        throw "Unsupported release toolchain lease entry: $($item.FullName)"
+      }
+    }
+  }
+  Set-StackchanToolchainTreeWatcherBaseline `
+    -LeaseState $LeaseState -Root $rootItem.FullName
 }
 
 function Get-StackchanFileSha256 {
@@ -243,7 +924,9 @@ function Get-StackchanIdentityFromRecords {
 function Get-StackchanToolchainTreeIdentity {
   param(
     [Parameter(Mandatory = $true)][string]$Root,
-    [switch]$IncludeRecords
+    [switch]$IncludeRecords,
+    $LeaseState,
+    [string]$LeaseScope
   )
 
   if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
@@ -254,6 +937,10 @@ function Get-StackchanToolchainTreeIdentity {
     throw "Toolchain identity refuses a reparse-point root: $Root"
   }
   $resolvedRoot = $resolvedRootItem.FullName.TrimEnd('\', '/')
+  if ($null -ne $LeaseState) {
+    Add-StackchanToolchainTreeWatcher `
+      -LeaseState $LeaseState -Root $resolvedRoot -Scope $LeaseScope
+  }
   $queue = [System.Collections.Generic.Queue[object]]::new()
   $queue.Enqueue([pscustomobject]@{ Item = $resolvedRootItem; Relative = '' })
   $records = [System.Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
@@ -292,6 +979,10 @@ function Get-StackchanToolchainTreeIdentity {
       if ($item.PSIsContainer) {
         $queue.Enqueue([pscustomobject]@{ Item = $item; Relative = $relative })
       } elseif ($item -is [System.IO.FileInfo]) {
+        if ($null -ne $LeaseState) {
+          Add-StackchanToolchainFileLease `
+            -LeaseState $LeaseState -LiteralPath $item.FullName -Scope $LeaseScope
+        }
         $lengthBefore = [long]$item.Length
         $sha256 = Get-StackchanFileSha256 -LiteralPath $item.FullName
         $lengthAfter = [long](Get-Item -LiteralPath $item.FullName -Force -ErrorAction Stop).Length
@@ -310,6 +1001,11 @@ function Get-StackchanToolchainTreeIdentity {
         throw "Unsupported toolchain identity filesystem entry: $($item.FullName)"
       }
     }
+  }
+
+  if ($null -ne $LeaseState) {
+    Set-StackchanToolchainTreeWatcherBaseline `
+      -LeaseState $LeaseState -Root $resolvedRoot
   }
 
   return Get-StackchanIdentityFromRecords -Records @($records.Values) `
@@ -431,12 +1127,23 @@ function Get-StackchanCanonicalReflogText {
 }
 
 function Get-StackchanCanonicalGitPackText {
-  param([Parameter(Mandatory = $true)][string]$PackRoot)
+  param(
+    [Parameter(Mandatory = $true)][string]$PackRoot,
+    [Parameter(Mandatory = $true)][string]$PythonExecutable,
+    [Parameter(Mandatory = $true)][string]$ExpectedObjectId
+  )
 
   $items = @(Get-ChildItem -LiteralPath $PackRoot -File -Force -ErrorAction Stop)
   if ($items.Count -eq 0) { throw "Git object pack directory is empty: $PackRoot" }
   $groups = @($items | Group-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) })
   $objectIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  $pythonItem = Get-Item -LiteralPath $PythonExecutable -Force -ErrorAction Stop
+  $verifierItem = Get-Item -LiteralPath $script:StackchanGitPackSemanticVerifierPath -Force -ErrorAction Stop
+  if (($pythonItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+      ($verifierItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+      $pythonItem.PSIsContainer -or $verifierItem.PSIsContainer) {
+    throw 'Git pack semantic verification refuses reparse-point or non-file executables/sources.'
+  }
   foreach ($group in $groups) {
     if ($group.Name -notmatch '^pack-[0-9a-f]{40}$') { throw "Unsafe Git pack name: $($group.Name)" }
     $extensions = @($group.Group | ForEach-Object { $_.Extension.ToLowerInvariant() } | Sort-Object)
@@ -446,56 +1153,38 @@ function Get-StackchanCanonicalGitPackText {
     $idxPath = ($group.Group | Where-Object Extension -eq '.idx').FullName
     $packPath = ($group.Group | Where-Object Extension -eq '.pack').FullName
     $revPath = ($group.Group | Where-Object Extension -eq '.rev').FullName
-    [byte[]]$idx = [IO.File]::ReadAllBytes($idxPath)
-    if ($idx.Length -lt 1104 -or (ConvertTo-StackchanLowerHex ([byte[]]$idx[0..3])) -cne 'ff744f63' -or
-        (Get-StackchanUInt32BigEndian $idx 4) -ne 2) {
-      throw "Unsupported Git pack index: $idxPath"
+    $previousPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $output = @(& $pythonItem.FullName $verifierItem.FullName `
+        '--pack' $packPath '--index' $idxPath '--reverse-index' $revPath 2>&1)
+      $exitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousPreference
     }
-    $idxPayloadLength = $idx.Length - 20
-    if ((Get-StackchanSha1Hex ([byte[]]$idx[0..($idxPayloadLength - 1)])) -cne
-        (ConvertTo-StackchanLowerHex ([byte[]]$idx[$idxPayloadLength..($idx.Length - 1)]))) {
-      throw "Git pack index checksum mismatch: $idxPath"
+    if ($exitCode -ne 0) {
+      throw "Git pack object-to-offset mapping verification failed: $($output -join "`n")"
     }
-    $count = [int](Get-StackchanUInt32BigEndian $idx (8 + 255 * 4))
-    $objectOffset = 8 + 256 * 4
-    if ($objectOffset + $count * 20 + 40 -gt $idx.Length) { throw "Truncated Git pack index: $idxPath" }
-    for ($i = 0; $i -lt $count; $i++) {
-      $start = $objectOffset + $i * 20
-      $id = ConvertTo-StackchanLowerHex ([byte[]]$idx[$start..($start + 19)])
-      if (-not $objectIds.Add($id)) { throw "Duplicate Git object identity across packs: $id" }
+    try {
+      $result = ($output -join "`n") | ConvertFrom-Json
+    } catch {
+      throw "Git pack semantic verifier returned invalid JSON: $($output -join "`n")"
     }
-    $idxPackChecksum = ConvertTo-StackchanLowerHex ([byte[]]$idx[($idx.Length - 40)..($idx.Length - 21)])
-    [byte[]]$pack = [IO.File]::ReadAllBytes($packPath)
-    if ($pack.Length -lt 32 -or [Text.Encoding]::ASCII.GetString($pack, 0, 4) -cne 'PACK') {
-      throw "Invalid Git pack: $packPath"
+    if ([string]$result.schema -cne 'stackchan.git-pack-semantics.v1' -or
+        -not [bool]$result.objectOffsetMappingVerified -or
+        -not [bool]$result.objectCrcMappingVerified -or
+        -not [bool]$result.reverseIndexMappingVerified -or
+        [int]$result.objectCount -ne @($result.objectIds).Count) {
+      throw "Git pack semantic verifier omitted required mapping proof: $packPath"
     }
-    $packChecksum = ConvertTo-StackchanLowerHex ([byte[]]$pack[($pack.Length - 20)..($pack.Length - 1)])
-    if ((Get-StackchanSha1Hex ([byte[]]$pack[0..($pack.Length - 21)])) -cne $packChecksum -or
-        $idxPackChecksum -cne $packChecksum -or $group.Name -cne "pack-$packChecksum") {
-      throw "Git pack content identity mismatch: $packPath"
-    }
-    [byte[]]$rev = [IO.File]::ReadAllBytes($revPath)
-    $expectedRevLength = 12 + 4 * $count + 40
-    if ($rev.Length -ne $expectedRevLength -or
-        [Text.Encoding]::ASCII.GetString($rev, 0, 4) -cne 'RIDX' -or
-        (Get-StackchanUInt32BigEndian $rev 4) -ne 1 -or
-        (Get-StackchanUInt32BigEndian $rev 8) -ne 1) {
-      throw "Invalid Git reverse index: $revPath"
-    }
-    $seenPositions = [Collections.Generic.HashSet[uint32]]::new()
-    for ($i = 0; $i -lt $count; $i++) {
-      $position = Get-StackchanUInt32BigEndian $rev (12 + 4 * $i)
-      if ($position -ge $count -or -not $seenPositions.Add($position)) {
-        throw "Invalid Git reverse-index permutation: $revPath"
+    foreach ($id in @($result.objectIds)) {
+      if ([string]$id -notmatch '^[0-9a-f]{40}$' -or -not $objectIds.Add([string]$id)) {
+        throw "Duplicate or malformed Git object identity across packs: $id"
       }
     }
-    $revPackOffset = 12 + 4 * $count
-    $revPackChecksum = ConvertTo-StackchanLowerHex ([byte[]]$rev[$revPackOffset..($revPackOffset + 19)])
-    $revChecksum = ConvertTo-StackchanLowerHex ([byte[]]$rev[($rev.Length - 20)..($rev.Length - 1)])
-    if ($revPackChecksum -cne $packChecksum -or
-        (Get-StackchanSha1Hex ([byte[]]$rev[0..($rev.Length - 21)])) -cne $revChecksum) {
-      throw "Git reverse-index checksum mismatch: $revPath"
-    }
+  }
+  if (-not $objectIds.Contains($ExpectedObjectId)) {
+    throw "Git pack object set does not contain the expected checked-out commit: $ExpectedObjectId"
   }
   $orderedIds = [string[]]@($objectIds)
   [Array]::Sort($orderedIds, [StringComparer]::Ordinal)
@@ -508,7 +1197,8 @@ function Get-StackchanCanonicalGitLibraryRecords {
     [Parameter(Mandatory = $true)][string]$LibraryLeaf,
     [Parameter(Mandatory = $true)][string]$ExpectedPackageName,
     [Parameter(Mandatory = $true)][string]$ExpectedSourceUri,
-    [Parameter(Mandatory = $true)][string]$ExpectedCommit
+    [Parameter(Mandatory = $true)][string]$ExpectedCommit,
+    [string]$PythonExecutable = (Get-StackchanGitPackVerifierPython)
   )
 
   if ($ExpectedPackageName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
@@ -613,7 +1303,10 @@ function Get-StackchanCanonicalGitLibraryRecords {
       if (-not $packHandled) {
         $canonicalRecords.Add((New-StackchanCanonicalIdentityRecord `
           -RelativePath "$LibraryLeaf/.git/objects/pack/@object-set" `
-          -CanonicalText (Get-StackchanCanonicalGitPackText (Join-Path $gitRoot 'objects/pack')))) | Out-Null
+          -CanonicalText (Get-StackchanCanonicalGitPackText `
+            -PackRoot (Join-Path $gitRoot 'objects/pack') `
+            -PythonExecutable $PythonExecutable `
+            -ExpectedObjectId $ExpectedCommit))) | Out-Null
         $packHandled = $true
       }
     } else {
@@ -640,6 +1333,7 @@ function Get-StackchanCanonicalGitLibraryTreeIdentity {
     [Parameter(Mandatory = $true)][string]$ExpectedPackageName,
     [Parameter(Mandatory = $true)][string]$ExpectedSourceUri,
     [Parameter(Mandatory = $true)][string]$ExpectedCommit,
+    [string]$PythonExecutable = (Get-StackchanGitPackVerifierPython),
     [switch]$IncludeRecords
   )
 
@@ -651,7 +1345,8 @@ function Get-StackchanCanonicalGitLibraryTreeIdentity {
     -LibraryRoot $LibraryRoot -LibraryLeaf $LibraryLeaf `
     -ExpectedPackageName $ExpectedPackageName `
     -ExpectedSourceUri $ExpectedSourceUri `
-    -ExpectedCommit $ExpectedCommit
+    -ExpectedCommit $ExpectedCommit `
+    -PythonExecutable $PythonExecutable
   $canonicalRecords = [Collections.Generic.List[object]]::new()
   foreach ($record in $gitIdentity.records) { $canonicalRecords.Add($record) | Out-Null }
   foreach ($record in $rawTree.records) {
@@ -702,7 +1397,7 @@ function Get-StackchanExpectedLibdepsPolicy {
   if ($Environment -in @('stackchan', 'stackchan_servo_calibration')) {
     return [pscustomobject][ordered]@{
       leaves = @(
-        'ArduinoJson', 'Dynamixel2Arduino', 'ESP32Servo', 'M5GFX', 'M5Unified',
+        'ArduinoJson', 'Dynamixel2Arduino', 'ESP32Servo', 'M5GFX', 'M5GFX@0.2.24', 'M5Unified',
         'M5Unified@0.2.17', 'SCServo',
         'SCServo@src-8a1b26565e1a43aa7e250db85a311724', 'ServoEasing',
         'stackchan-arduino', 'YAMLDuino'
@@ -762,6 +1457,7 @@ function Get-StackchanCanonicalLibdepsIdentity {
   param(
     [Parameter(Mandatory = $true)][string]$Root,
     [Parameter(Mandatory = $true)][string]$Environment,
+    [string]$PythonExecutable = (Get-StackchanGitPackVerifierPython),
     [switch]$IncludeRecords
   )
 
@@ -811,7 +1507,8 @@ function Get-StackchanCanonicalLibdepsIdentity {
         -LibraryRoot $libraryRoot -LibraryLeaf $leaf `
         -ExpectedPackageName ([string]$sourcePolicy.packageName) `
         -ExpectedSourceUri ([string]$sourcePolicy.uri) `
-        -ExpectedCommit ([string]$sourcePolicy.commit) -IncludeRecords
+        -ExpectedCommit ([string]$sourcePolicy.commit) `
+        -PythonExecutable $PythonExecutable -IncludeRecords
       foreach ($record in $libraryTree.records) { $canonicalRecords.Add($record) | Out-Null }
     } else {
       if ($policy.gitSources.ContainsKey($leaf)) {
@@ -870,6 +1567,11 @@ function Get-StackchanReleaseToolchainComponentPolicy {
   # Hash the entire Python installation as one closed root, including
   # python312.zip, DLLs, Lib, site-packages, and every Scripts launcher.
   Add-PolicyComponent 'python-installation' 'preBuild' 'pythonHome' '@root'
+  Add-PolicyComponent 'git-installation' 'preBuild' 'gitHome' '@root'
+  Add-PolicyComponent 'release-toolchain-identity-policy-source' 'preBuild' 'projectRoot' `
+    'tools/release_toolchain_identity.ps1'
+  Add-PolicyComponent 'git-pack-semantic-verifier-source' 'preBuild' 'projectRoot' `
+    'tools/verify_git_pack_semantics.py'
 
   Add-PolicyComponent 'legacy-core-penv' 'preBuild' 'legacyCore' 'penv'
   Add-PolicyComponent 'legacy-platform-espressif32-7.0.1' 'preBuild' 'legacyCore' 'platforms/espressif32@7.0.1'
@@ -890,7 +1592,7 @@ function Get-StackchanReleaseToolchainComponentPolicy {
   }
 
   foreach ($environment in @('stackchan', 'stackchan_servo_calibration', 'stackchan_release_full')) {
-    Add-PolicyComponent "project-libdeps-$environment" 'postBuild' 'projectRoot' ".pio/libdeps/$environment"
+    Add-PolicyComponent "project-libdeps-$environment" 'postBuild' 'libdepsRoot' $environment
   }
   return @($components)
 }
@@ -930,24 +1632,45 @@ function Get-StackchanReleaseToolchainObservedComponents {
   param(
     [Parameter(Mandatory = $true)][hashtable]$RootMap,
     [Parameter(Mandatory = $true)][ValidateSet('PreBuild', 'PostBuild')][string]$Phase,
-    [string]$PlatformKey = (Get-StackchanReleaseToolchainPlatformKey)
+    [ValidateSet('stackchan', 'stackchan_servo_calibration', 'stackchan_release_full')]
+    [string]$Environment,
+    [string]$PythonExecutable = (Get-StackchanGitPackVerifierPython),
+    [string]$PlatformKey = (Get-StackchanReleaseToolchainPlatformKey),
+    $LeaseState,
+    [string]$LeaseScope,
+    [switch]$PostBuildComponentsOnly
   )
 
-  if ($Phase -ceq 'PostBuild') {
-    throw 'PostBuild toolchain eligibility is disabled: canonical libdeps analysis does not yet prove Git pack object-to-offset mappings with an independently trusted Git/runtime, and fresh evidence does not yet cover all three environments.'
-  }
-
   $policy = @(Get-StackchanReleaseToolchainComponentPolicy -PlatformKey $PlatformKey)
+  if ($PostBuildComponentsOnly -and
+      ($Phase -cne 'PostBuild' -or $null -eq $LeaseState)) {
+    throw 'PostBuild-only observation is valid only for a guarded PostBuild identity.'
+  }
+  if ($Phase -ceq 'PreBuild' -and -not [string]::IsNullOrWhiteSpace($Environment)) {
+    throw 'A dependency environment filter is valid only for PostBuild identity.'
+  }
   $selected = @($policy | Where-Object {
-    [string]$_.phase -ceq 'preBuild' -or $Phase -ceq 'PostBuild'
+    (-not $PostBuildComponentsOnly -and [string]$_.phase -ceq 'preBuild') -or
+      ($Phase -ceq 'PostBuild' -and [string]$_.phase -ceq 'postBuild' -and (
+        [string]::IsNullOrWhiteSpace($Environment) -or
+        [string]$_.name -ceq "project-libdeps-$Environment"))
   })
   $observed = [System.Collections.Generic.List[object]]::new()
   foreach ($component in $selected) {
     $path = Resolve-StackchanIdentityComponentPath -RootMap $RootMap -Component $component
     if ([string]$component.phase -ceq 'postBuild') {
+      if ($null -ne $LeaseState) {
+        Protect-StackchanToolchainTree `
+          -LeaseState $LeaseState -Root $path -Scope $LeaseScope
+      }
       $environment = ([string]$component.name).Substring('project-libdeps-'.Length)
-      $identity = Get-StackchanCanonicalLibdepsIdentity -Root $path -Environment $environment
+      $identity = Get-StackchanCanonicalLibdepsIdentity `
+        -Root $path -Environment $environment -PythonExecutable $PythonExecutable
     } elseif (Test-Path -LiteralPath $path -PathType Leaf) {
+      if ($null -ne $LeaseState) {
+        Add-StackchanToolchainFileLease `
+          -LeaseState $LeaseState -LiteralPath $path -Scope $LeaseScope
+      }
       $leaf = Split-Path -Leaf $path
       $sha256 = Get-StackchanFileSha256 -LiteralPath $path
       $length = [long](Get-Item -LiteralPath $path -Force).Length
@@ -966,7 +1689,8 @@ function Get-StackchanReleaseToolchainObservedComponents {
         bytes = $length
       }
     } elseif (Test-Path -LiteralPath $path -PathType Container) {
-      $identity = Get-StackchanToolchainTreeIdentity -Root $path
+      $identity = Get-StackchanToolchainTreeIdentity `
+        -Root $path -LeaseState $LeaseState -LeaseScope $LeaseScope
     } else {
       throw "Required release toolchain component is missing: $($component.name) ($path)"
     }
@@ -987,6 +1711,7 @@ function New-StackchanReleaseToolchainIdentityCandidate {
     [Parameter(Mandatory = $true)][hashtable]$RootMap,
     [Parameter(Mandatory = $true)][string]$PlatformioExecutable,
     [Parameter(Mandatory = $true)][string]$PythonExecutable,
+    [string]$GitExecutable,
     [string]$PlatformKey = (Get-StackchanReleaseToolchainPlatformKey)
   )
 
@@ -996,6 +1721,10 @@ function New-StackchanReleaseToolchainIdentityCandidate {
   }
   $resolvedPio = (Get-Item -LiteralPath $PlatformioExecutable -Force -ErrorAction Stop).FullName
   $resolvedPython = (Get-Item -LiteralPath $PythonExecutable -Force -ErrorAction Stop).FullName
+  $gitHome = (Get-Item -LiteralPath ([string]$RootMap.gitHome) -Force -ErrorAction Stop).FullName.TrimEnd('\', '/')
+  $expectedGit = [IO.Path]::GetFullPath((Join-Path $gitHome 'cmd/git.exe'))
+  if ([string]::IsNullOrWhiteSpace($GitExecutable)) { $GitExecutable = $expectedGit }
+  $resolvedGit = (Get-Item -LiteralPath $GitExecutable -Force -ErrorAction Stop).FullName
   $comparison = if ($env:OS -eq 'Windows_NT') { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
   if (@($expectedPio | Where-Object { $_.Equals($resolvedPio, $comparison) }).Count -ne 1) {
     throw 'PlatformIO executable is outside the reviewed Python installation.'
@@ -1004,10 +1733,14 @@ function New-StackchanReleaseToolchainIdentityCandidate {
   if (-not $expectedPython.Equals($resolvedPython, $comparison)) {
     throw 'Python executable is outside the reviewed Python installation.'
   }
+  if (-not $expectedGit.Equals($resolvedGit, $comparison)) {
+    throw 'Git executable is outside the reviewed Git installation.'
+  }
   Assert-StackchanPythonImportIsolation `
     -PythonHome $pythonHome -PythonExecutable $resolvedPython
   $components = @(Get-StackchanReleaseToolchainObservedComponents `
-    -RootMap $RootMap -Phase PostBuild -PlatformKey $PlatformKey)
+    -RootMap $RootMap -Phase PostBuild -PlatformKey $PlatformKey `
+    -PythonExecutable $resolvedPython)
   return [pscustomobject][ordered]@{
     schema = $script:StackchanToolchainIdentitySchema
     platformKey = $PlatformKey
@@ -1018,6 +1751,7 @@ function New-StackchanReleaseToolchainIdentityCandidate {
     canonicalLibdepsSchema = $script:StackchanCanonicalLibdepsSchema
     platformioExecutableRelativePaths = @('Scripts/pio.exe', 'Scripts/platformio.exe')
     pythonExecutableRelativePath = 'python.exe'
+    gitExecutableRelativePath = 'cmd/git.exe'
     generatedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     review = [ordered]@{
       status = 'candidate-unreviewed'
@@ -1033,9 +1767,31 @@ function Assert-StackchanReleaseToolchainIdentity {
     [Parameter(Mandatory = $true)][hashtable]$RootMap,
     [Parameter(Mandatory = $true)][string]$PlatformioExecutable,
     [Parameter(Mandatory = $true)][string]$PythonExecutable,
+    [string]$GitExecutable,
     [Parameter(Mandatory = $true)][ValidateSet('PreBuild', 'PostBuild')][string]$Phase,
-    [string]$PlatformKey = (Get-StackchanReleaseToolchainPlatformKey)
+    [ValidateSet('stackchan', 'stackchan_servo_calibration', 'stackchan_release_full')]
+    [string]$Environment,
+    [string]$PlatformKey = (Get-StackchanReleaseToolchainPlatformKey),
+    $LeaseState,
+    [string]$LeaseScope
   )
+
+  if ($null -ne $LeaseState) {
+    Assert-StackchanToolchainLeaseState -LeaseState $LeaseState
+    if ([string]::IsNullOrWhiteSpace($LeaseScope)) {
+      throw 'Guarded release toolchain identity requires one explicit lease scope.'
+    }
+    if ($Phase -ceq 'PreBuild' -and [bool]$LeaseState.preBuildVerified) {
+      throw 'A guarded toolchain session may verify PreBuild only once.'
+    }
+    if ($Phase -ceq 'PostBuild' -and -not [bool]$LeaseState.preBuildVerified) {
+      throw 'Guarded PostBuild identity requires the same session to verify PreBuild first.'
+    }
+    if ($Phase -ceq 'PostBuild' -and
+        [string]$LeaseState.preBuildScope -ceq $LeaseScope) {
+      throw 'Guarded PostBuild identity requires a scope distinct from its PreBuild authority.'
+    }
+  }
 
   $allowlist = Get-Content -LiteralPath $AllowlistPath -Raw -ErrorAction Stop | ConvertFrom-Json
   if ([string]$allowlist.schema -cne $script:StackchanToolchainIdentitySchema -or
@@ -1056,7 +1812,8 @@ function Assert-StackchanReleaseToolchainIdentity {
   $allowlistedLaunchers = @($allowlist.platformioExecutableRelativePaths)
   if ($allowlistedLaunchers.Count -ne $canonicalLaunchers.Count -or
       ($allowlistedLaunchers -join "`n") -cne ($canonicalLaunchers -join "`n") -or
-      [string]$allowlist.pythonExecutableRelativePath -cne 'python.exe') {
+      [string]$allowlist.pythonExecutableRelativePath -cne 'python.exe' -or
+      [string]$allowlist.gitExecutableRelativePath -cne 'cmd/git.exe') {
     throw 'Release toolchain allowlist executable paths are not the canonical policy.'
   }
 
@@ -1076,15 +1833,79 @@ function Assert-StackchanReleaseToolchainIdentity {
   if (-not $expectedPython.Equals($resolvedPython, $comparison)) {
     throw 'Selected Python executable is not the byte-allowlisted runtime.'
   }
+  $gitHome = (Get-Item -LiteralPath ([string]$RootMap.gitHome) -Force -ErrorAction Stop).FullName.TrimEnd('\', '/')
+  $gitRelative = ConvertTo-StackchanSafeIdentityRelativePath ([string]$allowlist.gitExecutableRelativePath)
+  $expectedGit = [IO.Path]::GetFullPath((Join-Path $gitHome ($gitRelative -replace '/', [IO.Path]::DirectorySeparatorChar)))
+  if ([string]::IsNullOrWhiteSpace($GitExecutable)) { $GitExecutable = $expectedGit }
+  $resolvedGit = (Get-Item -LiteralPath $GitExecutable -Force -ErrorAction Stop).FullName
+  if (-not $expectedGit.Equals($resolvedGit, $comparison)) {
+    throw 'Selected Git executable is not the byte-allowlisted application.'
+  }
 
-  Assert-StackchanPythonImportIsolation `
-    -PythonHome $pythonHome -PythonExecutable $resolvedPython
+  $authorityKey = Get-StackchanToolchainPreBuildAuthorityKey `
+    -AllowlistPath $AllowlistPath -RootMap $RootMap -PlatformKey $PlatformKey `
+    -PlatformioExecutable $resolvedPio -PythonExecutable $resolvedPython `
+    -GitExecutable $resolvedGit
 
-  $observed = @(Get-StackchanReleaseToolchainObservedComponents `
-    -RootMap $RootMap -Phase $Phase -PlatformKey $PlatformKey)
   $expected = @($allowlist.components | Where-Object {
-    [string]$_.phase -ceq 'preBuild' -or $Phase -ceq 'PostBuild'
+    [string]$_.phase -ceq 'preBuild' -or
+      ($Phase -ceq 'PostBuild' -and (
+        [string]::IsNullOrWhiteSpace($Environment) -or
+        [string]$_.name -ceq "project-libdeps-$Environment"))
   })
+
+  $observedArguments = @{
+    RootMap = $RootMap
+    Phase = $Phase
+    PlatformKey = $PlatformKey
+    PythonExecutable = $resolvedPython
+    LeaseState = $LeaseState
+    LeaseScope = $LeaseScope
+  }
+  if (-not [string]::IsNullOrWhiteSpace($Environment)) {
+    $observedArguments.Environment = $Environment
+  }
+  if ($null -ne $LeaseState -and $Phase -ceq 'PostBuild') {
+    if ([string]::IsNullOrWhiteSpace([string]$LeaseState.preBuildAuthorityKey) -or
+        [string]$LeaseState.preBuildAuthorityKey -cne $authorityKey) {
+      throw 'Guarded PostBuild authority differs from the verified PreBuild toolchain roots, executables, or allowlist.'
+    }
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $LeaseState -Context 'PostBuild cached PreBuild reuse' -VerifyNamespace
+    if (@($LeaseState.preBuildComponents).Count -eq 0) {
+      throw 'Guarded PostBuild identity has no verified PreBuild component cache.'
+    }
+    $cachedPreBuild = @(Copy-StackchanToolchainIdentityComponents `
+      -Components @($LeaseState.preBuildComponents))
+    $expectedCachedPreBuild = @($expected | Where-Object {
+      [string]$_.phase -ceq 'preBuild'
+    })
+    if ($expectedCachedPreBuild.Count -ne $cachedPreBuild.Count) {
+      throw 'Release toolchain allowlist component count mismatch for phase PreBuild cache.'
+    }
+    $expectedCachedNames = [System.Collections.Generic.HashSet[string]]::new(
+      [StringComparer]::Ordinal)
+    foreach ($entry in $expectedCachedPreBuild) {
+      $name = [string]$entry.name
+      if ([string]::IsNullOrWhiteSpace($name) -or -not $expectedCachedNames.Add($name)) {
+        throw "Release toolchain allowlist has an invalid or duplicate component: $name"
+      }
+      $matches = @($cachedPreBuild | Where-Object { [string]$_.name -ceq $name })
+      if ($matches.Count -ne 1 -or
+          [string]$entry.phase -cne [string]$matches[0].phase -or
+          [string]$entry.identitySchema -cne [string]$matches[0].identitySchema -or
+          [string]$entry.treeSha256 -cne [string]$matches[0].treeSha256 -or
+          [int]$entry.fileCount -ne [int]$matches[0].fileCount -or
+          [long]$entry.bytes -ne [long]$matches[0].bytes) {
+        throw "Release toolchain byte identity mismatch: $name"
+      }
+    }
+    $observedArguments.PostBuildComponentsOnly = $true
+    $freshPostBuild = @(Get-StackchanReleaseToolchainObservedComponents @observedArguments)
+    $observed = @($cachedPreBuild) + @($freshPostBuild)
+  } else {
+    $observed = @(Get-StackchanReleaseToolchainObservedComponents @observedArguments)
+  }
   if ($expected.Count -ne $observed.Count) {
     throw "Release toolchain allowlist component count mismatch for phase $Phase."
   }
@@ -1104,11 +1925,41 @@ function Assert-StackchanReleaseToolchainIdentity {
       throw "Release toolchain byte identity mismatch: $name"
     }
   }
+  if ($null -ne $LeaseState) {
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $LeaseState -Context "$Phase allowlist comparison"
+  }
+  Assert-StackchanPythonImportIsolation `
+    -PythonHome $pythonHome -PythonExecutable $resolvedPython
+  if ($null -ne $LeaseState) {
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $LeaseState -Context "$Phase Python isolation probe"
+    if ($Phase -ceq 'PreBuild') {
+      $LeaseState.preBuildComponents = @(Copy-StackchanToolchainIdentityComponents `
+        -Components $observed)
+      $LeaseState.preBuildAuthorityKey = $authorityKey
+      $LeaseState.preBuildScope = $LeaseScope
+      $LeaseState.preBuildVerified = $true
+    }
+  }
+  $observationText = (@($observed | Sort-Object name | ForEach-Object {
+    "$([string]$_.name)`0$([string]$_.phase)`0$([string]$_.identitySchema)`0$([string]$_.treeSha256)`0$([int]$_.fileCount)`0$([long]$_.bytes)"
+  }) -join "`n") + "`n"
+  $observationHasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $observationSha256 = ([BitConverter]::ToString($observationHasher.ComputeHash(
+      [Text.Encoding]::UTF8.GetBytes($observationText))) -replace '-', '').ToUpperInvariant()
+  } finally {
+    $observationHasher.Dispose()
+  }
   return [pscustomobject][ordered]@{
     schema = $script:StackchanToolchainIdentitySchema
     status = 'verified'
     platformKey = $PlatformKey
     phase = $Phase
+    environment = if ([string]::IsNullOrWhiteSpace($Environment)) { $null } else { $Environment }
     componentCount = $observed.Count
+    allowlistSha256 = Get-StackchanFileSha256 -LiteralPath $AllowlistPath
+    observationSha256 = $observationSha256
   }
 }

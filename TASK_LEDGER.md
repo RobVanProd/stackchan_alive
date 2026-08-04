@@ -116,19 +116,20 @@ Ledger timestamp: 2026-08-03 America/New_York
   will not be merged or cherry-picked because its hook inheritance, override handling, dirty-tree
   detection, and unrelated bridge-test change do not meet this gate. The public boot-motion
   prerequisite is committed at `b5ea5c5f`. The deterministic input, source/dependency/toolchain,
-  safe packaging/verification, publication, consumer, and CI corrections are committed through
-  `3bf07730` and published on draft PR #220 with all checks green. The current selector-authority
+  safe packaging/verification, publication, consumer, CI, and selector-authority corrections are
+  committed through `e52826a4` and published on draft PR #220 with all checks green. The selector
   slice binds one exact `boot_app0.bin` per firmware environment to reviewed framework identity,
   size, and SHA-256; makes the release flasher write it at `0xE000` from locked, second-verified
   snapshot bytes; and locks/verifies standalone publication assets. Diagnostic v13 proved the
   five-file package inventory and selector address order while remaining expressly dirty,
   diagnostic-only, non-release-eligible,
-  non-flashable, and not reproducibility proof. No reviewed toolchain allowlist exists; fresh
-  canonical dependency evidence covers only `stackchan`; PostBuild/candidate generation and every
-  release-grade/eligibility path therefore remain fail closed. No reproducibility or hardware
-  claim is earned yet.
-- **Commit:** Release-governance head `3bf07730960cbbcfd502c0157434abb157ee1cc8`;
-  OTA-selector-authority slice pending commit after full regression and review.
+  non-flashable, and not reproducibility proof. The current dirty slice contains a Luna-reviewed
+  24-component exact-host allowlist, all-three-environment clean B/C canonical dependency equality,
+  a source-bound semantic Git-pack verifier, operational caller propagation, and passing policy,
+  adversarial verifier, integration, and broad reproducibility contracts. No clean governed release
+  package or hardware claim is earned yet.
+- **Commit:** Release-governance/selector head `e52826a4a130f00718e20e71e5aea0f1cbc050ff`;
+  reviewed toolchain integration pending commit after final regression and review.
 - **Decision:** Continue the atomic governance slice, but do not mark it complete or generate an
   eligible package until command/toolchain authority, all three clean environments, and independent
   review are actually closed.
@@ -170,7 +171,7 @@ Ledger timestamp: 2026-08-03 America/New_York
   release or physical identity.
 - **User-facing consequence:** A diagnostic ZIP or backup-time observation could be flashed,
   published, or cited as current qualification without a clean source/toolchain/device binding.
-- **Evidence:** committed head `3bf07730`; diagnostic v13 manifest with release/flash/hardware/
+- **Evidence:** committed head `e52826a4`; diagnostic v13 manifest with release/flash/hardware/
   distribution eligibility false; verified private three-read backup; backup-time `app0` selection
   with unknown source mapping; fresh intermittent `/debug` successes/timeouts; matching CoreS3 PnP
   identity present on COM4 without opening serial.

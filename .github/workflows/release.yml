@@ -572,7 +572,13 @@ jobs:
 
   release:
     needs: [companion-android-release, companion-android-emulator-smoke, companion-desktop-release, companion-windows-sign]
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, X64, stackchan-release-toolchain-20260803]
+    env:
+      STACKCHAN_RELEASE_GIT_EXECUTABLE: ${{ vars.STACKCHAN_RELEASE_GIT_EXECUTABLE }}
+      STACKCHAN_RELEASE_PYTHON_EXECUTABLE: ${{ vars.STACKCHAN_RELEASE_PYTHON_EXECUTABLE }}
+      STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE: ${{ vars.STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE }}
+      STACKCHAN_RELEASE_LEGACY_CORE_DIR: ${{ vars.STACKCHAN_RELEASE_LEGACY_CORE_DIR }}
+      STACKCHAN_RELEASE_RELEASE_CORE_DIR: ${{ vars.STACKCHAN_RELEASE_RELEASE_CORE_DIR }}
     steps:
       - uses: actions/checkout@v7
 
@@ -646,7 +652,13 @@ jobs:
           if ($version.Length -gt 128 -or $version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $version -in @('.', '..') -or $version.EndsWith('.')) {
             throw "Release tag must be one safe filename component."
           }
-          ./tools/package_release.ps1 -Version $version
+          ./tools/package_release.ps1 -Version $version `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR)
 
       - name: Verify release package
         shell: pwsh
@@ -662,6 +674,12 @@ jobs:
             -Version $version `
             -ZipPath "output/release/stackchan_alive_$version.zip" `
             -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR) `
             -RequireReleaseEligible
 
       - name: Export strict companion release evidence
@@ -712,6 +730,12 @@ jobs:
             -Version $version `
             -ZipPath $sourceZipPath `
             -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR) `
             -RequireReleaseEligible
           . ./tools/release_asset_contract.ps1
           . ./tools/release_zip_safety.ps1
@@ -734,6 +758,12 @@ jobs:
             -Version $version `
             -ZipPath $zipPath `
             -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR) `
             -RequireReleaseEligible
 
           $packageRoot = Join-Path $publicationRoot "package"
@@ -810,6 +840,12 @@ jobs:
             -Version $version `
             -ZipPath $zipPath `
             -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR) `
             -RequireReleaseEligible
           . ./tools/release_asset_contract.ps1
           . ./tools/release_zip_safety.ps1
@@ -894,7 +930,13 @@ jobs:
               -PackageRoot $packageRoot `
               -ZipPath $zipPath `
               -ZipSidecarPath $zipSidecarPath `
-              -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT)
+              -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+              -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+              -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+              -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+              -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+              -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+              -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR)
           } finally {
             foreach ($assetLock in $assetLocks) { $assetLock.Dispose() }
           }

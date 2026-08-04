@@ -5,7 +5,13 @@ param(
   [string]$ZipPath = "",
   [string]$ZipSidecarPath = "",
   [string]$ExpectedCommit = "",
-  [switch]$AllowNonPrerelease
+  [switch]$AllowNonPrerelease,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -165,6 +171,9 @@ try {
   $localVerifyOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
     -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
     -Version $Version -ZipPath $ZipPath -ExpectedCommit $ExpectedCommit `
+    -ToolchainAllowlistPath $ToolchainAllowlistPath -GitExecutable $GitExecutable `
+    -PythonExecutable $PythonExecutable -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir `
     -RequireReleaseEligible 2>&1)
   $localVerifyExit = $LASTEXITCODE
 } finally {
@@ -178,6 +187,9 @@ try {
   $localRootVerifyOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
     -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
     -Version $Version -PackageRoot $PackageRoot -ExpectedCommit $ExpectedCommit `
+    -ToolchainAllowlistPath $ToolchainAllowlistPath -GitExecutable $GitExecutable `
+    -PythonExecutable $PythonExecutable -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir `
     -RequireReleaseEligible 2>&1)
   $localRootVerifyExit = $LASTEXITCODE
 } finally {
@@ -456,7 +468,10 @@ if ($remoteZipHash -ne $Matches[1]) {
 }
 
 & (Join-Path $PSScriptRoot "verify_release_package.ps1") `
-  -Version $Version -ZipPath $remoteZip -ExpectedCommit $ExpectedCommit -RequireReleaseEligible
+  -Version $Version -ZipPath $remoteZip -ExpectedCommit $ExpectedCommit `
+  -ToolchainAllowlistPath $ToolchainAllowlistPath -GitExecutable $GitExecutable `
+  -PythonExecutable $PythonExecutable -PlatformioExecutable $PlatformioExecutable `
+  -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir -RequireReleaseEligible
 if ($LASTEXITCODE -ne 0) {
   throw "Downloaded published release package is not operationally eligible."
 }
