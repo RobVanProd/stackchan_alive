@@ -27,6 +27,22 @@ $packageText = Get-Content -LiteralPath $packagePath -Raw
 $verifierText = Get-Content -LiteralPath $verifierPath -Raw
 $helperText = Get-Content -LiteralPath $helperPath -Raw
 $semanticVerifierPath = Join-Path $PSScriptRoot 'verify_git_pack_semantics.py'
+$authorityRelativePaths = @(
+  'tools/release_toolchain_identity_allowlist.json',
+  'tools/release_toolchain_identity.ps1',
+  'tools/verify_git_pack_semantics.py'
+)
+$attributeOutput = @(& git -C (Split-Path -Parent $PSScriptRoot) `
+    check-attr text eol -- @authorityRelativePaths)
+if ($LASTEXITCODE -ne 0) {
+  throw 'Release authority line-ending policy could not be queried through Git.'
+}
+foreach ($relativePath in $authorityRelativePaths) {
+  if ("$relativePath`: text: set" -cnotin $attributeOutput -or
+      "$relativePath`: eol: lf" -cnotin $attributeOutput) {
+    throw "Release byte authority is not forced to LF in every checkout: $relativePath"
+  }
+}
 $exactBootstrapPins = [ordered]@{
   'allowlist' = (Get-FileHash -Algorithm SHA256 -LiteralPath $allowlistPath).Hash
   'identity helper' = (Get-FileHash -Algorithm SHA256 -LiteralPath $helperPath).Hash
