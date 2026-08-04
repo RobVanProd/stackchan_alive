@@ -53,6 +53,16 @@ state remain exact records. The fresh-install shape and exact requirement set ar
 each of the three release environments, so stale libraries or duplicate version directories are
 rejected before candidate generation.
 
+The M5 pair is deliberately owner-qualified and appears first in every effective `lib_deps`
+block: `M5Stack/M5GFX@0.2.24` followed by `M5Stack/M5Unified@0.2.17`, before any dependency can
+resolve either library transitively.
+PlatformIO 6.1.19 skips unqualified direct registry
+specs during `pio pkg install`; an unqualified exact request can therefore appear in
+`integrity.dat` while the installed library silently remains the newer transitive version. The
+policy requires one canonical leaf for each package, verifies `library.json` is exactly M5GFX
+`0.2.24` and M5Unified `0.2.17`, and rejects newer or duplicate version-suffixed leaves before byte
+identity review.
+
 `verify_git_pack_semantics.py` independently decodes the observed SHA-1 Git pack formats, including
 OFS/REF deltas, and proves object-to-offset, CRC, reverse-index, object-ID, and checksum linkage under
 bounded resource limits. Its own source bytes are a reviewed pre-build component. Clean B/C roots
@@ -143,20 +153,26 @@ changed bytes.
 
 ## Retained analysis evidence
 
-The retained clean B/C roots are `D:\CodexArtifacts\stackchan-toolchain-all-repro-b` and
-`D:\CodexArtifacts\stackchan-toolchain-all-repro-c`. Both independently match these reviewed
-canonical libdeps identities:
+The retained clean B/C roots are
+`D:\spio\stackchan-governed-libdeps-proof-index0-20260804-065319\B` and
+`D:\spio\stackchan-governed-libdeps-proof-index0-20260804-065319\C`. Both independently match
+these reviewed canonical libdeps identities:
 
 - `stackchan` and `stackchan_servo_calibration`:
-  `79C18DC5078CAB8A35CCB4DAD385FDCB2BFB11126C778975F74C8F4B7096279B`;
+  `248A6E4A19A7079F920B9C192AE47161377555442A80889742FD6B6FD43B986E`;
 - `stackchan_release_full`:
-  `74B343038114CC2E90927E1C641B14D47806EA0759BF0FED711235B61C705273`.
+  `AB7DB6C267BF82C5B8AC72624D266CB3A0ABE6D5E227BEF6B4750D52800B760E`.
 
 The failed A root and older candidates remain rejected evidence and are not release inputs. The
 reviewed tracked allowlist was derived from candidate
-`release_toolchain_identity_allowlist_candidate_20260803-201018.json`, candidate SHA-256
-`7E89C23B11783E66228A0A7C12F94E7AB0A0BC85D393ACF4A7C46F1AEE594CF4`. Promotion approved only
-the byte policy; release eligibility still requires the packager/verifier record and artifact gates.
+`release_toolchain_identity_allowlist_candidate_20260804-073551.json`, candidate SHA-256
+`2E95CC671A65F9600BDA3D99ABF1FB0BB039CDA71478F621B103B6740FAE899E`, after two fresh isolated
+B/C roots reproduced all three dependency identities. The earlier candidate SHA-256
+`119D97845AA5998CB678AE4299BE248ABF0118C60C1C197CF0D0208B4A6DB652` remains rejected because it
+captured 29 generated `urllib3` bytecode files in the release penv. Exact cache-only restoration
+returned that penv to its previously reviewed identity before the accepted candidate was created.
+Promotion approved only the byte policy; release eligibility still requires the packager/verifier
+record and artifact gates.
 
 ## Portability and CI limit
 

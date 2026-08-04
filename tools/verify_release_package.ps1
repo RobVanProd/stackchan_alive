@@ -17,8 +17,8 @@ param(
 $ErrorActionPreference = "Stop"
 $script:verificationCleanupReady = $false
 
-$verifierToolchainAllowlistSha256 = '30607EB46546E49CB72A231C98CDB62FE5987D24252237821F344C1E1B797A5D' # reviewed allowlist SHA-256
-$verifierToolchainIdentityHelperSha256 = '35D688C55E3CF7694B8E8644813A5C8658E2D26DE78DCF8331E62445DDC49BE4' # reviewed identity helper SHA-256
+$verifierToolchainAllowlistSha256 = '149BC9DC713E2550C3EA199337F4BC7F095A1B1497935000F27539EDE16B7CEB' # reviewed allowlist SHA-256
+$verifierToolchainIdentityHelperSha256 = 'D63A93F4E9C3CFE057B59F963FCFF2C7CAF293300FF572E04F4B22608BD368A9' # reviewed identity helper SHA-256
 $verifierToolchainSemanticVerifierSha256 = '649DE0BBF4A966ADF389A4C2F98190B87958E2ECCC1DF15A6E6FE04D86A4BEBA' # reviewed semantic verifier SHA-256
 $verifierToolchainPreBuild = $null
 $script:verifierToolchainIdentityRecords = [System.Collections.Generic.List[object]]::new()
@@ -5180,8 +5180,8 @@ $expectedDeclaredLibDeps = @(
   "bblanchon/ArduinoJson@7.4.3",
   "robotis-git/Dynamixel2Arduino@0.7.0",
   "madhephaestus/ESP32Servo@0.13.0",
+  "M5Stack/M5GFX@0.2.24",
   "M5Stack/M5Unified@0.2.17",
-  "M5GFX@0.2.24",
   "https://github.com/mongonta0716/SCServo.git#ee6ee4a",
   "arminjo/ServoEasing@3.1.0",
   "tobozo/YAMLDuino@1.5.0"
@@ -5275,7 +5275,12 @@ foreach ($envName in @("stackchan", "stackchan_servo_calibration", "stackchan_re
     Assert-LockedPackage $packages "stackchan-arduino" "sha\.b7b98f5$"
   }
   Assert-LockedPackage $packages "ArduinoJson" "^7\.4\.3$"
-  Assert-LockedPackage $packages "M5Unified" "^0\.2\.17$"
+  Assert-StackchanSingleResolvedPackageVersion `
+    -ResolvedPackages $packages -Environment $envName `
+    -Name "M5GFX" -ExpectedVersion "0.2.24"
+  Assert-StackchanSingleResolvedPackageVersion `
+    -ResolvedPackages $packages -Environment $envName `
+    -Name "M5Unified" -ExpectedVersion "0.2.17"
   Assert-LockedPackage $packages "SCServo" "sha\.ee6ee4a$"
 }
 
@@ -5302,37 +5307,8 @@ if ($gitResolvedWithoutSha.Count -gt 0) {
 $duplicateResolvedPackages = ConvertTo-Array $dependencyAudit.duplicateResolvedPackages
 foreach ($duplicate in $duplicateResolvedPackages) {
   $knownLegacyScServo = $duplicate.name -eq "SCServo" -and $duplicate.environment -in @("stackchan", "stackchan_servo_calibration")
-  $duplicateEntries = ConvertTo-Array $duplicate.entries
-  $duplicateVersions = @($duplicateEntries | ForEach-Object { [string]$_.version } | Sort-Object -Unique)
-  $knownPinnedM5GfxWithTransitiveCopy = (
-    $duplicate.name -eq "M5GFX" -and
-    $duplicate.environment -in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full") -and
-    $duplicate.count -eq 2 -and
-    $duplicateVersions.Count -eq 2 -and
-    $duplicateVersions[0] -eq "0.2.24" -and
-    $duplicateVersions[1] -eq "0.2.26"
-  )
-  $knownPinnedM5UnifiedWithTransitiveCopy = (
-    $duplicate.name -eq "M5Unified" -and
-    $duplicate.environment -in @("stackchan", "stackchan_servo_calibration") -and
-    $duplicate.count -eq 2 -and
-    $duplicateEntries.Count -eq 2 -and
-    $duplicateVersions.Count -eq 2 -and
-    $duplicateVersions[0] -eq "0.2.17" -and
-    $duplicateVersions[1] -eq "0.2.19" -and
-    @($duplicateEntries | Where-Object {
-      $_.version -eq "0.2.17" -and
-      $_.required -eq "M5Stack/M5Unified @ 0.2.17"
-    }).Count -eq 1 -and
-    @($duplicateEntries | Where-Object {
-      $_.version -eq "0.2.19" -and
-      $_.required -eq "M5Stack/M5Unified @ ^0.2.5"
-    }).Count -eq 1
-  )
   if (
-    -not $knownLegacyScServo -and
-    -not $knownPinnedM5GfxWithTransitiveCopy -and
-    -not $knownPinnedM5UnifiedWithTransitiveCopy
+    -not $knownLegacyScServo
   ) {
     throw "dependency_lock.json has unexpected duplicate resolved package: $($duplicate.environment)/$($duplicate.name)"
   }

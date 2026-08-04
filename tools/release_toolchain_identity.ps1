@@ -1380,11 +1380,59 @@ function Get-StackchanCanonicalGitLibraryTreeIdentity {
   return $identity
 }
 
+function Assert-StackchanReviewedRegistryLibraryVersions {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][object]$Policy,
+    [Parameter(Mandatory = $true)][string]$Environment
+  )
+
+  if ($null -eq $Policy.PSObject.Properties['registryPackages']) {
+    throw "Libdeps policy is missing reviewed registry package versions: $Environment"
+  }
+  foreach ($leaf in @($Policy.registryPackages.Keys | Sort-Object)) {
+    $expected = $Policy.registryPackages[$leaf]
+    if ([string]$leaf -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
+        [string]$expected.name -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
+        [string]::IsNullOrWhiteSpace([string]$expected.version)) {
+      throw "Invalid reviewed registry package policy: $Environment/$leaf"
+    }
+    $manifestPath = Join-Path (Join-Path $Root ([string]$leaf)) 'library.json'
+    $manifestItem = Get-Item -LiteralPath $manifestPath -Force -ErrorAction Stop
+    if ($manifestItem.PSIsContainer -or
+        ($manifestItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+      throw "Reviewed registry package manifest is not one real file: $Environment/$leaf"
+    }
+    try {
+      $manifest = [IO.File]::ReadAllText($manifestItem.FullName) | ConvertFrom-Json
+    } catch {
+      throw "Reviewed registry package manifest is malformed: $Environment/$leaf"
+    }
+    if ($null -eq $manifest -or
+        $null -eq $manifest.PSObject.Properties['name'] -or
+        $null -eq $manifest.PSObject.Properties['version'] -or
+        [string]$manifest.name -cne [string]$expected.name -or
+        [string]$manifest.version -cne [string]$expected.version) {
+      throw "Reviewed registry package name/version does not match exact policy: $Environment/$leaf"
+    }
+  }
+}
+
 function Get-StackchanExpectedLibdepsPolicy {
   param([Parameter(Mandatory = $true)][string]$Environment)
 
+  $reviewedRegistryPackages = @{
+    'M5GFX' = [pscustomobject][ordered]@{
+      name = 'M5GFX'
+      version = '0.2.24'
+    }
+    'M5Unified' = [pscustomobject][ordered]@{
+      name = 'M5Unified'
+      version = '0.2.17'
+    }
+  }
   $legacyRequirements = @(
-    'M5GFX@0.2.24',
+    'M5Stack/M5GFX@0.2.24',
     'M5Stack/M5Unified@0.2.17',
     'https://github.com/mongonta0716/SCServo.git#ee6ee4a',
     'arminjo/ServoEasing@3.1.0',
@@ -1397,12 +1445,12 @@ function Get-StackchanExpectedLibdepsPolicy {
   if ($Environment -in @('stackchan', 'stackchan_servo_calibration')) {
     return [pscustomobject][ordered]@{
       leaves = @(
-        'ArduinoJson', 'Dynamixel2Arduino', 'ESP32Servo', 'M5GFX', 'M5GFX@0.2.24', 'M5Unified',
-        'M5Unified@0.2.17', 'SCServo',
-        'SCServo@src-8a1b26565e1a43aa7e250db85a311724', 'ServoEasing',
+        'ArduinoJson', 'Dynamixel2Arduino', 'ESP32Servo', 'M5GFX', 'M5Unified',
+        'SCServo', 'SCServo@src-8a1b26565e1a43aa7e250db85a311724', 'ServoEasing',
         'stackchan-arduino', 'YAMLDuino'
       )
       requirements = $legacyRequirements
+      registryPackages = $reviewedRegistryPackages
       gitSources = @{
         'SCServo' = [pscustomobject]@{
           packageName = 'SCServo'
@@ -1425,17 +1473,17 @@ function Get-StackchanExpectedLibdepsPolicy {
   if ($Environment -ceq 'stackchan_release_full') {
     return [pscustomobject][ordered]@{
       leaves = @(
-        'ArduinoJson', 'esp-micro-speech-features', 'M5GFX', 'M5GFX@0.2.24',
-        'M5Unified', 'SCServo', 'YAMLDuino'
+        'ArduinoJson', 'esp-micro-speech-features', 'M5GFX', 'M5Unified', 'SCServo', 'YAMLDuino'
       )
       requirements = @(
         'bblanchon/ArduinoJson@7.4.3',
+        'M5Stack/M5GFX@0.2.24',
         'M5Stack/M5Unified@0.2.17',
         'tobozo/YAMLDuino@1.5.0',
-        'M5GFX@0.2.24',
         'https://github.com/esphome-libs/esp-micro-speech-features.git#351c4c69530f5a802da5433581c4863afadf0a00',
         'https://github.com/mongonta0716/SCServo.git#ee6ee4a'
       )
+      registryPackages = $reviewedRegistryPackages
       gitSources = @{
         'esp-micro-speech-features' = [pscustomobject]@{
           packageName = 'esp-micro-speech-features'
@@ -1476,6 +1524,8 @@ function Get-StackchanCanonicalLibdepsIdentity {
       ($topLeaves -join "`n") -cne ($expectedLeaves -join "`n")) {
     throw "Libdeps tree is stale or has unexpected packages/files: $Environment"
   }
+  Assert-StackchanReviewedRegistryLibraryVersions `
+    -Root $rootItem.FullName -Policy $policy -Environment $Environment
   $integrityLines = @([IO.File]::ReadAllLines($topFiles[0].FullName) | ForEach-Object { $_.Trim() })
   if ($integrityLines.Count -ne @($policy.requirements).Count -or
       @($integrityLines | Where-Object { [string]::IsNullOrWhiteSpace($_) -or $_ -match '[\x00-\x1F\x7F]' }).Count -ne 0 -or

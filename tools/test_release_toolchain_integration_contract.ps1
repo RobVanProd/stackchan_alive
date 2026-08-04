@@ -26,6 +26,19 @@ function Require-Order {
 $packageText = Get-Content -LiteralPath $packagePath -Raw
 $verifierText = Get-Content -LiteralPath $verifierPath -Raw
 $helperText = Get-Content -LiteralPath $helperPath -Raw
+$semanticVerifierPath = Join-Path $PSScriptRoot 'verify_git_pack_semantics.py'
+$exactBootstrapPins = [ordered]@{
+  'allowlist' = (Get-FileHash -Algorithm SHA256 -LiteralPath $allowlistPath).Hash
+  'identity helper' = (Get-FileHash -Algorithm SHA256 -LiteralPath $helperPath).Hash
+  'semantic verifier' = (Get-FileHash -Algorithm SHA256 -LiteralPath $semanticVerifierPath).Hash
+}
+foreach ($entry in $exactBootstrapPins.GetEnumerator()) {
+  $literal = "'$([string]$entry.Value)' # reviewed $([string]$entry.Key) SHA-256"
+  Require-Text $packageText $literal `
+    "Release packager has a stale reviewed $([string]$entry.Key) bootstrap pin."
+  Require-Text $verifierText $literal `
+    "Release verifier has a stale reviewed $([string]$entry.Key) bootstrap pin."
+}
 
 foreach ($parameter in @(
     'ToolchainAllowlistPath', 'GitExecutable', 'PythonExecutable',

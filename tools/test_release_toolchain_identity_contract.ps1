@@ -744,10 +744,57 @@ try {
   Assert-True ($beforeCompiler.treeSha256 -cne $afterCompiler.treeSha256) `
     'A compiler-toolchain byte mutation did not change the observed pre-build identity.'
 
+  foreach ($environment in @('stackchan', 'stackchan_servo_calibration', 'stackchan_release_full')) {
+    $environmentPolicy = Get-StackchanExpectedLibdepsPolicy -Environment $environment
+    Assert-True (@($environmentPolicy.leaves | Where-Object { $_ -ceq 'M5GFX' }).Count -eq 1) `
+      "Fresh-libdeps policy does not require one canonical M5GFX leaf: $environment"
+    Assert-True (@($environmentPolicy.leaves | Where-Object { $_ -match '^M5GFX@' }).Count -eq 0) `
+      "Fresh-libdeps policy still permits a duplicate M5GFX version leaf: $environment"
+    Assert-True (@($environmentPolicy.leaves | Where-Object { $_ -ceq 'M5Unified' }).Count -eq 1 -and
+      @($environmentPolicy.leaves | Where-Object { $_ -match '^M5Unified@' }).Count -eq 0) `
+      "Fresh-libdeps policy does not require one canonical M5Unified leaf: $environment"
+    Assert-True (@($environmentPolicy.requirements | Where-Object {
+      $_ -ceq 'M5Stack/M5GFX@0.2.24'
+    }).Count -eq 1 -and @($environmentPolicy.requirements | Where-Object {
+      $_ -ceq 'M5GFX@0.2.24'
+    }).Count -eq 0) `
+      "Fresh-libdeps policy does not require the owner-qualified exact M5GFX spec: $environment"
+  }
+
+  $registryVersionRoot = Join-Path $testRoot 'registry-version-fixture'
+  New-Item -ItemType Directory -Path (Join-Path $registryVersionRoot 'M5GFX') -Force | Out-Null
+  New-Item -ItemType Directory -Path (Join-Path $registryVersionRoot 'M5Unified') -Force | Out-Null
+  $registryVersionPolicy = Get-StackchanExpectedLibdepsPolicy -Environment stackchan_release_full
+  [IO.File]::WriteAllText(
+    (Join-Path $registryVersionRoot 'M5GFX/library.json'),
+    '{"name":"M5GFX","version":"0.2.26"}')
+  Assert-Throws {
+    Assert-StackchanReviewedRegistryLibraryVersions `
+      -Root $registryVersionRoot -Policy $registryVersionPolicy `
+      -Environment stackchan_release_full
+  } 'name/version does not match exact policy'
+  [IO.File]::WriteAllText(
+    (Join-Path $registryVersionRoot 'M5GFX/library.json'),
+    '{"name":"M5GFX","version":"0.2.24"}')
+  [IO.File]::WriteAllText(
+    (Join-Path $registryVersionRoot 'M5Unified/library.json'),
+    '{"name":"M5Unified","version":"0.2.17"}')
+  Assert-StackchanReviewedRegistryLibraryVersions `
+    -Root $registryVersionRoot -Policy $registryVersionPolicy `
+    -Environment stackchan_release_full
+  [IO.File]::WriteAllText(
+    (Join-Path $registryVersionRoot 'M5Unified/library.json'),
+    '{"name":"M5Unified","version":"0.2.19"}')
+  Assert-Throws {
+    Assert-StackchanReviewedRegistryLibraryVersions `
+      -Root $registryVersionRoot -Policy $registryVersionPolicy `
+      -Environment stackchan_release_full
+  } 'name/version does not match exact policy'
+
   $staleLibdeps = Join-Path $fixtureRoots.projectRoot '.pio/libdeps/stackchan'
   $stalePolicy = Get-StackchanExpectedLibdepsPolicy -Environment stackchan
   New-Item -ItemType Directory -Path $staleLibdeps -Force | Out-Null
-  foreach ($leaf in @($stalePolicy.leaves) + @('unexpected-stale-library')) {
+  foreach ($leaf in @($stalePolicy.leaves) + @('M5GFX@0.2.24')) {
     New-Item -ItemType Directory -Path (Join-Path $staleLibdeps $leaf) -Force | Out-Null
   }
   [IO.File]::WriteAllLines((Join-Path $staleLibdeps 'integrity.dat'), [string[]]$stalePolicy.requirements)

@@ -170,12 +170,18 @@ foreach ($required in @(
   '^55\.3\.36\+sha\.aa6e97c$',
   '^3\.3\.6$',
   'toolchain-xtensa-esp-elf',
-  'knownPinnedM5GfxWithTransitiveCopy',
-  '0.2.24'
+  'M5Stack/M5GFX@0.2.24',
+  'Assert-StackchanSingleResolvedPackageVersion',
+  '-Name "M5GFX" -ExpectedVersion "0.2.24"',
+  '-Name "M5Unified" -ExpectedVersion "0.2.17"'
 )) {
   if (-not $releaseVerifierText.Contains($required)) {
     throw "Release verifier is missing mixed-toolchain lock coverage: $required"
   }
+}
+if ($releaseVerifierText.Contains('knownPinnedM5GfxWithTransitiveCopy') -or
+    $releaseVerifierText.Contains('$duplicateVersions[1] -eq "0.2.26"')) {
+  throw 'Release verifier still permits the rejected duplicate M5GFX resolution.'
 }
 foreach ($required in @(
   'verify_release_package.ps1',

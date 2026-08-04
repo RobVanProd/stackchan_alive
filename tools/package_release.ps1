@@ -75,8 +75,8 @@ if ($unexpectedGitOverrides.Count -gt 0) {
 }
 
 $releaseBootstrapNullAttributes = if ($env:OS -eq 'Windows_NT') { 'NUL' } else { '/dev/null' }
-$releaseToolchainAllowlistSha256 = '30607EB46546E49CB72A231C98CDB62FE5987D24252237821F344C1E1B797A5D' # reviewed allowlist SHA-256
-$releaseToolchainIdentityHelperSha256 = '35D688C55E3CF7694B8E8644813A5C8658E2D26DE78DCF8331E62445DDC49BE4' # reviewed identity helper SHA-256
+$releaseToolchainAllowlistSha256 = '149BC9DC713E2550C3EA199337F4BC7F095A1B1497935000F27539EDE16B7CEB' # reviewed allowlist SHA-256
+$releaseToolchainIdentityHelperSha256 = 'D63A93F4E9C3CFE057B59F963FCFF2C7CAF293300FF572E04F4B22608BD368A9' # reviewed identity helper SHA-256
 $releaseToolchainSemanticVerifierSha256 = '649DE0BBF4A966ADF389A4C2F98190B87958E2ECCC1DF15A6E6FE04D86A4BEBA' # reviewed semantic verifier SHA-256
 $releaseToolchainPreBuild = $null
 $script:releaseToolchainIdentityRecords = [System.Collections.Generic.List[object]]::new()

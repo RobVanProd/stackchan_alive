@@ -23,6 +23,23 @@ function Convert-StackchanPioPackageList {
   return @($entries)
 }
 
+function Assert-StackchanSingleResolvedPackageVersion {
+  param(
+    [Parameter(Mandatory = $true)][object[]]$ResolvedPackages,
+    [Parameter(Mandatory = $true)][string]$Environment,
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][string]$ExpectedVersion
+  )
+
+  $matches = @($ResolvedPackages | Where-Object {
+    [string]$_.kind -ieq 'package' -and [string]$_.name -ieq $Name
+  })
+  if ($matches.Count -ne 1 -or [string]$matches[0].version -cne $ExpectedVersion) {
+    $versions = @($matches | ForEach-Object { [string]$_.version }) -join ', '
+    throw "Resolved package must appear exactly once at the reviewed version: $Environment/$Name expected=$ExpectedVersion observed=[$versions]"
+  }
+}
+
 function Get-StackchanResolvedCorePackageNames {
   param(
     [Parameter(Mandatory = $true)][object[]]$ResolvedPackages,

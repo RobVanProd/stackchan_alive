@@ -12,11 +12,11 @@
                                           ],
     "pythonExecutableRelativePath":  "python.exe",
     "gitExecutableRelativePath":  "cmd/git.exe",
-    "generatedUtc":  "2026-08-03T23:41:23Z",
+    "generatedUtc":  "2026-08-04T07:39:28Z",
     "review":  {
                    "status":  "reviewed",
-                   "reviewer":  "Luna independent pioarduino byte/provenance audit, Luna lifetime-cache/TOCTOU review, and Luna adversarial watcher-forensics review; Codex integration",
-                   "reason":  "Independently recomputed the 21 unchanged windows_amd64 exact-host components and reviewed three intentional deltas: the sealed pioarduino release-core penv, the converged pioarduino espressif32 platform bytes, and the policy source that adds process-lifetime leases, namespace watchers, guarded PreBuild caching, fail-fast cache revalidation, exact-once state-wide watcher drains, bounded post-disable/post-unregister quiescence, and cumulative chronological evidence. Adversarial review reproduced and closed duplicate-drain, cross-root ordering, late-after-snapshot cleanup, post-unregister delivery, and cross-batch chronology defects while retaining fail-closed anomaly behavior. Clean canonical dependencies for all three firmware environments remain explicitly bound. The original pioarduino source byte is retained only in ignored private recovery evidence and has no release authority. This review promotes only these exact allowlist bytes; it does not prove the retained runtime guard, establish release eligibility, authorize publication, or authorize physical qualification."
+                   "reviewer":  "Luna independent 24-component allowlist audit and corrected governed-environment B/C dependency audit; Codex integration",
+                   "reason":  "Independently audited all 24 windows_amd64 exact-host components: 20 remain byte-for-byte unchanged and four intentional deltas are promoted. The policy source now owner-qualifies M5Stack/M5GFX@0.2.24, requires the single reviewed M5GFX 0.2.24 and M5Unified 0.2.17 leaves and exact registry manifests, and fails closed on unexpected dependency topology or metadata. Two isolated fresh B/C roots reproduced the canonical dependency identities for all three governed environments: stackchan and stackchan_servo_calibration 248A6E4A19A7079F920B9C192AE47161377555442A80889742FD6B6FD43B986E (1119 files, 163164344 bytes), and stackchan_release_full AB7DB6C267BF82C5B8AC72624D266CB3A0ABE6D5E227BEF6B4750D52800B760E (866 files, 161476510 bytes). The release-core penv remains the previously reviewed A1E366961C1410F32DD31102F37725B500FF0F3FB8E9604A4BA34715FBC08C84 identity (3154 files, 124599325 bytes) after exact cache-side-effect restoration; the prior contaminated candidate remains rejected. This review promotes only these exact allowlist component bytes; it does not prove the retained runtime guard, establish release eligibility, authorize publication, flashing, or physical qualification."
                },
     "components":  [
                        {
@@ -39,9 +39,9 @@
                            "name":  "release-toolchain-identity-policy-source",
                            "phase":  "preBuild",
                            "identitySchema":  "stackchan.byte-tree.v1",
-                           "treeSha256":  "5895FA33E7FFE2E848C86B9FC5DA2A77933D45B423079796EF7C643D45B8CB22",
+                           "treeSha256":  "994F5FE80C00577F4D657018D16E1D468E0F91924EE22C43FDCCD4A2F6800F24",
                            "fileCount":  1,
-                           "bytes":  88173
+                           "bytes":  90344
                        },
                        {
                            "name":  "git-pack-semantic-verifier-source",
@@ -191,25 +191,25 @@
                            "name":  "project-libdeps-stackchan",
                            "phase":  "postBuild",
                            "identitySchema":  "stackchan.canonical-libdeps.v1",
-                           "treeSha256":  "79C18DC5078CAB8A35CCB4DAD385FDCB2BFB11126C778975F74C8F4B7096279B",
-                           "fileCount":  1516,
-                           "bytes":  322711060
+                           "treeSha256":  "248A6E4A19A7079F920B9C192AE47161377555442A80889742FD6B6FD43B986E",
+                           "fileCount":  1119,
+                           "bytes":  163164344
                        },
                        {
                            "name":  "project-libdeps-stackchan_servo_calibration",
                            "phase":  "postBuild",
                            "identitySchema":  "stackchan.canonical-libdeps.v1",
-                           "treeSha256":  "79C18DC5078CAB8A35CCB4DAD385FDCB2BFB11126C778975F74C8F4B7096279B",
-                           "fileCount":  1516,
-                           "bytes":  322711060
+                           "treeSha256":  "248A6E4A19A7079F920B9C192AE47161377555442A80889742FD6B6FD43B986E",
+                           "fileCount":  1119,
+                           "bytes":  163164344
                        },
                        {
                            "name":  "project-libdeps-stackchan_release_full",
                            "phase":  "postBuild",
                            "identitySchema":  "stackchan.canonical-libdeps.v1",
-                           "treeSha256":  "74B343038114CC2E90927E1C641B14D47806EA0759BF0FED711235B61C705273",
-                           "fileCount":  1146,
-                           "bytes":  318248745
+                           "treeSha256":  "AB7DB6C267BF82C5B8AC72624D266CB3A0ABE6D5E227BEF6B4750D52800B760E",
+                           "fileCount":  866,
+                           "bytes":  161476510
                        }
                    ]
 }
