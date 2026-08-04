@@ -22,11 +22,12 @@ SEC-002 package correction (2026-08-03): do not flash the preserved `4d31de41` p
 SHA-256 `4256F2E5...B31055` for a no-motion gate. That exact image was built with motion request and
 autonomous refresh enabled at boot. The source correction now makes the public full profile inherit
 motion-off, explicitly disables autonomous boot refresh, and is committed as
-`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. It is still not an install candidate until the
-current reviewed-toolchain integration is committed, the governed two-cycle package build and
+`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. The reviewed toolchain integration is committed as
+`616424e4b87bc8cc7c737a849d543eda7bf51dfd`, but it is still not an install candidate until the
+retained exact-host guard, governed two-cycle package build, and
 independent rebuild match for all three packaged environments, and the exact package is verified
 and reviewed. The 24-component exact-host allowlist has passed independent recomputation, but no
-clean governed package has been produced from this worktree yet; diagnostic packages are never
+clean governed package has been produced from that commit yet; diagnostic packages are never
 flash or qualification inputs. The release package/flasher source requires an OTA
 selector bound to the exact legacy/release framework identities, 8,192-byte size, and reviewed
 SHA-256, and deterministically writes it at `0xE000` between the partition table and application.

@@ -13,11 +13,12 @@ rewriting its historical hash or claiming that it was deployed.
 
 The replacement source profile inherits motion-off-at-boot, explicitly keeps autonomous refresh
 off, and is committed as `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. OTA selector authority and
-publication locking are committed through `e52826a4a130f00718e20e71e5aea0f1cbc050ff`. A reviewed
-24-component exact-host toolchain allowlist now exists in the current M0 worktree; independent
+publication locking are committed through `e52826a4a130f00718e20e71e5aea0f1cbc050ff`. The reviewed
+24-component exact-host toolchain integration is committed as
+`616424e4b87bc8cc7c737a849d543eda7bf51dfd`; independent
 recomputation matched every component and clean B/C canonical libdeps for all three release
-environments. The packager/verifier integration and broad reproducibility contracts pass, but
-this integration is not yet a clean committed release input and no governed replacement package,
+environments. The packager/verifier integration and broad reproducibility contracts pass, but the
+retained exact-host guard and governed package have not yet passed for this commit. No replacement package,
 installation, physical qualification, or soak exists yet. The release package/flasher source carries a per-environment
 `boot_app0.bin` bound to reviewed framework versions, exact 8,192-byte size, and SHA-256, and writes
 it at `0xE000` between the partition table and application. The flasher uses a second-verified,
@@ -25,8 +26,8 @@ read-locked private ZIP snapshot and hashes locked payload streams against that 
 esptool. Publication holds staged assets read-locked through upload and downloads the standalone
 firmware assets for remote hash verification. A diagnostic-only v13 rehearsal verified those
 contracts, but it is not a flash or qualification input.
-Hold all flashing and physical promotion until this toolchain integration is committed, the exact
-clean governed package passes its own two-cycle build and independent rebuild, a reviewed rollback
+Hold all flashing and physical promotion until the exact-host guard and exact clean governed
+package pass their two-cycle build and independent rebuild for the committed source, a reviewed rollback
 path exists, and a fresh passive no-motion preflight is complete.
 
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored

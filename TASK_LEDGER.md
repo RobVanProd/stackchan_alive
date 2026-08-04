@@ -123,16 +123,17 @@ Ledger timestamp: 2026-08-03 America/New_York
   snapshot bytes; and locks/verifies standalone publication assets. Diagnostic v13 proved the
   five-file package inventory and selector address order while remaining expressly dirty,
   diagnostic-only, non-release-eligible,
-  non-flashable, and not reproducibility proof. The current dirty slice contains a Luna-reviewed
+  non-flashable, and not reproducibility proof. Commit `616424e4` contains the Luna-reviewed
   24-component exact-host allowlist, all-three-environment clean B/C canonical dependency equality,
   a source-bound semantic Git-pack verifier, operational caller propagation, and passing policy,
   adversarial verifier, integration, and broad reproducibility contracts. No clean governed release
   package or hardware claim is earned yet.
-- **Commit:** Release-governance/selector head `e52826a4a130f00718e20e71e5aea0f1cbc050ff`;
-  reviewed toolchain integration pending commit after final regression and review.
-- **Decision:** Continue the atomic governance slice, but do not mark it complete or generate an
-  eligible package until command/toolchain authority, all three clean environments, and independent
-  review are actually closed.
+- **Commit:** Reviewed toolchain integration
+  `616424e4b87bc8cc7c737a849d543eda7bf51dfd`; release-governance/selector prerequisite
+  `e52826a4a130f00718e20e71e5aea0f1cbc050ff`.
+- **Decision:** Keep M0 open until the retained exact-host guard and governed package prove the
+  exact clean commit across all three packaged environments and the independent rebuild. Do not
+  flash or create qualification evidence before those gates close.
 
 ## M0-005 — Reconcile Stale Status Documents
 
@@ -195,7 +196,7 @@ Ledger timestamp: 2026-08-03 America/New_York
   autonomous motion enabled at boot. No serial/control/flash/motion action occurred. Independent
   read-only review preserved the distinction between live self-report, backup extraction, source,
   package, and physical qualification.
-- **Commit:** Pending with the atomic M0 governance slice.
+- **Commit:** `616424e4b87bc8cc7c737a849d543eda7bf51dfd` with the atomic M0 governance slice.
 - **Decision:** Accept the reconciliation while keeping release and hardware promotion on hold;
   the backup remains recovery evidence only.
 
