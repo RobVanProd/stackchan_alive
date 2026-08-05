@@ -364,6 +364,25 @@ $packageAst = [System.Management.Automation.Language.Parser]::ParseFile(
 if ($verifyParseErrors.Count -ne 0 -or $packageParseErrors.Count -ne 0) {
   throw 'Verifier trust contract could not parse the package/verifier scripts'
 }
+$operationalCommitMapInitializations = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    -not (Test-WithinFunctionDefinition -Ast $node) -and
+    $node.Left.Extent.Text -ceq '$script:operationalTrustedCommitMaps' -and
+    $node.Operator -eq [System.Management.Automation.Language.TokenKind]::Equals -and
+    $node.Right.Extent.Text -ceq '$null'
+}, $true))
+$operationalCommitMapFunctions = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Get-OperationalTrustedCommitMaps'
+}, $true))
+if ($operationalCommitMapInitializations.Count -ne 1 -or
+    $operationalCommitMapFunctions.Count -ne 1 -or
+    $operationalCommitMapInitializations[0].Extent.EndOffset -ge
+      $operationalCommitMapFunctions[0].Extent.StartOffset) {
+  throw 'Operational trusted-commit map cache must have one top-level null initialization before strict-mode access.'
+}
 $sidecarCalls = @($verifyAst.FindAll({
   param($node)
   $node -is [System.Management.Automation.Language.CommandAst] -and

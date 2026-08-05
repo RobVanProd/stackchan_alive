@@ -24,6 +24,7 @@ $verifierToolchainPreBuild = $null
 $script:verifierToolchainIdentityRecords = [System.Collections.Generic.List[object]]::new()
 $script:verifierToolchainReadLeases = [System.Collections.Generic.List[IO.FileStream]]::new()
 $script:verifierToolchainLeaseState = $null
+$script:operationalTrustedCommitMaps = $null
 
 function Add-VerifierToolchainReadLease {
   param([Parameter(Mandatory = $true)][string]$LiteralPath)

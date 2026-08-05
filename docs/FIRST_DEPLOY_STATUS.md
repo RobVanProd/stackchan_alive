@@ -298,6 +298,22 @@ verifier, and adds a regression that rejects reintroducing the exporter into syn
 packets. The SEC-002 hold remains in force until this correction passes the broad contracts,
 exact-head CI, and a fresh governed package plus independent verification.
 
+Qualification head `403073c866b97c597ccffb415a7a89ab8027a75a` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30975232501`. Governed packaging for
+`sec-002-403073c8` completed both equal-length firmware cycles, exact artifact comparison,
+package assembly, voice/RVC status export, provisional ZIP creation, and the independent verifier's
+exact-commit firmware rebuild. Verification then failed closed before release eligibility when
+`Get-OperationalTrustedCommitMaps` read its script-scope cache under strict mode before that cache
+had been initialized. The provisional ZIP and partial output under
+`output/release/sec-002-403073c8` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction initializes the operational trusted-commit map cache explicitly before any
+strict-mode access and adds a contract requiring that initialization to precede the cache function.
+An audit of verifier script-scope cache reads found no second uninitialized cache. The SEC-002 hold
+remains in force until this correction passes the broad contracts, exact-head CI, and a fresh
+governed package plus independent verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that
