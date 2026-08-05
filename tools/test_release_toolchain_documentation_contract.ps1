@@ -52,9 +52,15 @@ foreach ($relative in $operatorDocs) {
 }
 
 $packageText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'package_release.ps1') -Raw
+$sourceBindingText = Get-Content -LiteralPath (
+  Join-Path $PSScriptRoot 'release_source_binding.ps1') -Raw
+Require-Text $sourceBindingText `
+  'Return to the exact clean trusted source checkout, define the six-value releaseToolchain splat from docs/RELEASE_PROCESS.md, and pass this ZIP to tools/prepare_device_arrival.ps1. The archive does not confer release authority.' `
+  'Trusted source-binding helper is missing the canonical arrival-authority guidance.'
 foreach ($needle in @(
     'nextOperatorCommand = $null', 'nextOperatorGuidance',
-    'The archive does not confer release authority',
+    '$arrivalAuthorityGuidance = Get-StackchanArrivalAuthorityGuidance',
+    '$arrivalAuthorityGuidance',
     'completed governed release package')) {
   Require-Text $packageText $needle "Package handoff is missing non-authorizing guidance: $needle"
 }

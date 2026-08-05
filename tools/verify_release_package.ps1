@@ -2433,6 +2433,9 @@ $packageAuthorityDocPaths = @(
   'README.md', 'QUICKSTART.md', 'ARRIVAL_DAY_RUNBOOK.md',
   'docs/RELEASE_PROCESS.md', 'docs/DEVICE_BRINGUP.md', 'docs/ROLLOUT_CHECKLIST.md',
   'docs/BRIDGE_AI_QUALIFICATION.md', 'docs/COMPANION_APP_GAP_ANALYSIS.md')
+if (-not [bool]$manifest.diagnosticPackage) {
+  $packageAuthorityDocPaths += 'READINESS_REPORT.md'
+}
 $packageAuthorityToolPattern = '(?im)(?:^|[\\/])(?:package_release|verify_release_package|run_device_preflight|flash_release_firmware|start_hardware_evidence|prepare_device_arrival|start_bridge_ai_supervised_qualification|verify_consumer_promotion|publish_release|audit_published_release|verify_published_release|share_release|export_rollout_status)\.(?:cmd|ps1)'
 $packageAuthorityCmdPattern = '(?im)(?:^|[\\/])(?:package_release|verify_release_package|run_device_preflight|flash_release_firmware|start_hardware_evidence|prepare_device_arrival|start_bridge_ai_supervised_qualification|verify_consumer_promotion|publish_release|audit_published_release|verify_published_release|share_release|export_rollout_status)\.cmd'
 foreach ($relativePath in $packageAuthorityDocPaths) {
@@ -5904,9 +5907,11 @@ foreach ($pattern in $actionsStatusPatterns) {
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
+$readinessSemanticMarkdown = ConvertTo-StackchanMarkdownSemanticText -Text $readinessMarkdown
+$arrivalAuthorityGuidance = Get-StackchanArrivalAuthorityGuidance
 if ([bool]$manifest.diagnosticPackage) {
   foreach ($pattern in @($Version, $ExpectedCommit, "Diagnostic package:", "Status: diagnostic-only unqualified", "Consumer rollout: forbidden diagnostic package", "Release and hardware use: forbidden", "source identity is not established", "Do not flash it")) {
-    if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
+    if ($readinessSemanticMarkdown -notmatch [regex]::Escape($pattern)) {
       throw "Diagnostic READINESS_REPORT.md missing prohibition: $pattern"
     }
   }
@@ -5914,8 +5919,8 @@ if ([bool]$manifest.diagnosticPackage) {
     throw "Diagnostic READINESS_REPORT.md contains readiness claims"
   }
 } else {
-  foreach ($pattern in @($Version, $ExpectedCommit, "Status: test-ready prerelease", "Consumer rollout: blocked pending hardware validation", "Proven Without Hardware", "Required Physical Qualification", "Historical private paired-reference evidence", "source commit and firmware SHA-256", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "Owner approval has not been recorded for this candidate", "exact clean trusted source checkout", "archive does not confer release authority")) {
-    if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
+  foreach ($pattern in @($Version, $ExpectedCommit, "Status: test-ready prerelease", "Consumer rollout: blocked pending hardware validation", "Proven Without Hardware", "Required Physical Qualification", "Historical private paired-reference evidence", "source commit and firmware SHA-256", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "Owner approval has not been recorded for this candidate", $arrivalAuthorityGuidance)) {
+    if ($readinessSemanticMarkdown -notmatch [regex]::Escape($pattern)) {
       throw "READINESS_REPORT.md missing expected text: $pattern"
     }
   }
@@ -5955,8 +5960,7 @@ if ([bool]$manifest.diagnosticPackage) {
   if ($readinessJson.diagnosticPackage -eq $true -or
       $readinessJson.status -ne "test-ready-prerelease" -or
       $null -ne $readinessJson.nextOperatorCommand -or
-      [string]$readinessJson.nextOperatorGuidance -notmatch 'trusted source checkout' -or
-      [string]$readinessJson.nextOperatorGuidance -notmatch 'archive does not confer release authority') {
+      [string]$readinessJson.nextOperatorGuidance -cne $arrivalAuthorityGuidance) {
     throw "readiness_report.json status mismatch: $($readinessJson.status)"
   }
   if ($readinessJson.consumerRollout -ne "blocked-pending-hardware-validation") {

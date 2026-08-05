@@ -6,6 +6,85 @@ $verifyPath = Join-Path $PSScriptRoot "verify_release_package.ps1"
 . (Join-Path $PSScriptRoot "release_source_binding.ps1")
 $packageText = Get-Content -LiteralPath $packagePath -Raw
 $verifyText = Get-Content -LiteralPath $verifyPath -Raw
+$expectedArrivalAuthorityGuidance = 'Return to the exact clean trusted source checkout, define the six-value releaseToolchain splat from docs/RELEASE_PROCESS.md, and pass this ZIP to tools/prepare_device_arrival.ps1. The archive does not confer release authority.'
+$arrivalAuthorityGuidance = Get-StackchanArrivalAuthorityGuidance
+if ($arrivalAuthorityGuidance -cne $expectedArrivalAuthorityGuidance) {
+  throw 'Shared arrival-authority guidance changed unexpectedly.'
+}
+foreach ($authorityFixture in @(
+  $arrivalAuthorityGuidance,
+  $arrivalAuthorityGuidance.Replace(' ', "`n"),
+  $arrivalAuthorityGuidance.Replace(' ', "`r`n"),
+  $arrivalAuthorityGuidance.Replace(' ', "`t"),
+  $arrivalAuthorityGuidance.Replace(' ', '  ')
+)) {
+  $normalizedAuthorityFixture = ConvertTo-StackchanMarkdownSemanticText -Text $authorityFixture
+  if ($normalizedAuthorityFixture -cne $arrivalAuthorityGuidance) {
+    throw 'Arrival-authority Markdown normalization changed formatting-equivalent semantics.'
+  }
+}
+foreach ($authorityMutation in @(
+  $arrivalAuthorityGuidance.Replace('exact clean trusted source checkout', 'trusted source checkout'),
+  $arrivalAuthorityGuidance.Replace('six-value', 'five-value'),
+  $arrivalAuthorityGuidance.Replace('prepare_device_arrival.ps1', 'run_device_preflight.ps1'),
+  $arrivalAuthorityGuidance.Replace('does not confer', 'confers')
+)) {
+  if ((ConvertTo-StackchanMarkdownSemanticText -Text $authorityMutation) -ceq
+      $arrivalAuthorityGuidance) {
+    throw 'Arrival-authority Markdown normalization accepted a semantic mutation.'
+  }
+}
+foreach ($requiredArrivalAuthorityProducerBinding in @(
+  '$arrivalAuthorityGuidance = Get-StackchanArrivalAuthorityGuidance',
+  'nextOperatorGuidance = if ($SkipBuild)',
+  'Arrival authority is intentionally not embedded in this archive.'
+)) {
+  if (-not $packageText.Contains($requiredArrivalAuthorityProducerBinding)) {
+    throw "Arrival-authority producer binding is missing: $requiredArrivalAuthorityProducerBinding"
+  }
+}
+foreach ($requiredArrivalAuthorityVerifierBinding in @(
+  '$arrivalAuthorityGuidance = Get-StackchanArrivalAuthorityGuidance',
+  '$readinessSemanticMarkdown = ConvertTo-StackchanMarkdownSemanticText -Text $readinessMarkdown',
+  '[string]$readinessJson.nextOperatorGuidance -cne $arrivalAuthorityGuidance',
+  '$packageAuthorityDocPaths += ''READINESS_REPORT.md'''
+)) {
+  if (-not $verifyText.Contains($requiredArrivalAuthorityVerifierBinding)) {
+    throw "Arrival-authority verifier binding is missing: $requiredArrivalAuthorityVerifierBinding"
+  }
+}
+if (@([regex]::Matches(
+    $packageText, [regex]::Escape('$arrivalAuthorityGuidance'))).Count -ne 3 -or
+    @([regex]::Matches(
+      $packageText, [regex]::Escape('Get-StackchanArrivalAuthorityGuidance'))).Count -ne 1 -or
+    @([regex]::Matches(
+      $verifyText, [regex]::Escape('$arrivalAuthorityGuidance'))).Count -ne 3 -or
+    @([regex]::Matches(
+      $verifyText, [regex]::Escape('Get-StackchanArrivalAuthorityGuidance'))).Count -ne 1) {
+  throw 'Arrival-authority producer/verifier binding count is ambiguous.'
+}
+if (@([regex]::Matches(
+    $verifyText,
+    [regex]::Escape('$readinessSemanticMarkdown -notmatch [regex]::Escape($pattern)'))).Count -ne 2) {
+  throw 'Readiness Markdown checks do not consistently use the semantic whitespace view.'
+}
+$readinessTemplateStart = $packageText.IndexOf(
+  'Arrival authority is intentionally not embedded in this archive.',
+  [System.StringComparison]::Ordinal)
+$readinessTemplateEnd = $packageText.IndexOf(
+  '"@ | Set-Content -Path (Join-Path $outDir "READINESS_REPORT.md") -Encoding UTF8',
+  $readinessTemplateStart,
+  [System.StringComparison]::Ordinal)
+if ($readinessTemplateStart -lt 0 -or $readinessTemplateEnd -le $readinessTemplateStart) {
+  throw 'Release readiness Markdown authority template is missing or ambiguous.'
+}
+$readinessTemplateFixture = $packageText.Substring(
+  $readinessTemplateStart, $readinessTemplateEnd - $readinessTemplateStart).Replace(
+    '$arrivalAuthorityGuidance', $arrivalAuthorityGuidance)
+$readinessTemplateSemanticText = ConvertTo-StackchanMarkdownSemanticText -Text $readinessTemplateFixture
+if (-not $readinessTemplateSemanticText.Contains($arrivalAuthorityGuidance)) {
+  throw 'Release readiness Markdown is not bound to the canonical arrival-authority guidance.'
+}
 $readmeLfFixture = "# Stackchan café`n`n![Preview](docs/media/preview.png)`n"
 $readmeExpectedFixture = "# Stackchan café`r`n`r`n![Preview](media/preview.png)`r`n"
 $readmeSourceFixtures = @(

@@ -372,6 +372,28 @@ reaches the intended small-index rejection. The SEC-002 hold remains in force un
 passes the broad contracts, exact-head CI, and a fresh governed package plus independent
 verification.
 
+Qualification head `494a6e2d69ba562e6c4a76cf6f348e44422b763e` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30993330105`. Governed packaging for
+`sec-002-494a6e2d` completed two clean cycles, exact size/SHA-256 comparison of all 15 artifact
+pairs, package assembly, and provisional ZIP creation. The independent verifier passed package
+inventory, deterministic README, voice/RVC, preview media, phase A-E face assets, and the release
+asset contract. It then failed closed at `verify_release_package.ps1:5919` because the generated
+Markdown wrapped `exact clean trusted source checkout` and `archive does not confer release
+authority` across line boundaries while the verifier required literal spaces. The complete
+authority guidance is present contiguously in `readiness_report.json`; this is producer/verifier
+formatting drift, not missing authority policy. The provisional ZIP and output under
+`output/release/sec-002-494a6e2d` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction defines one canonical arrival-authority sentence in the trusted source-binding
+helper, uses it for both generated readiness formats, compares the JSON value exactly, and checks a
+whitespace-semantic Markdown view without changing case, punctuation, filenames, or token order.
+The production readiness report is also included in the contradictory extracted-archive authority
+scan. Contract fixtures accept LF, CRLF, tabs, and repeated formatting spaces while rejecting
+changes to exact-clean checkout authority, the six-value toolchain, the trusted arrival helper, or
+the archive boundary. The SEC-002 hold remains in force until this correction passes the broad
+contracts, exact-head CI, and a fresh governed package plus independent verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

@@ -3431,6 +3431,7 @@ if ($ObserveCandidateActions) {
   }
 }
 
+$arrivalAuthorityGuidance = Get-StackchanArrivalAuthorityGuidance
 $readinessReport = [ordered]@{
   schema = "stackchan.readiness-report.v1"
   version = $Version
@@ -3479,7 +3480,7 @@ $readinessReport = [ordered]@{
   nextOperatorGuidance = if ($SkipBuild) {
     'Diagnostic packages have no arrival or hardware authority.'
   } else {
-    'Return to the exact clean trusted source checkout, define the six-value releaseToolchain splat from docs/RELEASE_PROCESS.md, and pass this ZIP to tools/prepare_device_arrival.ps1. The archive does not confer release authority.'
+    $arrivalAuthorityGuidance
   }
 }
 
@@ -3690,10 +3691,8 @@ Owner approval has not been recorded for this candidate. Promotion requires sour
 supervised hardware qualification, bridge AI qualification, the required soak, successful
 release checks, and explicit owner approval.
 
-Arrival authority is intentionally not embedded in this archive. Return to the exact clean trusted
-source checkout, define the six-value ``releaseToolchain`` splat from ``docs/RELEASE_PROCESS.md``,
-and pass this ZIP to ``tools/prepare_device_arrival.ps1``. The archive does not confer release
-authority.
+Arrival authority is intentionally not embedded in this archive.
+$arrivalAuthorityGuidance
 "@ | Set-Content -Path (Join-Path $outDir "READINESS_REPORT.md") -Encoding UTF8
 }
 

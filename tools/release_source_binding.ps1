@@ -1,3 +1,13 @@
+function Get-StackchanArrivalAuthorityGuidance {
+  return 'Return to the exact clean trusted source checkout, define the six-value releaseToolchain splat from docs/RELEASE_PROCESS.md, and pass this ZIP to tools/prepare_device_arrival.ps1. The archive does not confer release authority.'
+}
+
+function ConvertTo-StackchanMarkdownSemanticText {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+  return [regex]::Replace($Text, '[\t\r\n ]+', ' ').Trim()
+}
+
 function ConvertTo-StackchanPackageReadmeText {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
 
