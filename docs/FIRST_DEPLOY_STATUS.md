@@ -280,6 +280,24 @@ already target the materialized package directory. The SEC-002 hold remains in f
 correction passes the broad contracts, exact-head CI, and a fresh governed package plus independent
 verification.
 
+Qualification head `93bda8cbd59791cf950b554b0fcd46b7eb06b83b` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30971770631`. Governed packaging for
+`sec-002-93bda8cb` completed both equal-length firmware cycles, exact artifact comparison,
+commit-bound production RVC materialization, both corrected voice status exports, manifest and
+acceptance generation, and provisional ZIP creation. Independent ZIP verification then failed
+closed because its static synthetic-evidence marker list still required
+`export_rollout_status.ps1`. Commit `616424e4` had intentionally replaced that synthetic packet
+command with a non-authorizing message requiring the exact trusted source checkout and six exact
+host toolchain authorities, but had not updated the verifier marker. The provisional ZIP and
+partial output under `output/release/sec-002-93bda8cb` are not candidates. No flash, OTA request,
+COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction removes the stale mutable-exporter/output expectations, pins the stronger exact
+checkout, exact-host toolchain, and archive-authority boundary in both generator and independent
+verifier, and adds a regression that rejects reintroducing the exporter into synthetic diagnostic
+packets. The SEC-002 hold remains in force until this correction passes the broad contracts,
+exact-head CI, and a fresh governed package plus independent verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

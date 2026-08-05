@@ -8,6 +8,49 @@ $packagePath = Join-Path $PSScriptRoot "package_release.ps1"
 $verifyPath = Join-Path $PSScriptRoot "verify_release_package.ps1"
 $packageText = Get-Content -LiteralPath $packagePath -Raw
 $verifyText = Get-Content -LiteralPath $verifyPath -Raw
+$syntheticEvidencePath = Join-Path $PSScriptRoot 'generate_synthetic_hardware_evidence.ps1'
+$syntheticEvidenceText = Get-Content -LiteralPath $syntheticEvidencePath -Raw
+$forbiddenSyntheticRolloutArtifacts = @(
+  'export_rollout_status.ps1', 'ROLLOUT_STATUS.md', 'ROLLOUT_STATUS.json'
+)
+foreach ($forbidden in $forbiddenSyntheticRolloutArtifacts) {
+  if ($syntheticEvidenceText.Contains($forbidden)) {
+    throw "Synthetic diagnostic evidence must not claim or invoke operational rollout output: $forbidden"
+  }
+}
+foreach ($marker in @(
+  'rollout-status generation requires the exact trusted source checkout',
+  'six exact-host toolchain authorities',
+  'archive does not confer release authority',
+  'current CI/account state is unavailable from this synthetic packet'
+)) {
+  if (-not $syntheticEvidenceText.Contains($marker) -or
+      -not $verifyText.Contains('"' + $marker + '"')) {
+    throw "Synthetic rollout authority boundary is not pinned by generator and verifier: $marker"
+  }
+}
+$syntheticVerifierStart = $verifyText.IndexOf(
+  '$syntheticEvidenceGeneratorText = Get-Content', [StringComparison]::Ordinal)
+if ($syntheticVerifierStart -lt 0) {
+  throw 'Package verifier synthetic contract boundary is missing.'
+}
+$syntheticMarkerListStart = $verifyText.IndexOf(
+  'foreach ($pattern in @(', $syntheticVerifierStart, [StringComparison]::Ordinal)
+if ($syntheticMarkerListStart -lt 0) {
+  throw 'Package verifier synthetic marker list is missing.'
+}
+$syntheticMarkerListEnd = $verifyText.IndexOf(
+  ')) {', $syntheticMarkerListStart, [StringComparison]::Ordinal)
+if ($syntheticMarkerListEnd -le $syntheticMarkerListStart) {
+  throw 'Package verifier synthetic marker-list boundary is ambiguous.'
+}
+$syntheticMarkerListText = $verifyText.Substring(
+  $syntheticMarkerListStart, $syntheticMarkerListEnd - $syntheticMarkerListStart)
+foreach ($forbidden in $forbiddenSyntheticRolloutArtifacts) {
+  if ($syntheticMarkerListText.Contains('"' + $forbidden + '"')) {
+    throw "Package verifier retains a stale synthetic rollout marker: $forbidden"
+  }
+}
 if ($verifyText.Contains('Release package verified:') -or
     -not $verifyText.Contains(
       'Package integrity verified in non-authorizing mode; release eligibility not established:')) {
