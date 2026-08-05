@@ -332,6 +332,26 @@ combined Windows extended-length child. The SEC-002 hold remains in force until 
 passes the broad contracts, exact-head CI, and a fresh governed package plus independent
 verification.
 
+Qualification head `72ce564aa8ccb28216a6ae70f52ad186fd04cf33` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30982583318`. Governed packaging for
+`sec-002-72ce564a` completed both equal-length firmware cycles, exact size/SHA-256 comparison of
+all 15 artifact pairs, package assembly, provisional ZIP creation, and launch of the independent
+release-eligible verifier. The verifier passed the corrected extended-length package inventory and
+then failed closed on the deterministic package README check. The trusted qualification worktree
+README had 386 CRLF plus 30 LF endings, while the fresh commit-bound producer worktree materialized
+all 416 endings as CRLF under the same canonical Git blob. After line-ending normalization, all
+text and all nine link rewrites matched exactly. The provisional ZIP and partial output under
+`output/release/sec-002-72ce564a` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction makes the already-trusted source-binding helper produce one deterministic all-CRLF
+package README from LF, CRLF, mixed, or bare-CR source materialization before applying the exact
+`docs/media` link rewrite. Both producer and verifier use that helper, while the verifier compares
+the expected UTF-8/no-BOM bytes to the packaged bytes without normalizing the package. Contract
+fixtures reject alternate EOLs, BOM, UTF-16, and semantic mutation. The SEC-002 hold remains in
+force until this correction passes the broad contracts, exact-head CI, and a fresh governed package
+plus independent verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

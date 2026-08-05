@@ -1928,7 +1928,7 @@ Copy-Item -LiteralPath "LICENSE" -Destination $outDir
 Copy-Item -LiteralPath "docs/README.md" -Destination $docsDir
 $packageReadmePath = Join-Path $outDir "README.md"
 $packageReadmeText = [System.IO.File]::ReadAllText($packageReadmePath)
-$packageReadmeText = $packageReadmeText.Replace("](docs/media/", "](media/")
+$packageReadmeText = ConvertTo-StackchanPackageReadmeText -Text $packageReadmeText
 [System.IO.File]::WriteAllText(
   $packageReadmePath,
   $packageReadmeText,

@@ -1,3 +1,11 @@
+function ConvertTo-StackchanPackageReadmeText {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+  $canonicalLf = $Text.Replace("`r`n", "`n").Replace("`r", "`n")
+  $rewritten = $canonicalLf.Replace('](docs/media/', '](media/')
+  return $rewritten.Replace("`n", "`r`n")
+}
+
 function Copy-StackchanCommitBoundPackageFile {
   param(
     [Parameter(Mandatory = $true)][string]$PackageSourceRoot,

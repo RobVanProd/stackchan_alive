@@ -6,6 +6,59 @@ $verifyPath = Join-Path $PSScriptRoot "verify_release_package.ps1"
 . (Join-Path $PSScriptRoot "release_source_binding.ps1")
 $packageText = Get-Content -LiteralPath $packagePath -Raw
 $verifyText = Get-Content -LiteralPath $verifyPath -Raw
+$readmeLfFixture = "# Stackchan café`n`n![Preview](docs/media/preview.png)`n"
+$readmeExpectedFixture = "# Stackchan café`r`n`r`n![Preview](media/preview.png)`r`n"
+$readmeSourceFixtures = @(
+  $readmeLfFixture,
+  $readmeLfFixture.Replace("`n", "`r`n"),
+  "# Stackchan café`r`n`n![Preview](docs/media/preview.png)`n",
+  "# Stackchan café`r`r![Preview](docs/media/preview.png)`r"
+)
+foreach ($readmeSourceFixture in $readmeSourceFixtures) {
+  $readmeResult = ConvertTo-StackchanPackageReadmeText -Text $readmeSourceFixture
+  if ($readmeResult -cne $readmeExpectedFixture) {
+    throw 'Package README transform does not canonicalize equivalent source EOL materializations.'
+  }
+  if ([regex]::IsMatch($readmeResult, '(?<!\r)\n|\r(?!\n)')) {
+    throw 'Package README transform emitted a non-CRLF line ending.'
+  }
+}
+$readmeUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
+$readmeExpectedBytes = $readmeUtf8.GetBytes($readmeExpectedFixture)
+$readmeRejectedByteForms = @(
+  $readmeUtf8.GetBytes($readmeExpectedFixture.Replace("`r`n", "`n")),
+  [byte[]](@(0xEF, 0xBB, 0xBF) + @($readmeExpectedBytes)),
+  [System.Text.Encoding]::Unicode.GetBytes($readmeExpectedFixture),
+  $readmeUtf8.GetBytes($readmeExpectedFixture.Replace('Preview', 'Changed'))
+)
+foreach ($readmeRejectedBytes in $readmeRejectedByteForms) {
+  if ([System.Linq.Enumerable]::SequenceEqual(
+      [byte[]]$readmeExpectedBytes, [byte[]]$readmeRejectedBytes)) {
+    throw 'Package README exact-byte fixture accepted alternate EOL, encoding, BOM, or semantics.'
+  }
+}
+foreach ($requiredPackageReadmeBinding in @(
+  '$packageReadmeText = ConvertTo-StackchanPackageReadmeText -Text $packageReadmeText',
+  'New-Object System.Text.UTF8Encoding($false)'
+)) {
+  if (-not $packageText.Contains($requiredPackageReadmeBinding)) {
+    throw "Package README producer binding is missing: $requiredPackageReadmeBinding"
+  }
+}
+foreach ($requiredVerifierReadmeBinding in @(
+  '$expectedPackageReadmeText = ConvertTo-StackchanPackageReadmeText -Text $trustedReadmeText',
+  '$packageReadmeUtf8 = New-Object System.Text.UTF8Encoding($false, $true)',
+  '$expectedPackageReadmeBytes = $packageReadmeUtf8.GetBytes($expectedPackageReadmeText)',
+  '$actualPackageReadmeBytes = [System.IO.File]::ReadAllBytes((Join-PackagePath ''README.md''))',
+  '[byte[]]$actualPackageReadmeBytes, [byte[]]$expectedPackageReadmeBytes'
+)) {
+  if (-not $verifyText.Contains($requiredVerifierReadmeBinding)) {
+    throw "Package README verifier binding is missing: $requiredVerifierReadmeBinding"
+  }
+}
+if ($verifyText.Contains("[System.IO.File]::ReadAllText((Join-PackagePath 'README.md'))")) {
+  throw 'Operational verifier normalizes package README text instead of comparing exact bytes.'
+}
 $tokens = $null
 $parseErrors = $null
 $packageAst = [System.Management.Automation.Language.Parser]::ParseFile(

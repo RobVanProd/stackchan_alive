@@ -966,9 +966,12 @@ function Assert-OperationalPackageGitBindings {
 
   Assert-OperationalSourceCheckoutBindings -CommitMaps $commitMaps -SourcePaths @('README.md')
   $trustedReadmeText = [System.IO.File]::ReadAllText((Join-Path $resolvedVerifierRoot 'README.md'))
-  $expectedPackageReadmeText = $trustedReadmeText.Replace('](docs/media/', '](media/')
-  $actualPackageReadmeText = [System.IO.File]::ReadAllText((Join-PackagePath 'README.md'))
-  if ($actualPackageReadmeText -cne $expectedPackageReadmeText) {
+  $expectedPackageReadmeText = ConvertTo-StackchanPackageReadmeText -Text $trustedReadmeText
+  $packageReadmeUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
+  $expectedPackageReadmeBytes = $packageReadmeUtf8.GetBytes($expectedPackageReadmeText)
+  $actualPackageReadmeBytes = [System.IO.File]::ReadAllBytes((Join-PackagePath 'README.md'))
+  if (-not [System.Linq.Enumerable]::SequenceEqual(
+      [byte[]]$actualPackageReadmeBytes, [byte[]]$expectedPackageReadmeBytes)) {
     throw 'Operational package README does not match the trusted deterministic link rewrite policy.'
   }
 
