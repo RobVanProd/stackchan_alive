@@ -2261,6 +2261,9 @@ class LanBridgeSession:
                 seq = max(0, int(message.get("seq", 0)))
             except (TypeError, ValueError):
                 return [error_frame("playback_complete_seq_invalid")]
+            interrupted = message.get("interrupted", False)
+            if not isinstance(interrupted, bool):
+                return [error_frame("playback_complete_interrupted_invalid")]
             frame: dict[str, object] = {"type": "heartbeat", "playback_complete_seq": seq}
             if self.conversation is not None:
                 if seq == 0 or seq != self.playback_response_seq:
@@ -2273,55 +2276,67 @@ class LanBridgeSession:
                     return [error_frame("playback_complete_seq_mismatch", str(seq))]
                 if seq == self.conversation_playback_complete_seq:
                     frame["playback_complete_duplicate"] = True
+                    if interrupted:
+                        frame["playback_interrupted"] = True
                     frame.update(self._conversation_payload())
                     return [frame]
                 if (
                     seq == self.conversation_response_seq
                     and self.conversation.phase == ConversationPhase.SPEAKING
                 ):
-                    transition = self.conversation.playback_completed(now_ms())
-                    committed_plan, research_succeeded = (
-                        self.conversation.take_committed_task()
-                    )
-                    committed_state = (
-                        committed_plan.next_state
-                        if committed_plan is not None
-                        else None
-                    )
-                    research_attempted = bool(
-                        committed_plan is not None
-                        and committed_plan.request is not None
-                    )
-                    if (
-                        research_attempted
-                        and committed_state is not None
-                        and committed_state.domain == "weather"
-                    ):
-                        self._session_research_turns += 1
-                        if "weather" not in self._session_topics:
-                            self._session_topics.append("weather")
-                    elif research_attempted and committed_state is not None:
-                        self._session_research_turns += 1
-                        if "web research" not in self._session_topics:
-                            self._session_topics.append("web research")
-                    if "playback_complete" in transition.actions:
-                        frame = {
-                            "type": "conversation_reply_window",
-                            "seq": seq,
-                            "open_after_ms": self.config.conversation_acoustic_tail_ms,
-                            "window_ms": self.conversation.current_reply_window_ms(),
-                        }
-                    else:
+                    if interrupted:
+                        transition = self.conversation.cancel(
+                            now_ms(), "playback_interrupted"
+                        )
                         frame["playback_complete_terminal"] = True
+                        frame["playback_interrupted"] = True
+                    else:
+                        transition = self.conversation.playback_completed(now_ms())
+                        committed_plan, research_succeeded = (
+                            self.conversation.take_committed_task()
+                        )
+                        committed_state = (
+                            committed_plan.next_state
+                            if committed_plan is not None
+                            else None
+                        )
+                        research_attempted = bool(
+                            committed_plan is not None
+                            and committed_plan.request is not None
+                        )
+                        if (
+                            research_attempted
+                            and committed_state is not None
+                            and committed_state.domain == "weather"
+                        ):
+                            self._session_research_turns += 1
+                            if "weather" not in self._session_topics:
+                                self._session_topics.append("weather")
+                        elif research_attempted and committed_state is not None:
+                            self._session_research_turns += 1
+                            if "web research" not in self._session_topics:
+                                self._session_topics.append("web research")
+                        if "playback_complete" in transition.actions:
+                            frame = {
+                                "type": "conversation_reply_window",
+                                "seq": seq,
+                                "open_after_ms": self.config.conversation_acoustic_tail_ms,
+                                "window_ms": self.conversation.current_reply_window_ms(),
+                            }
+                        else:
+                            frame["playback_complete_terminal"] = True
                     frame.update(self._conversation_payload(transition))
                 else:
                     frame["playback_complete_terminal"] = True
+                    if interrupted:
+                        frame["playback_interrupted"] = True
                     frame.update(self._conversation_payload())
                 self.conversation_playback_complete_seq = seq
                 if self.dashboard_runtime is not None:
                     self.dashboard_runtime.note_pipeline_result(
                         "playback",
-                        ok=True,
+                        ok=not interrupted,
+                        error_code="playback_interrupted" if interrupted else "",
                     )
                     self.dashboard_runtime.note_pipeline_stage(
                         "reply_window"
@@ -4035,6 +4050,15 @@ def handle_connection(
                     discard_pending_audio()
                     if deferred_response_end is not None:
                         close_interrupted_response("barge_in")
+                if (
+                    text_message_type == "playback_complete"
+                    and isinstance(parsed_text, dict)
+                    and parsed_text.get("interrupted") is True
+                ):
+                    session.cancel_active_turn("playback_interrupted")
+                    discard_pending_audio()
+                    if deferred_response_end is None:
+                        close_interrupted_response("playback_interrupted")
 
                 if text_message_type == "utterance_end":
                     if turn_thread is not None and turn_thread.is_alive():

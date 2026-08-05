@@ -3416,6 +3416,71 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual([{"type": "heartbeat", "playback_complete_seq": 44}], frames)
         self.assertFalse(session.audio.active)
 
+    def test_interrupted_playback_cancels_staged_turn_without_opening_capture(self):
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                conversation_v2_enabled=True,
+                tts_command="fixture-tts",
+            )
+        )
+        conversation = session.conversation
+        self.assertIsNotNone(conversation)
+        assert conversation is not None
+        conversation.wake(10)
+        conversation.utterance_started(20)
+        conversation.utterance_committed(30, "Please keep talking")
+        conversation.response_started(40)
+        conversation.stage_turn("Please keep talking", "This reply was interrupted")
+        session.playback_response_seq = 45
+        session.conversation_response_seq = 45
+
+        invalid = session.handle_text(
+            json.dumps(
+                {
+                    "type": "playback_complete",
+                    "seq": 45,
+                    "interrupted": "true",
+                }
+            )
+        )
+        interrupted = session.handle_text(
+            json.dumps(
+                {
+                    "type": "playback_complete",
+                    "seq": 45,
+                    "at_ms": 1234,
+                    "interrupted": True,
+                }
+            )
+        )
+        duplicate = session.handle_text(
+            json.dumps(
+                {
+                    "type": "playback_complete",
+                    "seq": 45,
+                    "at_ms": 1235,
+                    "interrupted": True,
+                }
+            )
+        )
+
+        self.assertEqual("error", invalid[0]["type"])
+        self.assertEqual("playback_complete_interrupted_invalid", invalid[0]["code"])
+        self.assertEqual("heartbeat", interrupted[0]["type"])
+        self.assertEqual(45, interrupted[0]["playback_complete_seq"])
+        self.assertTrue(interrupted[0]["playback_complete_terminal"])
+        self.assertTrue(interrupted[0]["playback_interrupted"])
+        self.assertEqual("cooldown", interrupted[0]["conversation_state"])
+        self.assertEqual("playback_interrupted", interrupted[0]["conversation_reason"])
+        self.assertFalse(interrupted[0]["conversation_capture_open"])
+        self.assertNotIn("open_after_ms", interrupted[0])
+        self.assertEqual((), conversation.context_lines())
+        self.assertEqual((None, False), conversation.take_committed_task())
+        self.assertEqual("heartbeat", duplicate[0]["type"])
+        self.assertTrue(duplicate[0]["playback_complete_duplicate"])
+        self.assertTrue(duplicate[0]["playback_interrupted"])
+        self.assertEqual(ConversationPhase.COOLDOWN, conversation.phase)
+
     def test_conversation_v2_requires_confirmable_audio_downlink(self):
         with self.assertRaisesRegex(ValueError, "requires configured TTS"):
             LanBridgeSession(LanBridgeConfig(conversation_v2_enabled=True))

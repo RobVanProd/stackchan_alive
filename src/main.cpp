@@ -2027,14 +2027,18 @@ const char* bridgeAudioSafetyStopReasonName(BridgeAudioSafetyStopReason reason) 
 
 bool bridgeAudioRuntimeHeld() {
   const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
-  return downlink.active || downlink.playbackActive || gSpeakerSink.speakerPowerActive() != 0 ||
-         gSpeakerSink.speakerRunning() != 0;
+  return downlink.active || downlink.playbackActive || downlink.playbackCompletionPending ||
+         gSpeakerSink.speakerPowerActive() != 0 || gSpeakerSink.speakerRunning() != 0;
 }
 
 bool stopBridgeAudioRuntime(uint32_t nowMs, BridgeAudioSafetyStopReason reason) {
   const bool held = bridgeAudioRuntimeHeld();
+  const bool signalPlaybackTerminal =
+      reason != BridgeAudioSafetyStopReason::TransportDisconnected &&
+      gBridgeNetworkSession.telemetry().state == BridgeNetworkSessionState::Connected;
   gConversationReplyWindow.cancel(nowMs);
-  gBridgeAudioDownlink.abort(nowMs, 100u + static_cast<uint32_t>(reason));
+  gBridgeAudioDownlink.abort(
+      nowMs, 100u + static_cast<uint32_t>(reason), signalPlaybackTerminal);
   gAudioOut.cancel();
   gSpeakerSink.stop(nowMs);
   gBridgeSpeechCuePending = false;
@@ -2073,15 +2077,23 @@ void serviceBridgeAudioTransportSafety(uint32_t nowMs) {
 
 void queueBridgePlaybackCompletion(uint32_t nowMs) {
   uint32_t seq = 0;
-  if (!gBridgeAudioDownlink.peekPlaybackCompletion(&seq)) {
+  bool interrupted = false;
+  if (!gBridgeAudioDownlink.peekPlaybackCompletion(&seq, &interrupted)) {
     return;
   }
   char frame[112] = {};
-  const int written = snprintf(frame,
-                               sizeof(frame),
-                               "{\"type\":\"playback_complete\",\"seq\":%lu,\"at_ms\":%lu}",
-                               static_cast<unsigned long>(seq),
-                               static_cast<unsigned long>(nowMs));
+  const int written = interrupted
+                          ? snprintf(frame,
+                                     sizeof(frame),
+                                     "{\"type\":\"playback_complete\",\"seq\":%lu,"
+                                     "\"at_ms\":%lu,\"interrupted\":true}",
+                                     static_cast<unsigned long>(seq),
+                                     static_cast<unsigned long>(nowMs))
+                          : snprintf(frame,
+                                     sizeof(frame),
+                                     "{\"type\":\"playback_complete\",\"seq\":%lu,\"at_ms\":%lu}",
+                                     static_cast<unsigned long>(seq),
+                                     static_cast<unsigned long>(nowMs));
   if (written > 0 && static_cast<size_t>(written) < sizeof(frame) &&
       gBridgeNetworkSession.queueTextFrame(frame)) {
     gBridgeAudioDownlink.consumePlaybackCompletion();
@@ -8433,8 +8445,12 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          gBridgeAudioDownlink.telemetry().playbackAwaitingDrain ? "true" : "false");
   append(",\"bridge_downlink_playback_completion_pending\":%s",
          gBridgeAudioDownlink.telemetry().playbackCompletionPending ? "true" : "false");
+  append(",\"bridge_downlink_playback_completion_interrupted\":%s",
+         gBridgeAudioDownlink.telemetry().playbackCompletionInterrupted ? "true" : "false");
   append(",\"bridge_downlink_playback_completions\":%lu",
          static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackCompletions));
+  append(",\"bridge_downlink_playback_interruptions\":%lu",
+         static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackInterruptions));
   append(",\"bridge_downlink_playback_completion_signals\":%lu",
          static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackCompletionSignals));
   append(",\"bridge_downlink_playback_completion_seq\":%lu",
