@@ -696,6 +696,50 @@ $earlyDiagnosticGates = @($verifyAst.EndBlock.Statements | Where-Object {
 if ($canonicalBlobHashFunctions.Count -ne 1 -or $earlyDiagnosticGates.Count -ne 1) {
   throw 'Operational verifier checkout-gate harness inputs are ambiguous'
 }
+$manifestAssignments = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+    $node.Left.VariablePath.UserPath -ceq 'manifest'
+}, $true))
+$eligibilityClassificationAssignments = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+    $node.Left.VariablePath.UserPath -ceq 'eligibilityDiagnosticPackage'
+}, $true))
+$readinessAuthorityClassificationBranches = @($verifyAst.EndBlock.Statements | Where-Object {
+  $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+    $_.Clauses.Count -eq 1 -and
+    $_.Clauses[0].Item1.Extent.Text -ceq '$eligibilityDiagnosticPackage -eq $false' -and
+    $_.Extent.Text.Contains("`$packageAuthorityDocPaths += 'READINESS_REPORT.md'")
+})
+if ($manifestAssignments.Count -ne 1 -or
+    $eligibilityClassificationAssignments.Count -ne 1 -or
+    $readinessAuthorityClassificationBranches.Count -ne 1 -or
+    $eligibilityClassificationAssignments[0].Extent.EndOffset -ge
+      $readinessAuthorityClassificationBranches[0].Extent.StartOffset) {
+  throw 'Operational verifier manifest classification and readiness authority ordering is ambiguous.'
+}
+$earlyManifestVariableUses = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.VariableExpressionAst] -and
+    $node.VariablePath.UserPath -ceq 'manifest' -and
+    $node.Extent.StartOffset -lt $manifestAssignments[0].Extent.StartOffset
+}, $true))
+$lateClassificationGuardOffset = $verifyText.IndexOf(
+  'Release manifest diagnosticPackage changed or became invalid during verification.',
+  $manifestAssignments[0].Extent.EndOffset,
+  [System.StringComparison]::Ordinal)
+$firstLaterManifestBranchOffset = $verifyText.IndexOf(
+  '[bool]$manifest.diagnosticPackage',
+  $manifestAssignments[0].Extent.EndOffset,
+  [System.StringComparison]::Ordinal)
+if ($earlyManifestVariableUses.Count -ne 0 -or
+    $lateClassificationGuardOffset -le $manifestAssignments[0].Extent.EndOffset -or
+    $firstLaterManifestBranchOffset -le $lateClassificationGuardOffset) {
+  throw 'Operational verifier uses full manifest classification before assignment or exact late validation.'
+}
 $bootstrapGitText = $bootstrapGitFunctions[0].Extent.Text
 foreach ($requiredBootstrap in @(
   'core.hooksPath=',
@@ -1567,6 +1611,113 @@ if (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
   if ($earlyDiagnosticExit -eq 0 -or
       ($earlyDiagnosticOutput | Out-String) -notmatch 'Operational release verification refuses diagnostic packages') {
     throw 'Operational verifier did not reject a diagnostic manifest at the early eligibility gate'
+  }
+
+  $eligibilityShapeRoot = Join-Path $epochTrustRoot 'ignored-verifier/eligibility-shapes'
+  New-Item -ItemType Directory -Path $eligibilityShapeRoot -Force | Out-Null
+  $invalidEligibilityShapes = @(
+    [pscustomobject]@{
+      name = 'missing'; writeManifest = $false; propertyName = $null; value = $null
+      expected = 'Release package is missing required release_manifest.json.'
+    },
+    [pscustomobject]@{
+      name = 'null'; writeManifest = $true; propertyName = 'diagnosticPackage'; value = $null
+      expected = 'Release manifest diagnosticPackage must be one JSON boolean.'
+    },
+    [pscustomobject]@{
+      name = 'string-false'; writeManifest = $true; propertyName = 'diagnosticPackage'; value = 'false'
+      expected = 'Release manifest diagnosticPackage must be one JSON boolean.'
+    },
+    [pscustomobject]@{
+      name = 'string-true'; writeManifest = $true; propertyName = 'diagnosticPackage'; value = 'true'
+      expected = 'Release manifest diagnosticPackage must be one JSON boolean.'
+    },
+    [pscustomobject]@{
+      name = 'numeric-zero'; writeManifest = $true; propertyName = 'diagnosticPackage'; value = 0
+      expected = 'Release manifest diagnosticPackage must be one JSON boolean.'
+    },
+    [pscustomobject]@{
+      name = 'numeric-one'; writeManifest = $true; propertyName = 'diagnosticPackage'; value = 1
+      expected = 'Release manifest diagnosticPackage must be one JSON boolean.'
+    },
+    [pscustomobject]@{
+      name = 'wrong-case'; writeManifest = $true; propertyName = 'DiagnosticPackage'; value = $false
+      expected = 'Release manifest diagnosticPackage must be one JSON boolean.'
+    }
+  )
+  foreach ($shape in $invalidEligibilityShapes) {
+    $shapeRoot = Join-Path $eligibilityShapeRoot ([string]$shape.name)
+    New-Item -ItemType Directory -Path $shapeRoot | Out-Null
+    if ([bool]$shape.writeManifest) {
+      $shapeManifest = [ordered]@{ version = 'eligibility-shape-contract' }
+      $shapeManifest[[string]$shape.propertyName] = $shape.value
+      $shapeManifest | ConvertTo-Json | Set-Content `
+        -LiteralPath (Join-Path $shapeRoot 'release_manifest.json') -Encoding UTF8
+    }
+    $previousErrorPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $shapeOutput = @(& powershell.exe @gateBaseArgs `
+        -PackageRoot $shapeRoot `
+        -ExpectedSourceEpoch $epochValue `
+        -AllowDirtyPackage `
+        2>&1)
+      $shapeExit = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorPreference
+    }
+    if ($shapeExit -eq 0 -or
+        ($shapeOutput | Out-String) -notmatch [regex]::Escape([string]$shape.expected)) {
+      throw "Operational verifier accepted invalid diagnosticPackage shape '$($shape.name)': $($shapeOutput | Out-String)"
+    }
+  }
+
+  foreach ($rawShape in @(
+    [pscustomobject]@{ name = 'whole-document-null'; text = 'null' },
+    [pscustomobject]@{ name = 'malformed-json'; text = '{"diagnosticPackage":' }
+  )) {
+    $shapeRoot = Join-Path $eligibilityShapeRoot ([string]$rawShape.name)
+    New-Item -ItemType Directory -Path $shapeRoot | Out-Null
+    [IO.File]::WriteAllText(
+      (Join-Path $shapeRoot 'release_manifest.json'), [string]$rawShape.text,
+      (New-Object Text.UTF8Encoding($false)))
+    $previousErrorPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $shapeOutput = @(& powershell.exe @gateBaseArgs `
+        -PackageRoot $shapeRoot `
+        -ExpectedSourceEpoch $epochValue `
+        -AllowDirtyPackage `
+        2>&1)
+      $shapeExit = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorPreference
+    }
+    if ($shapeExit -eq 0) {
+      throw "Operational verifier accepted invalid release manifest '$($rawShape.name)'."
+    }
+  }
+
+  $operationalEligibilityRoot = Join-Path $eligibilityShapeRoot 'boolean-false'
+  New-Item -ItemType Directory -Path $operationalEligibilityRoot | Out-Null
+  [ordered]@{
+    version = 'eligibility-shape-contract'
+    diagnosticPackage = $false
+  } | ConvertTo-Json | Set-Content `
+    -LiteralPath (Join-Path $operationalEligibilityRoot 'release_manifest.json') -Encoding UTF8
+  $previousErrorPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $operationalEligibilityOutput = @(& powershell.exe @gateBaseArgs `
+      -PackageRoot $operationalEligibilityRoot `
+      -ExpectedSourceEpoch $epochValue `
+      2>&1)
+    $operationalEligibilityExit = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorPreference
+  }
+  if ($operationalEligibilityExit -ne 0) {
+    throw "Operational verifier rejected a JSON boolean false diagnosticPackage classification: $($operationalEligibilityOutput | Out-String)"
   }
 
   foreach ($dirtyHelperName in @(

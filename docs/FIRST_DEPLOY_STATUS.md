@@ -394,6 +394,27 @@ changes to exact-clean checkout authority, the six-value toolchain, the trusted 
 the archive boundary. The SEC-002 hold remains in force until this correction passes the broad
 contracts, exact-head CI, and a fresh governed package plus independent verification.
 
+Qualification head `619ff544039020041f09f9aeee3aa26d4382ae6f` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30998405766`. Governed packaging for
+`sec-002-619ff544` completed two clean cycles and exact size/SHA-256 comparison of all 15 artifact
+pairs. The public `stackchan_release_full` firmware from both cycles is 2,803,504 bytes with
+SHA-256 `FFFA8F159DBEE5C4700075D88A6F24607100A5A1BE85BF15EAD845DBC049552F`.
+The provisional 189,653,086-byte ZIP has SHA-256
+`C12917BF98DA88853C1B2CCE263AC5B1028DF1173A98C67E5A90BB648C03411F`. Its independent verifier
+failed closed at `verify_release_package.ps1:2436` during the archive-authority content scan,
+before the full manifest load and validation at line 4380, because that scan referenced `$manifest`
+before assignment. The provisional ZIP and output under `output/release/sec-002-619ff544` are not
+candidates. No flash, OTA request, COM access, bridge session, robot-port access, or actuator
+command occurred.
+
+The correction derives one exactly typed JSON-boolean diagnostic classification from the existing
+early eligibility manifest gate, rejects a missing, null, or non-boolean classification, uses that
+classification for the production-only readiness authority scan, and requires the later full
+manifest parse to retain the same classification. A source-binding contract also rejects any
+`$manifest` use before its assignment. The SEC-002 hold remains in force until this correction
+passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

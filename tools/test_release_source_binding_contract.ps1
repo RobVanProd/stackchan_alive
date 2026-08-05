@@ -47,11 +47,41 @@ foreach ($requiredArrivalAuthorityVerifierBinding in @(
   '$arrivalAuthorityGuidance = Get-StackchanArrivalAuthorityGuidance',
   '$readinessSemanticMarkdown = ConvertTo-StackchanMarkdownSemanticText -Text $readinessMarkdown',
   '[string]$readinessJson.nextOperatorGuidance -cne $arrivalAuthorityGuidance',
+  '$eligibilityDiagnosticPackage = [bool]$diagnosticPackageProperties[0].Value',
+  'if ($eligibilityDiagnosticPackage -eq $false)',
   '$packageAuthorityDocPaths += ''READINESS_REPORT.md'''
 )) {
   if (-not $verifyText.Contains($requiredArrivalAuthorityVerifierBinding)) {
     throw "Arrival-authority verifier binding is missing: $requiredArrivalAuthorityVerifierBinding"
   }
+}
+$eligibilityClassificationOffset = $verifyText.IndexOf(
+  '$eligibilityDiagnosticPackage = [bool]$diagnosticPackageProperties[0].Value',
+  [System.StringComparison]::Ordinal)
+$readinessAuthorityScanOffset = $verifyText.IndexOf(
+  'if ($eligibilityDiagnosticPackage -eq $false)',
+  [System.StringComparison]::Ordinal)
+$manifestAssignmentOffset = $verifyText.IndexOf(
+  '$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json',
+  [System.StringComparison]::Ordinal)
+$verifyTokens = $null
+$verifyParseErrors = $null
+$verifyAst = [Management.Automation.Language.Parser]::ParseFile(
+  $verifyPath, [ref]$verifyTokens, [ref]$verifyParseErrors)
+if ($verifyParseErrors.Count -ne 0) {
+  throw "Release verifier does not parse: $($verifyParseErrors | Out-String)"
+}
+$earlyManifestUses = @($verifyAst.FindAll({
+  param($node)
+  $node -is [Management.Automation.Language.VariableExpressionAst] -and
+    $node.VariablePath.UserPath -ceq 'manifest' -and
+    $node.Extent.StartOffset -lt $manifestAssignmentOffset
+}, $true))
+if ($eligibilityClassificationOffset -lt 0 -or
+    $readinessAuthorityScanOffset -le $eligibilityClassificationOffset -or
+    $manifestAssignmentOffset -le $readinessAuthorityScanOffset -or
+    $earlyManifestUses.Count -ne 0) {
+  throw 'Readiness authority scanning uses release-manifest state before its trusted early classification.'
 }
 if (@([regex]::Matches(
     $packageText, [regex]::Escape('$arrivalAuthorityGuidance'))).Count -ne 3 -or

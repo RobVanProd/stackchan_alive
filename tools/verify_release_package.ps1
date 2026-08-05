@@ -537,7 +537,19 @@ function Get-PackageItemFullName {
 $eligibilityManifestPath = Join-Path $packageRootPath "release_manifest.json"
 if (Test-Path -LiteralPath $eligibilityManifestPath -PathType Leaf) {
   $eligibilityManifest = Get-Content -LiteralPath $eligibilityManifestPath -Raw | ConvertFrom-Json
-  if ([bool]$eligibilityManifest.diagnosticPackage) {
+  $diagnosticPackageProperties = if ($null -eq $eligibilityManifest) {
+    @()
+  } else {
+    @($eligibilityManifest.PSObject.Properties | Where-Object {
+      $_.Name -ceq 'diagnosticPackage'
+    })
+  }
+  if ($diagnosticPackageProperties.Count -ne 1 -or
+      $diagnosticPackageProperties[0].Value -isnot [bool]) {
+    throw "Release manifest diagnosticPackage must be one JSON boolean."
+  }
+  $eligibilityDiagnosticPackage = [bool]$diagnosticPackageProperties[0].Value
+  if ($eligibilityDiagnosticPackage) {
     if ($RequireReleaseEligible) {
       throw "Operational release verification refuses diagnostic packages."
     }
@@ -545,6 +557,8 @@ if (Test-Path -LiteralPath $eligibilityManifestPath -PathType Leaf) {
       throw "Diagnostic archive inspection requires -AllowDirtyPackage"
     }
   }
+} else {
+  throw "Release package is missing required release_manifest.json."
 }
 $generatedPythonArtifacts = @(
   Get-ChildItem -LiteralPath $packageEnumerationRoot -Recurse -Force | Where-Object {
@@ -2433,7 +2447,7 @@ $packageAuthorityDocPaths = @(
   'README.md', 'QUICKSTART.md', 'ARRIVAL_DAY_RUNBOOK.md',
   'docs/RELEASE_PROCESS.md', 'docs/DEVICE_BRINGUP.md', 'docs/ROLLOUT_CHECKLIST.md',
   'docs/BRIDGE_AI_QUALIFICATION.md', 'docs/COMPANION_APP_GAP_ANALYSIS.md')
-if (-not [bool]$manifest.diagnosticPackage) {
+if ($eligibilityDiagnosticPackage -eq $false) {
   $packageAuthorityDocPaths += 'READINESS_REPORT.md'
 }
 $packageAuthorityToolPattern = '(?im)(?:^|[\\/])(?:package_release|verify_release_package|run_device_preflight|flash_release_firmware|start_hardware_evidence|prepare_device_arrival|start_bridge_ai_supervised_qualification|verify_consumer_promotion|publish_release|audit_published_release|verify_published_release|share_release|export_rollout_status)\.(?:cmd|ps1)'
@@ -4378,6 +4392,18 @@ Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([
 
 $manifestPath = Join-PackagePath "release_manifest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$manifestDiagnosticPackageProperties = if ($null -eq $manifest) {
+  @()
+} else {
+  @($manifest.PSObject.Properties | Where-Object {
+    $_.Name -ceq 'diagnosticPackage'
+  })
+}
+if ($manifestDiagnosticPackageProperties.Count -ne 1 -or
+    $manifestDiagnosticPackageProperties[0].Value -isnot [bool] -or
+    [bool]$manifestDiagnosticPackageProperties[0].Value -ne $eligibilityDiagnosticPackage) {
+  throw "Release manifest diagnosticPackage changed or became invalid during verification."
+}
 if ($manifest.releaseAssetManifest -ne "release_assets.json") {
   throw "Manifest releaseAssetManifest mismatch: $($manifest.releaseAssetManifest)"
 }
