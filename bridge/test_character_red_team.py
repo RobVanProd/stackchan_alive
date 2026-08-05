@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +17,37 @@ from persona_pack import load_and_validate_persona_pack
 
 
 class CharacterRedTeamTests(unittest.TestCase):
+    def test_cli_binds_sibling_modules_with_python_safe_path(self):
+        script = Path(__file__).resolve().with_name("character_red_team.py")
+        environment = os.environ.copy()
+        environment.pop("PYTHONPATH", None)
+        environment["PYTHONSAFEPATH"] = "1"
+        environment["PYTHONNOUSERSITE"] = "1"
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory) / "report"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "--out-dir",
+                    str(output_dir),
+                    "--json",
+                ],
+                cwd=directory,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            report = json.loads(result.stdout)
+            self.assertEqual("stackchan.character-red-team.v1", report["schema"])
+            self.assertEqual(
+                "dry-run-no-runner-configured", report["summary"]["status"]
+            )
+            self.assertTrue((output_dir / "character_red_team.json").is_file())
+
     def test_red_team_suite_has_required_size_and_topics(self):
         names = {case["name"] for case in RED_TEAM_SUITE}
 

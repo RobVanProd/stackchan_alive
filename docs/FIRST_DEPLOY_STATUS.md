@@ -221,13 +221,28 @@ directory, copies it through one held read-only handle to a temporary package fi
 and SHA-256, and only then promotes it to its destination. The independent verifier separately
 binds the packaged bytes and manifest record back to the exact expected commit pointer, then applies
 the existing production RVC hash allowlist. The source-binding, command-trust, verifier-trust, and
-full 22-environment reproducibility contract bundle pass with this correction. The SEC-002 hold
-remains in force until exact-head CI passes and a fresh governed package completes its independent
-rebuild.
+full 22-environment reproducibility contract bundle pass with this correction.
 A focused real-cache probe used the retained pointer-only worktree at
 `E:\sc-firmware-b-22576-e1b117f4`, streamed both local content-addressed objects through the new
 helper, independently rebound the staged files to those pointers, and matched both reviewed hashes;
 ignored evidence is under `output/private/manual-lfs-probe-20260804`.
+
+Qualification head `df8e74694b5beda356ddd6f92837e4b64b70aca2` then passed all 11 jobs on the
+first attempt in exact-head GitHub Firmware run `30960949704`. Governed packaging for
+`sec-002-df8e7469` again completed both equal-length firmware cycles and exact comparison of all 15
+artifacts. The detached release-source phase successfully materialized and verified both production
+RVC payloads from the exact commit pointers. The run then failed closed before manifest, ZIP, or
+independent package verification when the Character Lock red-team CLI could not import its sibling
+`character_harness` module. Release Python intentionally had `PYTHONSAFEPATH=1`; the CLI had relied
+on Python implicitly adding the script directory to `sys.path`, so the isolated package path exposed
+the defect. The partial output under `output/release/sec-002-df8e7469` is not a candidate. No flash,
+OTA request, COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction keeps the global safe-path policy in force and explicitly anchors the red-team CLI's
+sibling imports to the resolved directory containing its own exact tracked file. A subprocess
+regression launches the CLI from an unrelated directory with `PYTHONSAFEPATH=1` and
+`PYTHONNOUSERSITE=1`. The SEC-002 hold remains in force until that correction passes the broad
+bridge/release contracts, exact-head CI, and a fresh governed package plus independent rebuild.
 
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
