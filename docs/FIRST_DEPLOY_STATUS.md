@@ -352,6 +352,26 @@ fixtures reject alternate EOLs, BOM, UTF-16, and semantic mutation. The SEC-002 
 force until this correction passes the broad contracts, exact-head CI, and a fresh governed package
 plus independent verification.
 
+Qualification head `ea392b7020f7b52dd0f09a27890a2d81568b9491` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30987403879`. Governed packaging for
+`sec-002-ea392b70` completed both equal-length firmware cycles and exact size/SHA-256 comparison of
+all 15 artifact pairs, package assembly, provisional ZIP creation, and launch of the independent
+release-eligible verifier. The verifier passed the trusted package inventory, deterministic README,
+voice/RVC material, preview media, and phase A-E face assets. It then failed closed at
+`verify_release_package.ps1:5365` because the empty `directGitDepsMissingRef` JSON array was
+enumerated away by the `ConvertTo-Array` function boundary and strict mode rejected `.Count` on the
+result. The dependency-lock evidence itself contains the required empty collection. The provisional
+ZIP and partial output under `output/release/sec-002-ea392b70` are not candidates. No flash, OTA
+request, COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction returns array objects non-enumerated across the PowerShell function boundary and
+requires all four dependency-audit collection fields to be present and non-null before conversion.
+The verifier trust contract exercises null, empty, singleton, and multiple-value shapes, rejects
+missing or null audit fields, pins all five array consumers, and proves a singleton license index
+reaches the intended small-index rejection. The SEC-002 hold remains in force until this correction
+passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

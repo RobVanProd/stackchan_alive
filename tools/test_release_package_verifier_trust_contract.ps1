@@ -364,6 +364,107 @@ $packageAst = [System.Management.Automation.Language.Parser]::ParseFile(
 if ($verifyParseErrors.Count -ne 0 -or $packageParseErrors.Count -ne 0) {
   throw 'Verifier trust contract could not parse the package/verifier scripts'
 }
+$dependencyArrayFunctionNames = @(
+  'ConvertTo-Array',
+  'Assert-DependencyAuditCollectionFields'
+)
+$dependencyArrayFunctions = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -cin $dependencyArrayFunctionNames
+}, $true))
+foreach ($functionName in $dependencyArrayFunctionNames) {
+  $functionMatches = @($dependencyArrayFunctions | Where-Object { $_.Name -ceq $functionName })
+  if ($functionMatches.Count -ne 1) {
+    throw "Verifier trust contract requires one exact $functionName definition."
+  }
+  Invoke-Expression $functionMatches[0].Extent.Text
+}
+
+$dependencyArrayCases = @(
+  [pscustomobject]@{ Name = 'null'; Value = $null; ExpectedCount = 0 },
+  [pscustomobject]@{ Name = 'empty'; Value = [object[]]@(); ExpectedCount = 0 },
+  [pscustomobject]@{ Name = 'singleton'; Value = [pscustomobject]@{ Id = 1 }; ExpectedCount = 1 },
+  [pscustomobject]@{
+    Name = 'multiple'
+    Value = [object[]]@([pscustomobject]@{ Id = 1 }, [pscustomobject]@{ Id = 2 })
+    ExpectedCount = 2
+  }
+)
+foreach ($arrayCase in $dependencyArrayCases) {
+  $actual = ConvertTo-Array -Value $arrayCase.Value
+  if ($actual.GetType() -ne [object[]] -or $actual.Count -ne $arrayCase.ExpectedCount) {
+    throw "ConvertTo-Array did not preserve Object[] shape for $($arrayCase.Name)."
+  }
+  if ($arrayCase.ExpectedCount -gt 0 -and $actual[0].Id -ne 1) {
+    throw "ConvertTo-Array changed the first value for $($arrayCase.Name)."
+  }
+  if ($arrayCase.ExpectedCount -gt 1 -and $actual[1].Id -ne 2) {
+    throw "ConvertTo-Array changed value order for $($arrayCase.Name)."
+  }
+}
+
+$dependencyAuditCollectionFields = @(
+  'directGitDepsMissingRef',
+  'gitResolvedWithoutSha',
+  'duplicateResolvedPackages',
+  'unpinnedGitRequirements'
+)
+$validDependencyAuditValues = [ordered]@{ policy = 'contract-fixture' }
+foreach ($field in $dependencyAuditCollectionFields) {
+  $validDependencyAuditValues[$field] = [object[]]@()
+}
+$validDependencyAudit = [pscustomobject]$validDependencyAuditValues
+Assert-DependencyAuditCollectionFields -DependencyAudit $validDependencyAudit
+foreach ($field in $dependencyAuditCollectionFields) {
+  $requiredFieldError = "dependency_lock.json dependencyAudit requires a non-null collection field: $field"
+  $missingDependencyAudit = $validDependencyAudit.PSObject.Copy()
+  $missingDependencyAudit.PSObject.Properties.Remove($field)
+  $missingError = $null
+  try {
+    Assert-DependencyAuditCollectionFields -DependencyAudit $missingDependencyAudit
+  } catch {
+    $missingError = $_.Exception.Message
+  }
+  if ($missingError -cne $requiredFieldError) {
+    throw "Dependency-audit collection guard accepted or misclassified a missing field: $field"
+  }
+
+  $nullDependencyAudit = $validDependencyAudit.PSObject.Copy()
+  $nullDependencyAudit.$field = $null
+  $nullError = $null
+  try {
+    Assert-DependencyAuditCollectionFields -DependencyAudit $nullDependencyAudit
+  } catch {
+    $nullError = $_.Exception.Message
+  }
+  if ($nullError -cne $requiredFieldError) {
+    throw "Dependency-audit collection guard accepted or misclassified a null field: $field"
+  }
+}
+
+$singletonLicenseIndex = ConvertTo-Array -Value ([pscustomobject]@{ path = 'one-license.txt' })
+if ($singletonLicenseIndex.GetType() -ne [object[]] -or
+    $singletonLicenseIndex.Count -ne 1 -or
+    -not ($singletonLicenseIndex.Count -lt 10)) {
+  throw 'Singleton third-party license index does not reach the verifier small-index rejection shape.'
+}
+
+foreach ($marker in @(
+  'Assert-DependencyAuditCollectionFields -DependencyAudit $dependencyAudit',
+  '$directGitDepsMissingRef = ConvertTo-Array $dependencyAudit.directGitDepsMissingRef',
+  '$gitResolvedWithoutSha = ConvertTo-Array $dependencyAudit.gitResolvedWithoutSha',
+  '$duplicateResolvedPackages = ConvertTo-Array $dependencyAudit.duplicateResolvedPackages',
+  '$unpinnedGitRequirements = ConvertTo-Array $dependencyAudit.unpinnedGitRequirements',
+  '$thirdPartyLicenseIndex = ConvertTo-Array ('
+)) {
+  if ($verifyText.IndexOf($marker, [StringComparison]::Ordinal) -lt 0 -or
+      $verifyText.IndexOf($marker, [StringComparison]::Ordinal) -ne
+        $verifyText.LastIndexOf($marker, [StringComparison]::Ordinal)) {
+    throw "Verifier dependency-array consumer is missing or ambiguous: $marker"
+  }
+}
+
 $operationalCommitMapInitializations = @($verifyAst.FindAll({
   param($node)
   $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and

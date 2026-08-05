@@ -5283,9 +5283,25 @@ function Assert-LockedPackage {
 function ConvertTo-Array {
   param([object]$Value)
   if ($null -eq $Value) {
-    return @()
+    return ,@()
   }
-  return @($Value)
+  return ,@($Value)
+}
+
+function Assert-DependencyAuditCollectionFields {
+  param([Parameter(Mandatory = $true)][object]$DependencyAudit)
+
+  foreach ($field in @(
+    'directGitDepsMissingRef',
+    'gitResolvedWithoutSha',
+    'duplicateResolvedPackages',
+    'unpinnedGitRequirements'
+  )) {
+    $property = $DependencyAudit.PSObject.Properties[$field]
+    if ($null -eq $property -or $null -eq $property.Value) {
+      throw "dependency_lock.json dependencyAudit requires a non-null collection field: $field"
+    }
+  }
 }
 
 foreach ($envName in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")) {
@@ -5360,6 +5376,8 @@ if ($null -eq $dependencyAudit) {
 if ([string]::IsNullOrWhiteSpace([string]$dependencyAudit.policy)) {
   throw "dependency_lock.json dependencyAudit missing policy"
 }
+
+Assert-DependencyAuditCollectionFields -DependencyAudit $dependencyAudit
 
 $directGitDepsMissingRef = ConvertTo-Array $dependencyAudit.directGitDepsMissingRef
 if ($directGitDepsMissingRef.Count -gt 0) {
