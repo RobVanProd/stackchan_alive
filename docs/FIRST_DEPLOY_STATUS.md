@@ -262,6 +262,24 @@ under `output/private/manual-voice-source-export-probe-20260805`. The SEC-002 ho
 until this correction passes the broad contracts, exact-head CI, and a fresh governed package plus
 independent rebuild.
 
+Qualification head `332708ef157529eb568f50d1deacb2a7b836d5ee` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30968255009`. Governed packaging for
+`sec-002-332708ef` again completed both equal-length firmware cycles, exact comparison of all 15
+artifacts, commit-bound production RVC materialization, Character Lock red-team export, and the
+corrected voice-source status export. It then failed closed before manifest, ZIP, or independent
+package verification when the adjacent `export_rvc_voice_base_status.ps1` repeated the detached
+source-root mistake and read the 133-byte Git LFS pointers instead of the verified package RVC
+payloads. The partial output under `output/release/sec-002-332708ef` is not a candidate. No flash,
+OTA request, COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction gives the RVC base-status exporter the same explicit voice-root boundary, binds its
+governed package invocation to the materialized `media/voice/rvc` directory, and adds paired
+positive and pointer-only negative contracts for both status exporters. The remaining direct
+production RVC verifier invocations in packaging and independent verification were audited and
+already target the materialized package directory. The SEC-002 hold remains in force until this
+correction passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

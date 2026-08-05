@@ -56,8 +56,11 @@ foreach ($required in @(
     throw "Release packaging is missing deterministic command/archive trust: $required"
   }
 }
-if (-not $packageText.Contains('-VoiceRoot (Join-Path $outDir "media/voice/rvc")')) {
-  throw 'Release packaging does not bind voice-source status to the materialized package RVC root.'
+$packageVoiceRootBindings = [regex]::Matches(
+  $packageText,
+  [regex]::Escape('-VoiceRoot (Join-Path $outDir "media/voice/rvc")'))
+if ($packageVoiceRootBindings.Count -ne 2) {
+  throw 'Release packaging does not bind both voice status exporters to the materialized package RVC root.'
 }
 if (-not $verifyText.Contains('[Environment]::SystemDirectory') -or
     -not $verifyText.Contains('& $verifierPowerShellExecutable')) {

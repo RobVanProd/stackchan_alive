@@ -2175,7 +2175,8 @@ if ($LASTEXITCODE -ne 0) {
 & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $releaseToolsRoot "export_rvc_voice_base_status.ps1") `
   -ManifestPath (Join-Path $dataDir "voice_rvc_base.yaml") `
   -MetadataPath (Join-Path $dataDir "voice_rvc_base_metadata.json") `
-  -OutputDir $outDir
+  -OutputDir $outDir `
+  -VoiceRoot (Join-Path $outDir "media/voice/rvc")
 if ($LASTEXITCODE -ne 0) {
   throw "RVC voice base status export failed."
 }

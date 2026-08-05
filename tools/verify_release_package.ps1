@@ -3361,14 +3361,14 @@ foreach ($pattern in @("stackchan.voice-source-readiness.v1", "pending-productio
 }
 
 $voiceSourceReadinessContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_voice_source_readiness_contract.ps1") -Raw
-foreach ($pattern in @("pending production voice source remains pending", "packaged voice-source status paths remain portable", "pointer-only voice root is rejected", "complete production voice source is accepted", "fixed voice-source commit remains valid across later package commits", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")) {
+foreach ($pattern in @("pending production voice source remains pending", "packaged voice-source status paths remain portable", "packaged RVC base status paths remain portable", "pointer-only voice root is rejected", "pointer-only RVC base root is rejected", "complete production voice source is accepted", "fixed voice-source commit remains valid across later package commits", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")) {
   if ($voiceSourceReadinessContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_voice_source_readiness_contract.ps1 missing required voice-source readiness contract coverage: $pattern"
   }
 }
 
 $rvcBaseStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_rvc_voice_base_status.ps1") -Raw
-foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "production-release-verified", "distributionApproved", "consumerApproved", "model-hash", "index-hash", "rvc_voice_base_status.json", "RVC_VOICE_BASE_STATUS.md")) {
+foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "production-release-verified", "distributionApproved", "consumerApproved", "model-hash", "index-hash", "rvc_voice_base_status.json", "RVC_VOICE_BASE_STATUS.md", "VoiceRoot", "verify_tracked_rvc_assets.ps1", "-VoiceRoot")) {
   if ($rvcBaseStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_rvc_voice_base_status.ps1 missing required RVC base status logic: $pattern"
   }
