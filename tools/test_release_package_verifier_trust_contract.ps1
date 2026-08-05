@@ -714,6 +714,35 @@ $readinessAuthorityClassificationBranches = @($verifyAst.EndBlock.Statements | W
     $_.Clauses[0].Item1.Extent.Text -ceq '$eligibilityDiagnosticPackage -eq $false' -and
     $_.Extent.Text.Contains("`$packageAuthorityDocPaths += 'READINESS_REPORT.md'")
 })
+$diagnosticPropertyCollectionAssignments = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+    $node.Left.VariablePath.UserPath -cin @(
+      'diagnosticPackageProperties',
+      'manifestDiagnosticPackageProperties'
+    )
+}, $true))
+foreach ($propertyCollectionName in @(
+  'diagnosticPackageProperties',
+  'manifestDiagnosticPackageProperties'
+)) {
+  $propertyCollectionAssignments = @($diagnosticPropertyCollectionAssignments | Where-Object {
+    $_.Left.VariablePath.UserPath -ceq $propertyCollectionName
+  })
+  $propertyCollectionExpression = if (
+      $propertyCollectionAssignments.Count -eq 1 -and
+      $propertyCollectionAssignments[0].Right -is
+        [System.Management.Automation.Language.CommandExpressionAst]) {
+    $propertyCollectionAssignments[0].Right.Expression
+  } else { $null }
+  if ($null -eq $propertyCollectionExpression -or
+      $propertyCollectionExpression -isnot
+        [System.Management.Automation.Language.ArrayExpressionAst] -or
+      -not $propertyCollectionExpression.Extent.Text.Contains('.PSObject.Properties | Where-Object')) {
+    throw "Operational verifier $propertyCollectionName must capture the complete property-selection expression as an array."
+  }
+}
 if ($manifestAssignments.Count -ne 1 -or
     $eligibilityClassificationAssignments.Count -ne 1 -or
     $readinessAuthorityClassificationBranches.Count -ne 1 -or
@@ -738,7 +767,53 @@ $firstLaterManifestBranchOffset = $verifyText.IndexOf(
 if ($earlyManifestVariableUses.Count -ne 0 -or
     $lateClassificationGuardOffset -le $manifestAssignments[0].Extent.EndOffset -or
     $firstLaterManifestBranchOffset -le $lateClassificationGuardOffset) {
-  throw 'Operational verifier uses full manifest classification before assignment or exact late validation.'
+    throw 'Operational verifier uses full manifest classification before assignment or exact late validation.'
+}
+$lateDiagnosticPropertyAssignments = @($diagnosticPropertyCollectionAssignments | Where-Object {
+  $_.Left.VariablePath.UserPath -ceq 'manifestDiagnosticPackageProperties'
+})
+$lateDiagnosticClassificationGuards = @($verifyAst.EndBlock.Statements | Where-Object {
+  $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+    $_.Extent.Text.Contains(
+      'Release manifest diagnosticPackage changed or became invalid during verification.')
+})
+if ($lateDiagnosticPropertyAssignments.Count -ne 1 -or
+    $lateDiagnosticClassificationGuards.Count -ne 1) {
+  throw 'Operational verifier late diagnosticPackage classifier is ambiguous.'
+}
+$lateDiagnosticClassifierText = @(
+  'param([AllowNull()][object]$manifest, [bool]$eligibilityDiagnosticPackage)',
+  '$ErrorActionPreference = "Stop"',
+  'Set-StrictMode -Version Latest',
+  $lateDiagnosticPropertyAssignments[0].Extent.Text,
+  $lateDiagnosticClassificationGuards[0].Extent.Text,
+  '[pscustomobject]@{ count = $manifestDiagnosticPackageProperties.Count; value = [bool]$manifestDiagnosticPackageProperties[0].Value }'
+) -join "`r`n"
+$lateDiagnosticClassifier = [scriptblock]::Create($lateDiagnosticClassifierText)
+foreach ($validLateDiagnosticValue in @($false, $true)) {
+  $validLateDiagnosticManifest = [pscustomobject]@{
+    diagnosticPackage = $validLateDiagnosticValue
+  }
+  $validLateDiagnosticResult = & $lateDiagnosticClassifier `
+    $validLateDiagnosticManifest $validLateDiagnosticValue
+  if ($validLateDiagnosticResult.count -ne 1 -or
+      $validLateDiagnosticResult.value -ne $validLateDiagnosticValue) {
+    throw "Operational verifier late diagnosticPackage classifier lost its singleton Boolean array shape."
+  }
+  try {
+    [void](& $lateDiagnosticClassifier `
+      $validLateDiagnosticManifest (-not $validLateDiagnosticValue))
+    throw 'Late diagnosticPackage classifier accepted early/late Boolean drift.'
+  } catch {
+    if ($_.Exception.Message -eq
+        'Late diagnosticPackage classifier accepted early/late Boolean drift.') {
+      throw
+    }
+    if ($_.Exception.Message -notmatch
+        'Release manifest diagnosticPackage changed or became invalid during verification') {
+      throw "Late diagnosticPackage drift failed for the wrong reason: $($_.Exception.Message)"
+    }
+  }
 }
 $bootstrapGitText = $bootstrapGitFunctions[0].Extent.Text
 foreach ($requiredBootstrap in @(
@@ -1527,7 +1602,10 @@ param(
   [switch]$AllowDirtyPackage
 )
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $RequireReleaseEligible = $true
+$script:verifierToolchainLeaseState = $null
+$script:operationalTrustedCommitMaps = $null
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $repoRoot
 $script:trustedGitExecutable = (Get-Item -LiteralPath $GitExecutable -Force -ErrorAction Stop).FullName

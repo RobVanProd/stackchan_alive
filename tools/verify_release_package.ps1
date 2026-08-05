@@ -537,13 +537,13 @@ function Get-PackageItemFullName {
 $eligibilityManifestPath = Join-Path $packageRootPath "release_manifest.json"
 if (Test-Path -LiteralPath $eligibilityManifestPath -PathType Leaf) {
   $eligibilityManifest = Get-Content -LiteralPath $eligibilityManifestPath -Raw | ConvertFrom-Json
-  $diagnosticPackageProperties = if ($null -eq $eligibilityManifest) {
-    @()
-  } else {
-    @($eligibilityManifest.PSObject.Properties | Where-Object {
-      $_.Name -ceq 'diagnosticPackage'
-    })
-  }
+  $diagnosticPackageProperties = @(
+    if ($null -ne $eligibilityManifest) {
+      $eligibilityManifest.PSObject.Properties | Where-Object {
+        $_.Name -ceq 'diagnosticPackage'
+      }
+    }
+  )
   if ($diagnosticPackageProperties.Count -ne 1 -or
       $diagnosticPackageProperties[0].Value -isnot [bool]) {
     throw "Release manifest diagnosticPackage must be one JSON boolean."
@@ -4392,13 +4392,13 @@ Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([
 
 $manifestPath = Join-PackagePath "release_manifest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$manifestDiagnosticPackageProperties = if ($null -eq $manifest) {
-  @()
-} else {
-  @($manifest.PSObject.Properties | Where-Object {
-    $_.Name -ceq 'diagnosticPackage'
-  })
-}
+$manifestDiagnosticPackageProperties = @(
+  if ($null -ne $manifest) {
+    $manifest.PSObject.Properties | Where-Object {
+      $_.Name -ceq 'diagnosticPackage'
+    }
+  }
+)
 if ($manifestDiagnosticPackageProperties.Count -ne 1 -or
     $manifestDiagnosticPackageProperties[0].Value -isnot [bool] -or
     [bool]$manifestDiagnosticPackageProperties[0].Value -ne $eligibilityDiagnosticPackage) {

@@ -415,6 +415,25 @@ manifest parse to retain the same classification. A source-binding contract also
 passes the broad contracts, exact-head CI, and a fresh governed package plus independent
 verification.
 
+Qualification head `612ef7beb24bfcfc4ad33eae31e41c3b7900d2bc` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `31004056148`. Governed packaging for
+`sec-002-612ef7be` completed two clean cycles and exact size/SHA-256 comparison of all 15 artifact
+pairs. The public `stackchan_release_full` firmware from both cycles is 2,803,504 bytes with
+SHA-256 `67CD01A6300D1E4FCFE654C8743C200B882F142906D8D237F43A4D3DF7A1C622`.
+The provisional 189,655,016-byte ZIP has SHA-256
+`20FF0870A3C6FBF7FC03AFCC07EDEBA79FBDB54EA4192E9F8D65D62E8538A208`. Its independent verifier
+failed closed before reaching the corrected archive-authority scan, at
+`verify_release_package.ps1:547`: PowerShell unrolled the one matching `diagnosticPackage`
+property emitted through the conditional assignment, so the resulting scalar did not expose the
+required collection `Count`. The provisional ZIP and output under
+`output/release/sec-002-612ef7be` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The follow-up correction wraps the complete early and late property-selection expressions in
+array subexpressions, preserving exact parsed-property zero/one/many cardinality before the type
+and equality checks. The SEC-002 hold remains in force until this correction passes the broad
+contracts, exact-head CI, and a fresh governed package plus independent verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that
