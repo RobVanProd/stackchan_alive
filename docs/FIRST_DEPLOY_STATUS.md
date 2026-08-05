@@ -434,6 +434,26 @@ array subexpressions, preserving exact parsed-property zero/one/many cardinality
 and equality checks. The SEC-002 hold remains in force until this correction passes the broad
 contracts, exact-head CI, and a fresh governed package plus independent verification.
 
+Qualification head `f012271a3b616e5adac19cf8203810fb1282b4b6` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `31010210311`. Governed packaging for
+`sec-002-f012271a` completed two clean cycles and exact size/SHA-256 comparison of all 15 artifact
+pairs. The public `stackchan_release_full` firmware from both cycles is 2,803,504 bytes with
+SHA-256 `802232F72456D0BAC928AF9A1C6636B28AE1541C4D283A7EDFEB574ACE00E944`. The provisional
+189,656,098-byte ZIP has SHA-256
+`063F4F8A13D2C660DBCEA47BE3BDF7F59C817FDC5EA08347E797257C72EC5EB7`. Its independent verifier
+passed voice/RVC, preview media, face phases A-E, release assets, checksums, and the third-party
+inventory, then failed closed at `verify_release_package.ps1:6155`: the physical archive contains
+the intentionally copied and later validated `docs/COMPANION_APP_GAP_ANALYSIS.md`, but the trusted
+whole-package required-file set omitted that path (1,570 actual files versus 1,569 admitted files).
+The provisional ZIP and output under `output/release/sec-002-f012271a` are not candidates. No
+flash, OTA request, COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction admits that exact companion document into the required-file policy and adds a
+producer/verifier regression whose mutation canary removes only the policy entry while preserving
+the copy. The count and path allowlists remain fail closed for undeclared files. The SEC-002 hold
+remains in force until this correction passes the broad contracts, exact-head CI, and a fresh
+governed package plus independent verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

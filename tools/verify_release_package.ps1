@@ -1575,6 +1575,7 @@ $requiredFiles = @(
   "provenance/pages.yml",
   "docs/BRAIN_MODEL.md",
   "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
+  "docs/COMPANION_APP_GAP_ANALYSIS.md",
   "docs/CONVERSATION_V2_ROADMAP.md",
   "docs/CHARACTER_LOCK.md",
   "docs/CREATING_PERSONAS.md",

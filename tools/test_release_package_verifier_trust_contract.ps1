@@ -594,6 +594,77 @@ foreach ($canary in @(
     if ($_.Exception.Message -like 'Inventory governance mutation canary survived:*') { throw }
   }
 }
+function Assert-AuthorityDocumentsAdmitted {
+  param([Parameter(Mandatory = $true)][System.Management.Automation.Language.ScriptBlockAst]$Ast)
+
+  $requiredFileAssignments = @($Ast.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+      -not (Test-WithinFunctionDefinition -Ast $node) -and
+      $node.Operator -eq [System.Management.Automation.Language.TokenKind]::Equals -and
+      $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+      $node.Left.VariablePath.UserPath -ceq 'requiredFiles'
+  }, $true))
+  if ($requiredFileAssignments.Count -ne 1) {
+    throw 'Package verifier required-file policy assignment is ambiguous.'
+  }
+  $requiredFileEntries = @($requiredFileAssignments[0].Right.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+  }, $true))
+  $requiredFileSet = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+  foreach ($entry in $requiredFileEntries) {
+    [void]$requiredFileSet.Add([string]$entry.Value)
+  }
+
+  $authorityDocumentAssignments = @($Ast.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+      -not (Test-WithinFunctionDefinition -Ast $node) -and
+      $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+      $node.Left.VariablePath.UserPath -ceq 'packageAuthorityDocPaths'
+  }, $true))
+  if ($authorityDocumentAssignments.Count -ne 2) {
+    throw 'Package verifier authority-document policy assignments are ambiguous.'
+  }
+  $authorityDocumentEntries = @($authorityDocumentAssignments | ForEach-Object {
+    $_.Right.FindAll({
+      param($node)
+      $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+    }, $true)
+  })
+  foreach ($entry in $authorityDocumentEntries) {
+    if (-not $requiredFileSet.Contains([string]$entry.Value)) {
+      throw "Authority document is outside the required-file policy: $($entry.Value)"
+    }
+  }
+}
+if (-not $packageText.Contains(
+    'Copy-Item -LiteralPath "docs/COMPANION_APP_GAP_ANALYSIS.md" -Destination $docsDir')) {
+  throw 'Package producer no longer copies the governed companion gap document.'
+}
+Assert-AuthorityDocumentsAdmitted -Ast $verifyAst
+$companionGapPolicyLinePattern =
+  '(?m)^  "docs/COMPANION_APP_GAP_ANALYSIS\.md",\r?\n'
+$companionGapPolicyLineRegex = [regex]::new($companionGapPolicyLinePattern)
+if ($companionGapPolicyLineRegex.Matches($verifyText).Count -ne 1) {
+  throw 'Companion gap required-file policy line is ambiguous.'
+}
+$companionGapMutationTokens = $null
+$companionGapMutationErrors = $null
+$companionGapMutationAst = [System.Management.Automation.Language.Parser]::ParseInput(
+  $companionGapPolicyLineRegex.Replace($verifyText, '', 1),
+  [ref]$companionGapMutationTokens, [ref]$companionGapMutationErrors)
+if ($companionGapMutationErrors.Count -ne 0) {
+  throw 'Companion gap required-file mutation did not remain parseable.'
+}
+try {
+  Assert-AuthorityDocumentsAdmitted -Ast $companionGapMutationAst
+  throw 'Companion gap required-file mutation canary survived.'
+} catch {
+  if ($_.Exception.Message -eq 'Companion gap required-file mutation canary survived.') { throw }
+}
 $releaseEligibleIfStatements = @($verifyAst.EndBlock.Statements | Where-Object {
   $_ -is [System.Management.Automation.Language.IfStatementAst] -and
     $_.Clauses.Count -eq 1 -and
