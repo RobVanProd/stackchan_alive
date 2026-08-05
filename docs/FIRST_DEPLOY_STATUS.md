@@ -241,8 +241,26 @@ OTA request, COM access, bridge session, robot-port access, or actuator command 
 The correction keeps the global safe-path policy in force and explicitly anchors the red-team CLI's
 sibling imports to the resolved directory containing its own exact tracked file. A subprocess
 regression launches the CLI from an unrelated directory with `PYTHONSAFEPATH=1` and
-`PYTHONNOUSERSITE=1`. The SEC-002 hold remains in force until that correction passes the broad
-bridge/release contracts, exact-head CI, and a fresh governed package plus independent rebuild.
+`PYTHONNOUSERSITE=1`. Qualification head
+`aa038361105aa29cced9525c17388193f3a59a07` passed all 11 jobs on the first attempt in exact-head
+GitHub Firmware run `30965070918`.
+
+Governed packaging for `sec-002-aa038361` again completed both equal-length firmware cycles, exact
+comparison of all 15 artifacts, commit-bound production RVC materialization, and the previously
+failing Character Lock red-team export. It then failed closed before manifest, ZIP, or independent
+package verification when `export_voice_source_status.ps1` invoked the production RVC verifier
+against its detached source root, where the files are intentionally 133-byte Git LFS pointers,
+instead of the already verified package RVC root. The partial output under
+`output/release/sec-002-aa038361` is not a candidate. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction adds an explicit voice root to the exporter, binds the governed package invocation
+to `media/voice/rvc` inside that package, and adds a negative contract proving that a pointer-only
+override is rejected without producing ready status. A focused read-only probe exported both status
+files from the exact materialized RVC directory in the retained partial package; ignored evidence is
+under `output/private/manual-voice-source-export-probe-20260805`. The SEC-002 hold remains in force
+until this correction passes the broad contracts, exact-head CI, and a fresh governed package plus
+independent rebuild.
 
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256

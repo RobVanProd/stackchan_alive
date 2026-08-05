@@ -165,6 +165,7 @@ Run ``tools/verify_tracked_rvc_assets.ps1`` before packaging.
 try {
   Set-Location $repoRoot
   $sourceCommit = "b" * 40
+  $productionVoiceRoot = Join-Path $repoRoot "media/voice/rvc"
 
   $pendingRoot = New-TempEvidenceRoot
   Write-PendingVoiceSourceFiles -Root $pendingRoot
@@ -186,7 +187,8 @@ try {
     -VoiceSourceProvenanceDisplayPath "data/voice_source_provenance.yaml" `
     -TemplatePath (Join-Path $pendingRoot "VOICE_TEMPLATE.md") `
     -TemplateDisplayPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" `
-    -OutputDir $portableExportRoot *> $null
+    -OutputDir $portableExportRoot `
+    -VoiceRoot $productionVoiceRoot *> $null
   if ($LASTEXITCODE -ne 0) {
     throw "Expected portable voice-source status export to succeed."
   }
@@ -198,6 +200,47 @@ try {
     throw "Voice-source status export leaked non-portable package paths."
   }
   Write-Host "[ok] packaged voice-source status paths remain portable"
+
+  $pointerVoiceRoot = New-TempEvidenceRoot
+  $pointerExportRoot = New-TempEvidenceRoot
+  @"
+# Included Stackchan RVC Voice
+
+- model.pth
+- model.index
+- install_bundled_rvc_voice.ps1
+"@ | Set-Content -LiteralPath (Join-Path $pointerVoiceRoot "README.md") -Encoding UTF8
+  $pointerText = @"
+version https://git-lfs.github.com/spec/v1
+oid sha256:1a8addfd670cd811d1ad1eeb9e9b4ff72c5d795b1123a23e86a0c41c1dd9bf1a
+size 57577722
+"@
+  [System.IO.File]::WriteAllText(
+    (Join-Path $pointerVoiceRoot "model.pth"), $pointerText,
+    [System.Text.UTF8Encoding]::new($false))
+  [System.IO.File]::WriteAllText(
+    (Join-Path $pointerVoiceRoot "model.index"), $pointerText,
+    [System.Text.UTF8Encoding]::new($false))
+  $oldErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $powerShellExe -NoProfile -ExecutionPolicy Bypass -File $exportScript `
+      -VoiceSourceProvenancePath (Join-Path $pendingRoot "voice_source.yaml") `
+      -VoiceSourceProvenanceDisplayPath "data/voice_source_provenance.yaml" `
+      -TemplatePath (Join-Path $pendingRoot "VOICE_TEMPLATE.md") `
+      -TemplateDisplayPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" `
+      -OutputDir $pointerExportRoot `
+      -VoiceRoot $pointerVoiceRoot *> $null
+    $pointerExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+  }
+  if ($pointerExitCode -eq 0 -or
+      (Test-Path -LiteralPath (Join-Path $pointerExportRoot "voice_source_status.json")) -or
+      (Test-Path -LiteralPath (Join-Path $pointerExportRoot "VOICE_SOURCE_STATUS.md"))) {
+    throw "Pointer-only voice root was not rejected before status export."
+  }
+  Write-Host "[ok] pointer-only voice root is rejected"
 
   $pendingStrictResult = Invoke-VoiceSourceCheck -Root $repoRoot -VoiceSourceProvenancePath (Join-Path $pendingRoot "voice_source.yaml") -TemplatePath (Join-Path $pendingRoot "VOICE_TEMPLATE.md") -SourceCommit $sourceCommit -RequireProductionReady
   if ([int]$pendingStrictResult.exitCode -eq 0) {

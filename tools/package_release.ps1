@@ -2166,7 +2166,8 @@ if ($LASTEXITCODE -ne 0) {
   -VoiceSourceProvenanceDisplayPath "data/voice_source_provenance.yaml" `
   -TemplatePath (Join-Path $docsDir "VOICE_SOURCE_PROVENANCE_TEMPLATE.md") `
   -TemplateDisplayPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" `
-  -OutputDir $outDir
+  -OutputDir $outDir `
+  -VoiceRoot (Join-Path $outDir "media/voice/rvc")
 if ($LASTEXITCODE -ne 0) {
   throw "Voice source status export failed."
 }

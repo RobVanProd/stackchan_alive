@@ -4,12 +4,16 @@ param(
   [string]$TemplatePath = "",
   [string]$TemplateDisplayPath = "",
   [string]$OutputDir = "",
+  [string]$VoiceRoot = "",
   [switch]$FailOnBlocked
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 if ([string]::IsNullOrWhiteSpace($OutputDir)) { $OutputDir = $repoRoot }
+if ([string]::IsNullOrWhiteSpace($VoiceRoot)) {
+  $VoiceRoot = Join-Path $repoRoot "media/voice/rvc"
+}
 if ([string]::IsNullOrWhiteSpace($VoiceSourceProvenanceDisplayPath)) {
   $VoiceSourceProvenanceDisplayPath = "data/voice_source_provenance.yaml"
 }
@@ -17,7 +21,7 @@ if ([string]::IsNullOrWhiteSpace($TemplateDisplayPath)) {
   $TemplateDisplayPath = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"
 }
 
-& (Join-Path $PSScriptRoot "verify_tracked_rvc_assets.ps1") *> $null
+& (Join-Path $PSScriptRoot "verify_tracked_rvc_assets.ps1") -VoiceRoot $VoiceRoot *> $null
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")

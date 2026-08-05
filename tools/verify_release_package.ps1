@@ -3347,7 +3347,7 @@ foreach ($pattern in @("scoop/apps/mingw/current/bin", "scoop/apps/gcc/current/b
 }
 
 $voiceSourceStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_voice_source_status.ps1") -Raw
-foreach ($pattern in @("stackchan.voice-source-status.v1", "production-source-ready", "production-model-hash", "production-index-hash", "VOICE_SOURCE_STATUS.md", "voice_source_status.json")) {
+foreach ($pattern in @("stackchan.voice-source-status.v1", "production-source-ready", "production-model-hash", "production-index-hash", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "VoiceRoot", "verify_tracked_rvc_assets.ps1", "-VoiceRoot")) {
   if ($voiceSourceStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_voice_source_status.ps1 missing required voice-source status logic: $pattern"
   }
@@ -3361,7 +3361,7 @@ foreach ($pattern in @("stackchan.voice-source-readiness.v1", "pending-productio
 }
 
 $voiceSourceReadinessContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_voice_source_readiness_contract.ps1") -Raw
-foreach ($pattern in @("pending production voice source remains pending", "complete production voice source is accepted", "fixed voice-source commit remains valid across later package commits", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")) {
+foreach ($pattern in @("pending production voice source remains pending", "packaged voice-source status paths remain portable", "pointer-only voice root is rejected", "complete production voice source is accepted", "fixed voice-source commit remains valid across later package commits", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")) {
   if ($voiceSourceReadinessContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_voice_source_readiness_contract.ps1 missing required voice-source readiness contract coverage: $pattern"
   }
