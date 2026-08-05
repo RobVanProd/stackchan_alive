@@ -989,11 +989,10 @@ volatile bool gWakeMwwStereoDirectionPendingReady = false;
 #endif
 #if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
 constexpr uint32_t kWakeMwwCueCompletionTimeoutMs = 120;
-// Hard ceiling on one capture, in 100 ms chunks. This is the backstop behind the
-// voice-activity endpoint, which normally ends capture as soon as the speaker
-// stops. 130 chunks is 13 s, or 416 KB of 16 kHz mono PCM, inside the 512 KB
-// uplink limit. Was 96 (9.6 s), and the endpoint's own 4.8 s cap fired first,
-// which is what truncated longer sentences.
+// Hard ceiling on one capture, in compile-time-sized chunks. This is the
+// backstop behind the voice-activity endpoint, which normally ends capture as
+// soon as the speaker stops. The release profile uses 800-sample chunks, so 130
+// chunks is 6.5 s (208 KB of 16 kHz mono PCM), inside the 512 KB uplink limit.
 constexpr uint16_t kWakeMwwDedicatedCaptureChunks = 130;
 // One chunk is STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES at the capture rate.
 constexpr uint32_t kWakeMwwDedicatedCaptureCeilingMs =
@@ -4628,10 +4627,17 @@ void drainWakeMwwUplinkQueue(uint32_t nowMs) {
 #endif
 
 #if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
-bool submitDedicatedWakeCaptureChunk(uint32_t seq,
-                                     const int16_t* samples,
-                                     uint16_t sampleCount,
-                                     uint32_t nowMs) {
+enum class DedicatedWakeCaptureSubmitResult : uint8_t {
+  Submitted,
+  AuthorityExpired,
+  Failed,
+};
+
+DedicatedWakeCaptureSubmitResult submitDedicatedWakeCaptureChunk(uint32_t seq,
+                                                                 const int16_t* samples,
+                                                                 uint16_t sampleCount,
+                                                                 uint32_t nowMs) {
+  (void)nowMs;
   constexpr uint16_t kSubmitAttempts =
       STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS > 0
           ? STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS
@@ -4641,11 +4647,19 @@ bool submitDedicatedWakeCaptureChunk(uint32_t seq,
   for (uint16_t attempt = 0; attempt < kSubmitAttempts; ++attempt) {
     const uint32_t attemptMs = millis();
     gBridgeNetworkSession.update(attemptMs);
+    const uint32_t authorityNowMs = millis();
+    const BridgeWakeGateTelemetry& gateBeforeAttempt = gBridgeWakeGate.telemetry();
+    if (!dedicatedWakeCaptureMaySubmit(
+            gBridgeWakeGate.isGateOpen(authorityNowMs),
+            gateBeforeAttempt.turnActive,
+            gBridgeAudioUplink.telemetry().active)) {
+      return DedicatedWakeCaptureSubmitResult::AuthorityExpired;
+    }
     const BridgeSocketWriterTelemetry& writer = gBridgeNetworkSession.writer().telemetry();
     if (!writer.frameBuffered && !writer.binaryFrameQueued &&
-        gBridgeAudioUplink.submitPcmChunk(seq, samples, sampleCount, attemptMs)) {
+        gBridgeAudioUplink.submitPcmChunk(seq, samples, sampleCount, authorityNowMs)) {
       gBridgeNetworkSession.update(millis());
-      return true;
+      return DedicatedWakeCaptureSubmitResult::Submitted;
     }
     gBridgeNetworkSession.update(millis());
     if (kSubmitDelayMs > 0) {
@@ -4654,7 +4668,7 @@ bool submitDedicatedWakeCaptureChunk(uint32_t seq,
       taskYIELD();
     }
   }
-  return false;
+  return DedicatedWakeCaptureSubmitResult::Failed;
 }
 
 void finishDedicatedWakeCaptureTurn(uint32_t seq, uint32_t nowMs) {
@@ -4761,6 +4775,16 @@ void serviceDedicatedWakeCaptureChunk() {
     return;
   }
 
+  const uint32_t serviceNowMs = millis();
+  const BridgeWakeGateTelemetry& gateBeforeCapture = gBridgeWakeGate.telemetry();
+  if (!dedicatedWakeCaptureMaySubmit(
+          gBridgeWakeGate.isGateOpen(serviceNowMs),
+          gateBeforeCapture.turnActive,
+          gBridgeAudioUplink.telemetry().active)) {
+    finishDedicatedWakeCaptureSession(gWakeMwwDedicatedCapture.chunksSubmitted > 0);
+    return;
+  }
+
   const uint32_t serviceStartUs = micros();
 
   constexpr bool kRecordStereo = STACKCHAN_MWW_WAKE_RECORD_STEREO != 0;
@@ -4819,9 +4843,22 @@ void serviceDedicatedWakeCaptureChunk() {
       }
     }
 
-    if (submitDedicatedWakeCaptureChunk(
-            gWakeMwwDedicatedCapture.seq, monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs)) {
+    const BridgeWakeGateTelemetry& gateBeforeSubmit = gBridgeWakeGate.telemetry();
+    if (!dedicatedWakeCaptureMaySubmit(
+            gBridgeWakeGate.isGateOpen(gWakeSrProbe.lastRecordMs),
+            gateBeforeSubmit.turnActive,
+            gBridgeAudioUplink.telemetry().active)) {
+      finishDedicatedWakeCaptureSession(gWakeMwwDedicatedCapture.chunksSubmitted > 0);
+      return;
+    }
+
+    const DedicatedWakeCaptureSubmitResult submitResult = submitDedicatedWakeCaptureChunk(
+        gWakeMwwDedicatedCapture.seq, monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs);
+    if (submitResult == DedicatedWakeCaptureSubmitResult::Submitted) {
       ++gWakeMwwDedicatedCapture.chunksSubmitted;
+    } else if (submitResult == DedicatedWakeCaptureSubmitResult::AuthorityExpired) {
+      finishDedicatedWakeCaptureSession(gWakeMwwDedicatedCapture.chunksSubmitted > 0);
+      return;
     } else {
       gWakeMwwUplinkSubmitFailed = gWakeMwwUplinkSubmitFailed + 1u;
       submitFailed = true;

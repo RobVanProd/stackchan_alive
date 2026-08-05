@@ -706,6 +706,10 @@ jobs:
       - name: Run native logic tests
         run: pio test -e native_logic
 
+      - name: Verify dedicated wake-capture release boundary
+        shell: pwsh
+        run: ./tools/test_dedicated_wake_capture_contract.ps1
+
       - name: Compile native logic with Glow persona
         run: pio test -e native_logic --without-testing
         env:

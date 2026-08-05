@@ -21,6 +21,16 @@ constexpr uint32_t kBridgeWakeGateOpenMs = 6000;
 constexpr uint32_t kBridgeWakeGateMaxTurnMs = 15000;
 constexpr size_t kBridgeWakeGateErrorMax = kBridgeErrorMax;
 
+// Dedicated capture may publish PCM only while all three owners still agree
+// that the wake-gated turn is live. Keeping this policy pure lets native tests
+// exercise the physical capture boundary without reopening or bypassing the
+// gate owned by BridgeWakeGate.
+constexpr bool dedicatedWakeCaptureMaySubmit(bool gateOpen,
+                                             bool gateTurnActive,
+                                             bool uplinkActive) {
+  return gateOpen && gateTurnActive && uplinkActive;
+}
+
 struct BridgeWakeGateConfig {
   bool enabled = true;
   bool speechStartsTurn = STACKCHAN_BRIDGE_WAKE_ON_SPEECH != 0;
