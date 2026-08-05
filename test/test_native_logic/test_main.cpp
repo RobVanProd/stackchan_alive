@@ -1736,6 +1736,79 @@ void test_voice_activity_endpoint_default_ceiling_fits_a_long_sentence() {
   TEST_ASSERT_LESS_THAN_UINT32(512u * 1024u, bytes);
 }
 
+void test_voice_activity_endpoint_default_preserves_one_second_natural_pause() {
+  VoiceActivityEndpointConfig config;
+  config.enabled = true;
+  TEST_ASSERT_EQUAL_UINT32(1200, config.trailingSilenceMs);
+  TEST_ASSERT_LESS_THAN_UINT32(kBridgeWakeGateOpenMs, config.trailingSilenceMs);
+
+  VoiceActivityEndpoint endpoint;
+  TEST_ASSERT_TRUE(endpoint.begin(config, 0));
+  int16_t speech[800] = {};
+  int16_t silence[800] = {};
+  fillVoiceEndpointSpeech(speech, 800);
+
+  VoiceActivityEndpointReason reason = VoiceActivityEndpointReason::None;
+  for (uint32_t nowMs = 50; nowMs <= 200; nowMs += 50) {
+    reason = endpoint.process(speech, 800, nowMs);
+    TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                      static_cast<int>(reason));
+  }
+  TEST_ASSERT_TRUE(endpoint.telemetry().speechSeen);
+
+  // A full second of silence is a natural clause pause, not an utterance end.
+  for (uint32_t nowMs = 250; nowMs <= 1200; nowMs += 50) {
+    reason = endpoint.process(silence, 800, nowMs);
+    TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                      static_cast<int>(reason));
+  }
+  TEST_ASSERT_TRUE(endpoint.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(0, endpoint.telemetry().endpointsDetected);
+
+  for (uint32_t nowMs = 1250; nowMs <= 1400; nowMs += 50) {
+    reason = endpoint.process(speech, 800, nowMs);
+    TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                      static_cast<int>(reason));
+  }
+  for (uint32_t nowMs = 1450; nowMs <= 2550; nowMs += 50) {
+    reason = endpoint.process(silence, 800, nowMs);
+    TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                      static_cast<int>(reason));
+  }
+  TEST_ASSERT_TRUE(endpoint.telemetry().active);
+  TEST_ASSERT_EQUAL(
+      static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
+      static_cast<int>(endpoint.process(silence, 800, 2600)));
+  TEST_ASSERT_FALSE(endpoint.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(1, endpoint.telemetry().endpointsDetected);
+  TEST_ASSERT_EQUAL_UINT32(0, endpoint.telemetry().maxDurationFallbacks);
+}
+
+void test_voice_activity_endpoint_default_continuous_speech_still_hits_maximum() {
+  VoiceActivityEndpointConfig config;
+  config.enabled = true;
+  TEST_ASSERT_LESS_THAN_UINT32(kBridgeWakeGateMaxTurnMs, config.maximumCaptureMs);
+
+  VoiceActivityEndpoint endpoint;
+  TEST_ASSERT_TRUE(endpoint.begin(config, 0));
+  int16_t speech[800] = {};
+  fillVoiceEndpointSpeech(speech, 800);
+
+  VoiceActivityEndpointReason reason = VoiceActivityEndpointReason::None;
+  for (uint32_t nowMs = 50; nowMs <= config.maximumCaptureMs; nowMs += 50) {
+    reason = endpoint.process(speech, 800, nowMs);
+    if (nowMs < config.maximumCaptureMs) {
+      TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                        static_cast<int>(reason));
+    }
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::MaxDuration),
+                    static_cast<int>(reason));
+  TEST_ASSERT_FALSE(endpoint.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(1, endpoint.telemetry().endpointsDetected);
+  TEST_ASSERT_EQUAL_UINT32(1, endpoint.telemetry().maxDurationFallbacks);
+}
+
 void test_voice_activity_endpoint_disabled_path_preserves_fixed_capture() {
   VoiceActivityEndpointConfig config;
   config.enabled = false;
@@ -8339,6 +8412,110 @@ void test_dedicated_wake_capture_stops_cleanly_at_release_gate_boundary() {
   TEST_ASSERT_EQUAL_UINT32(0, endpoint.telemetry().speechChunks);
 }
 
+void test_dedicated_wake_capture_natural_pause_keeps_one_authorized_turn() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 1230);
+
+  BridgeAudioUplinkConfig uplinkConfig;
+  uplinkConfig.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(uplinkConfig, &session));
+
+  BridgeWakeGate gate;
+  TEST_ASSERT_TRUE(gate.begin(BridgeWakeGateConfig {}, &uplink));
+  VoiceActivityEndpointConfig endpointConfig;
+  endpointConfig.enabled = true;
+  VoiceActivityEndpoint endpoint;
+  TEST_ASSERT_TRUE(endpoint.begin(endpointConfig, 1000));
+
+  RobotEvent wake;
+  wake.type = EventType::WakeWord;
+  gate.applyEvent(wake, 1000);
+  session.update(1001);
+  char decodedStart[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedStart,
+                                               sizeof(decodedStart)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"type\":\"utterance_start\""));
+  socket.clearOutgoing();
+
+  constexpr uint16_t kChunkSamples = 800;
+  constexpr uint32_t kChunkMs = 50;
+  int16_t speech[kChunkSamples] = {};
+  int16_t silence[kChunkSamples] = {};
+  fillVoiceEndpointSpeech(speech, kChunkSamples);
+
+  uint32_t binaryFrames = 0;
+  uint32_t endFrames = 0;
+  VoiceActivityEndpointReason finalReason = VoiceActivityEndpointReason::None;
+  for (uint16_t chunk = 1; chunk <= 52; ++chunk) {
+    const uint32_t capturedAtMs = 1000u + static_cast<uint32_t>(chunk) * kChunkMs;
+    const bool speaking = chunk <= 4u || (chunk >= 25u && chunk <= 28u);
+    const uint32_t speechAtBefore = endpoint.telemetry().lastSpeechAtMs;
+    finalReason = endpoint.process(
+        speaking ? speech : silence, kChunkSamples, capturedAtMs);
+    if (endpoint.telemetry().lastSpeechAtMs != speechAtBefore) {
+      RobotEvent speakingEvent;
+      speakingEvent.type = EventType::UserSpeaking;
+      speakingEvent.timestampMs = capturedAtMs;
+      gate.applyEvent(speakingEvent, capturedAtMs);
+    }
+
+    if (chunk == 24u) {
+      TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                        static_cast<int>(finalReason));
+      TEST_ASSERT_TRUE(endpoint.telemetry().active);
+      TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+      TEST_ASSERT_TRUE(uplink.telemetry().active);
+    }
+
+    TEST_ASSERT_TRUE(dedicatedWakeCaptureMaySubmit(
+        gate.isGateOpen(capturedAtMs), gate.telemetry().turnActive,
+        uplink.telemetry().active));
+    TEST_ASSERT_TRUE(uplink.submitPcmChunk(
+        gate.telemetry().lastSeq, speaking ? speech : silence,
+        kChunkSamples, capturedAtMs));
+    session.update(capturedAtMs);
+    std::vector<uint8_t> decodedAudio;
+    TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(socket.outgoing, decodedAudio));
+    TEST_ASSERT_EQUAL_UINT32(kChunkSamples * sizeof(int16_t), decodedAudio.size());
+    ++binaryFrames;
+    socket.clearOutgoing();
+
+    if (finalReason != VoiceActivityEndpointReason::None) {
+      RobotEvent ended;
+      ended.type = EventType::SpeechEnded;
+      ended.timestampMs = capturedAtMs;
+      gate.applyEvent(ended, capturedAtMs);
+      session.update(capturedAtMs + 1u);
+      char decodedEnd[kBridgeEndpointControlResponseMax] = {};
+      TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedEnd,
+                                                   sizeof(decodedEnd)));
+      TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"type\":\"utterance_end\""));
+      ++endFrames;
+      socket.clearOutgoing();
+      session.update(capturedAtMs + 2u);
+      TEST_ASSERT_TRUE(socket.outgoing.empty());
+      break;
+    }
+  }
+
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
+                    static_cast<int>(finalReason));
+  TEST_ASSERT_EQUAL_UINT32(52, binaryFrames);
+  TEST_ASSERT_EQUAL_UINT32(1, endFrames);
+  TEST_ASSERT_EQUAL_UINT32(52, uplink.telemetry().chunksQueued);
+  TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().errors);
+  TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().queueFailures);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsStarted);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsCompleted);
+  TEST_ASSERT_FALSE(gate.telemetry().turnActive);
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(2, session.telemetry().writerTextFrames);
+  TEST_ASSERT_EQUAL_UINT32(52, session.telemetry().writerBinaryFrames);
+}
+
 BridgeDebugHttpDecision evaluateDebugHttpFixture(const char* requestLine,
                                                  bool lineComplete = true,
                                                  bool lineOverflow = false,
@@ -8670,6 +8847,8 @@ int main() {
   RUN_TEST(test_voice_activity_endpoint_rejects_short_noise_and_uses_maximum_fallback);
   RUN_TEST(test_voice_activity_endpoint_capture_tracks_speech_length);
   RUN_TEST(test_voice_activity_endpoint_default_ceiling_fits_a_long_sentence);
+  RUN_TEST(test_voice_activity_endpoint_default_preserves_one_second_natural_pause);
+  RUN_TEST(test_voice_activity_endpoint_default_continuous_speech_still_hits_maximum);
   RUN_TEST(test_voice_activity_endpoint_disabled_path_preserves_fixed_capture);
   RUN_TEST(test_audio_capture_adapter_disabled_default_is_ready_without_source);
   RUN_TEST(test_audio_capture_adapter_rejects_oversized_window);
@@ -8909,6 +9088,7 @@ int main() {
   RUN_TEST(test_dedicated_wake_capture_keeps_queue_failures_visible_while_authorized);
   RUN_TEST(test_dedicated_wake_capture_retry_stops_when_backpressure_reaches_gate_edge);
   RUN_TEST(test_dedicated_wake_capture_stops_cleanly_at_release_gate_boundary);
+  RUN_TEST(test_dedicated_wake_capture_natural_pause_keeps_one_authorized_turn);
   RUN_TEST(test_bridge_wake_gate_max_turn_outlasts_the_capture_ceiling);
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
   RUN_TEST(test_bridge_network_session_clears_stale_error_after_reconnect_handshake);
