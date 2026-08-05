@@ -1718,9 +1718,10 @@ void test_voice_activity_endpoint_capture_tracks_speech_length() {
     // Ended because the speaker stopped, not because time ran out.
     TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
                       static_cast<int>(reason));
-    // Kept everything that was said, and did not linger long after.
+    // Kept everything that was said, and stayed within the configured
+    // two-second natural-pause tail plus one scheduler chunk.
     TEST_ASSERT_GREATER_OR_EQUAL_UINT32(speakLengths[i], captureMs);
-    TEST_ASSERT_LESS_THAN_UINT32(speakLengths[i] + 1500u, captureMs);
+    TEST_ASSERT_LESS_THAN_UINT32(speakLengths[i] + 2100u, captureMs);
     // Longer utterances yield longer captures.
     TEST_ASSERT_GREATER_THAN_UINT32(previousCaptureMs, captureMs);
     previousCaptureMs = captureMs;
@@ -1736,10 +1737,10 @@ void test_voice_activity_endpoint_default_ceiling_fits_a_long_sentence() {
   TEST_ASSERT_LESS_THAN_UINT32(512u * 1024u, bytes);
 }
 
-void test_voice_activity_endpoint_default_preserves_one_second_natural_pause() {
+void test_voice_activity_endpoint_default_preserves_one_and_a_half_second_natural_pause() {
   VoiceActivityEndpointConfig config;
   config.enabled = true;
-  TEST_ASSERT_EQUAL_UINT32(1200, config.trailingSilenceMs);
+  TEST_ASSERT_EQUAL_UINT32(2000, config.trailingSilenceMs);
   TEST_ASSERT_LESS_THAN_UINT32(kBridgeWakeGateOpenMs, config.trailingSilenceMs);
 
   VoiceActivityEndpoint endpoint;
@@ -1756,8 +1757,8 @@ void test_voice_activity_endpoint_default_preserves_one_second_natural_pause() {
   }
   TEST_ASSERT_TRUE(endpoint.telemetry().speechSeen);
 
-  // A full second of silence is a natural clause pause, not an utterance end.
-  for (uint32_t nowMs = 250; nowMs <= 1200; nowMs += 50) {
+  // A 1.5 second silence is a natural clause pause, not an utterance end.
+  for (uint32_t nowMs = 250; nowMs <= 1700; nowMs += 50) {
     reason = endpoint.process(silence, 800, nowMs);
     TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
                       static_cast<int>(reason));
@@ -1765,12 +1766,12 @@ void test_voice_activity_endpoint_default_preserves_one_second_natural_pause() {
   TEST_ASSERT_TRUE(endpoint.telemetry().active);
   TEST_ASSERT_EQUAL_UINT32(0, endpoint.telemetry().endpointsDetected);
 
-  for (uint32_t nowMs = 1250; nowMs <= 1400; nowMs += 50) {
+  for (uint32_t nowMs = 1750; nowMs <= 1900; nowMs += 50) {
     reason = endpoint.process(speech, 800, nowMs);
     TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
                       static_cast<int>(reason));
   }
-  for (uint32_t nowMs = 1450; nowMs <= 2550; nowMs += 50) {
+  for (uint32_t nowMs = 1950; nowMs <= 3850; nowMs += 50) {
     reason = endpoint.process(silence, 800, nowMs);
     TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
                       static_cast<int>(reason));
@@ -1778,7 +1779,7 @@ void test_voice_activity_endpoint_default_preserves_one_second_natural_pause() {
   TEST_ASSERT_TRUE(endpoint.telemetry().active);
   TEST_ASSERT_EQUAL(
       static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
-      static_cast<int>(endpoint.process(silence, 800, 2600)));
+      static_cast<int>(endpoint.process(silence, 800, 3900)));
   TEST_ASSERT_FALSE(endpoint.telemetry().active);
   TEST_ASSERT_EQUAL_UINT32(1, endpoint.telemetry().endpointsDetected);
   TEST_ASSERT_EQUAL_UINT32(0, endpoint.telemetry().maxDurationFallbacks);
@@ -7363,16 +7364,24 @@ void test_bridge_wake_gate_survives_a_long_utterance() {
 }
 
 void test_bridge_wake_gate_max_turn_outlasts_the_capture_ceiling() {
-  // Release uses 130 x 800-sample chunks at 16 kHz: a 6.5 s capture ceiling.
+  // Release uses 240 x 800-sample chunks at 16 kHz: a 12 s capture ceiling.
   // The max-turn privacy guard remains the final absolute bound.
-  constexpr uint32_t captureCeilingMs = (130u * 800u * 1000u) / 16000u;
-  static_assert(captureCeilingMs == 6500, "release capture ceiling changed");
+  constexpr uint16_t captureChunks = 240;
+  constexpr uint16_t chunkSamples = 800;
+  constexpr uint32_t sampleRate = 16000;
+  constexpr uint32_t captureCeilingMs =
+      (static_cast<uint32_t>(captureChunks) * chunkSamples * 1000u) / sampleRate;
+  constexpr uint32_t captureBytes =
+      static_cast<uint32_t>(captureChunks) * chunkSamples * sizeof(int16_t);
+  static_assert(captureCeilingMs == 12000, "release capture ceiling changed");
+  static_assert(captureBytes == 384000, "release capture byte budget changed");
   TEST_ASSERT_GREATER_THAN_UINT32(captureCeilingMs, kBridgeWakeGateMaxTurnMs);
+  TEST_ASSERT_LESS_OR_EQUAL_UINT32(kBridgeAudioUplinkMaxBytes, captureBytes);
 
-  // With the release chunk size, the chunk ceiling ends capture before the
-  // endpoint's generic 12 s maximum.
+  // The compile-time chunk ceiling and endpoint fallback describe one bound,
+  // so neither can silently truncate an utterance before the other.
   VoiceActivityEndpointConfig endpointConfig;
-  TEST_ASSERT_GREATER_THAN_UINT32(captureCeilingMs, endpointConfig.maximumCaptureMs);
+  TEST_ASSERT_EQUAL_UINT32(captureCeilingMs, endpointConfig.maximumCaptureMs);
 }
 
 void test_bridge_wake_gate_renews_on_speech_and_expires() {
@@ -8376,15 +8385,16 @@ void test_dedicated_wake_capture_stops_cleanly_at_release_gate_boundary() {
   TEST_ASSERT_TRUE(uplink.begin(uplinkConfig, &session));
 
   // These are the actual release-profile values. The 800-sample override makes
-  // each chunk 50 ms; chunk 120 therefore crosses the 6000 ms wake-gate edge.
+  // each chunk 50 ms. With no detected speech to renew authority, chunk 120
+  // still crosses the 6000 ms wake-gate edge before the 12 s capture ceiling.
   constexpr uint16_t kReleaseChunkSamples = 800;
   constexpr uint32_t kReleaseSampleRate = 16000;
   constexpr uint32_t kReleaseGateOpenMs = 6000;
-  constexpr uint16_t kReleaseCaptureChunks = 130;
+  constexpr uint16_t kReleaseCaptureChunks = 240;
   constexpr uint32_t kReleaseChunkMs =
       (static_cast<uint32_t>(kReleaseChunkSamples) * 1000u) / kReleaseSampleRate;
   static_assert(kReleaseChunkMs == 50, "release wake chunk duration changed");
-  static_assert(kReleaseCaptureChunks * kReleaseChunkMs == 6500,
+  static_assert(kReleaseCaptureChunks * kReleaseChunkMs == 12000,
                 "release dedicated-capture ceiling changed");
 
   BridgeWakeGateConfig gateConfig;
@@ -8547,9 +8557,12 @@ void test_dedicated_wake_capture_natural_pause_keeps_one_authorized_turn() {
   uint32_t binaryFrames = 0;
   uint32_t endFrames = 0;
   VoiceActivityEndpointReason finalReason = VoiceActivityEndpointReason::None;
-  for (uint16_t chunk = 1; chunk <= 52; ++chunk) {
+  // A production-realistic eight-second turn: two seconds of speech, a 1.5 s
+  // clause pause, another 2.5 s of speech, and the 2 s trailing-silence tail.
+  // It deliberately crosses the former 130-chunk / 6.5 s ceiling.
+  for (uint16_t chunk = 1; chunk <= 160; ++chunk) {
     const uint32_t capturedAtMs = 1000u + static_cast<uint32_t>(chunk) * kChunkMs;
-    const bool speaking = chunk <= 4u || (chunk >= 25u && chunk <= 28u);
+    const bool speaking = chunk <= 40u || (chunk >= 71u && chunk <= 120u);
     const uint32_t speechAtBefore = endpoint.telemetry().lastSpeechAtMs;
     finalReason = endpoint.process(
         speaking ? speech : silence, kChunkSamples, capturedAtMs);
@@ -8560,7 +8573,7 @@ void test_dedicated_wake_capture_natural_pause_keeps_one_authorized_turn() {
       gate.applyEvent(speakingEvent, capturedAtMs);
     }
 
-    if (chunk == 24u) {
+    if (chunk == 70u || chunk == 130u) {
       TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
                         static_cast<int>(finalReason));
       TEST_ASSERT_TRUE(endpoint.telemetry().active);
@@ -8601,9 +8614,9 @@ void test_dedicated_wake_capture_natural_pause_keeps_one_authorized_turn() {
 
   TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
                     static_cast<int>(finalReason));
-  TEST_ASSERT_EQUAL_UINT32(52, binaryFrames);
+  TEST_ASSERT_EQUAL_UINT32(160, binaryFrames);
   TEST_ASSERT_EQUAL_UINT32(1, endFrames);
-  TEST_ASSERT_EQUAL_UINT32(52, uplink.telemetry().chunksQueued);
+  TEST_ASSERT_EQUAL_UINT32(160, uplink.telemetry().chunksQueued);
   TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().errors);
   TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().queueFailures);
   TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsStarted);
@@ -8611,7 +8624,7 @@ void test_dedicated_wake_capture_natural_pause_keeps_one_authorized_turn() {
   TEST_ASSERT_FALSE(gate.telemetry().turnActive);
   TEST_ASSERT_FALSE(uplink.telemetry().active);
   TEST_ASSERT_EQUAL_UINT32(2, session.telemetry().writerTextFrames);
-  TEST_ASSERT_EQUAL_UINT32(52, session.telemetry().writerBinaryFrames);
+  TEST_ASSERT_EQUAL_UINT32(160, session.telemetry().writerBinaryFrames);
 }
 
 BridgeDebugHttpDecision evaluateDebugHttpFixture(const char* requestLine,
@@ -8945,7 +8958,7 @@ int main() {
   RUN_TEST(test_voice_activity_endpoint_rejects_short_noise_and_uses_maximum_fallback);
   RUN_TEST(test_voice_activity_endpoint_capture_tracks_speech_length);
   RUN_TEST(test_voice_activity_endpoint_default_ceiling_fits_a_long_sentence);
-  RUN_TEST(test_voice_activity_endpoint_default_preserves_one_second_natural_pause);
+  RUN_TEST(test_voice_activity_endpoint_default_preserves_one_and_a_half_second_natural_pause);
   RUN_TEST(test_voice_activity_endpoint_default_continuous_speech_still_hits_maximum);
   RUN_TEST(test_voice_activity_endpoint_disabled_path_preserves_fixed_capture);
   RUN_TEST(test_audio_capture_adapter_disabled_default_is_ready_without_source);

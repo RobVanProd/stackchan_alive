@@ -269,9 +269,10 @@ Example:
   deadline, and cancels on bridge loss. The frame carries no actuator or power authority. In
   `stackchan_voice_v2` and the derived full release source, an accepted reply-window capture uses
   a local voice-activity endpoint for both initial and follow-up capture: at least 150 ms of speech
-  must be observed, capture remains open for at least 600 ms, and 550 ms of trailing silence ends
-  the utterance. The endpoint ceiling is 12 seconds, the dedicated capture ceiling is 13 seconds,
-  and the wake-gate privacy guard is 15 seconds. The current host capture commitment is only 10
+  must be observed, capture remains open for at least 600 ms, and 2.0 seconds of trailing silence
+  ends the utterance. The endpoint and dedicated-capture ceilings are both 12 seconds (240 50-ms
+  chunks in the release profile), and the wake-gate privacy guard is 15 seconds. The current host
+  capture commitment is only 10
   seconds and can reject a valid later device end; that mismatch must be fixed and source/physical
   qualified before promotion.
 - `endpoint_hello_result`: endpoint trust/capability registration result.

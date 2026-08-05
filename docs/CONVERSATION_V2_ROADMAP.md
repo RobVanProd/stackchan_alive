@@ -101,9 +101,9 @@ firmware to its normal local face and wake behavior.
   closes. Each side of a turn is capped at 160 characters so the complete default lease remains
   inside the local model context budget.
 - Initial and reply-window firmware capture now use the deterministic local endpoint detector. It
-  requires at least 150 ms of speech, waits through a 550 ms trailing pause, and never closes before
-  600 ms. The endpoint ceiling is 12 seconds, dedicated capture ceiling 13 seconds, and wake-gate
-  privacy guard 15 seconds. The host capture commitment remains 10 seconds, so a valid long device
+  requires at least 150 ms of speech, waits through a 2.0-second trailing pause, and never closes
+  before 600 ms. The endpoint and dedicated-capture ceilings are both 12 seconds (240 release
+  chunks), and the wake-gate privacy guard is 15 seconds. The host capture commitment remains 10 seconds, so a valid long device
   utterance can be rejected; this is an open blocker. Native tests and the public full build pass,
   but real-room and exact-image evidence are still required before promotion.
 - The LAN bridge now keeps its socket reader responsive while one serialized turn worker owns

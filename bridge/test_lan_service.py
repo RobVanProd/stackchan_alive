@@ -1314,6 +1314,89 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("identity", record["runner_case"])
         self.assertIn("latency_turn_total_ms", record)
 
+    def test_expected_utterance_diagnostic_logs_metrics_without_pcm_or_transcript(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_stt.py"
+            script.write_text(
+                "import json,sys\n"
+                "sys.stdin.buffer.read()\n"
+                "print(json.dumps({'transcript':'what is your name',"
+                "'raw_transcript':'what is your fame','transcript_normalized':True}))\n",
+                encoding="utf-8",
+            )
+            turn_log = Path(temp_dir) / "turns.jsonl"
+            session = LanBridgeSession(
+                LanBridgeConfig(
+                    stt_command=f'"{sys.executable}" "{script}"',
+                    turn_log_file=turn_log,
+                    redact_turn_text=True,
+                    stt_diagnostic_expected_text="What is your name?",
+                    stt_diagnostic_critical_tokens=("name",),
+                )
+            )
+            session.handle_text(
+                json.dumps({"type": "utterance_start", "sample_rate": 16000})
+            )
+            session.handle_binary(b"\x01\x00\x02\x00")
+            session.handle_text(json.dumps({"type": "utterance_end", "seq": 13}))
+            session.handle_text(
+                json.dumps({"type": "utterance_start", "sample_rate": 16000})
+            )
+            session.handle_binary(b"\x01\x00\x02\x00")
+            session.handle_text(json.dumps({"type": "utterance_end", "seq": 14}))
+            records = [
+                json.loads(line)
+                for line in turn_log.read_text(encoding="utf-8").splitlines()
+            ]
+            record = records[0]
+
+        self.assertNotIn("transcript", record)
+        self.assertNotIn("stt_transcript", record)
+        self.assertNotIn("stt_raw_transcript", record)
+        self.assertNotIn("audio_evidence_file", record)
+        serialized_record = json.dumps(record).lower()
+        self.assertNotIn("what is your name", serialized_record)
+        self.assertNotIn("what is your fame", serialized_record)
+        self.assertTrue(record["transcript_present"])
+        self.assertTrue(record["stt_transcript_present"])
+        self.assertTrue(record["stt_expected_diagnostic"])
+        self.assertFalse(record["stt_expected_exact_match"])
+        self.assertFalse(record["stt_expected_normalized_match"])
+        self.assertTrue(record["stt_expected_diagnostic_used_raw_transcript"])
+        self.assertEqual(4, record["stt_expected_token_count"])
+        self.assertEqual(4, record["stt_recognized_token_count"])
+        self.assertEqual(1, record["stt_word_edit_distance"])
+        self.assertEqual(0.25, record["stt_word_error_rate"])
+        self.assertEqual(0.0, record["stt_critical_expected_token_coverage"])
+        self.assertNotIn("stt_expected_diagnostic", records[1])
+
+    def test_expected_utterance_diagnostic_requires_redaction_and_forbids_pcm_evidence(self):
+        for invalid in ("   ", "...", "x" * 501):
+            with self.subTest(invalid=invalid[:10]):
+                with self.assertRaisesRegex(ValueError, "1 to 500"):
+                    LanBridgeConfig(
+                        stt_diagnostic_expected_text=invalid,
+                        redact_turn_text=True,
+                        turn_log_file=Path("turns.jsonl"),
+                    )
+        with self.assertRaisesRegex(ValueError, "require a turn log"):
+            LanBridgeConfig(
+                stt_diagnostic_expected_text="known test phrase",
+                redact_turn_text=True,
+            )
+        with self.assertRaisesRegex(ValueError, "redacted turn logs"):
+            LanBridgeConfig(
+                stt_diagnostic_expected_text="known test phrase",
+                turn_log_file=Path("turns.jsonl"),
+            )
+        with self.assertRaisesRegex(ValueError, "forbid PCM"):
+            LanBridgeConfig(
+                stt_diagnostic_expected_text="known test phrase",
+                redact_turn_text=True,
+                turn_log_file=Path("turns.jsonl"),
+                audio_evidence_dir=Path("private-audio"),
+            )
+
     def test_local_time_and_memory_recall_bypass_the_model(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             turn_log = Path(temp_dir) / "turns.jsonl"

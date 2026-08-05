@@ -284,10 +284,10 @@ listener progressively less patient. The bridge rejects values outside the firmw
 acoustic-tail and reply-window bounds instead of silently correcting them. Sessions remain bounded
 to 24 user turns by default.
 Reply-window capture uses a deterministic local endpoint with sustained-speech and trailing-silence
-hysteresis. The accepted firmware currently ends a reply after 550 ms of trailing silence and
-always stops by 4.8 seconds. Those device-owned endpoint values can truncate a thoughtful pause or
-long sentence even though the host lease remains open; changing them requires a separately
-qualified firmware candidate. Initial v1 capture remains fixed-length. Exit phrases, turn limits,
+hysteresis. The currently installed diagnostic image was physically observed ending a turn after
+only 1.2 seconds of trailing silence and has an independent 6.5-second capture ceiling. The current
+qualification source instead waits 2.0 seconds and aligns both endpoint and dedicated capture at
+12 seconds; it remains unqualified until exact-image supervised evidence passes. Exit phrases, turn limits,
 bridge loss, cancellation, TTS failure, and model failure close through a typed cooldown.
 Host/companion cancellation is implemented; physical over-speaker barge-in and exact-image
 hardware qualification remain promotion gates.

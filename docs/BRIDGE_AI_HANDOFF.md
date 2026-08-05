@@ -110,6 +110,22 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   is not promotion evidence. Use explicit supervised qualification and do not infer hardware
   readiness from source tests.
 
+## Physical Endpoint Failure and Candidate Correction (2026-08-05)
+
+- The installed `6e9096d5` image with a 1.2-second trailing-silence tail failed a supervised
+  sentence check: the user was cut off after "wait until I finish". The private diagnostic
+  transcript contained only 4 of 17 expected words, so this is observed premature device
+  endpointing rather than a completed-turn recognition result.
+- The current qualification source raises the tail to 2.0 seconds and makes the dedicated
+  capture ceiling match the endpoint ceiling: 240 50-ms chunks / 12 seconds / 384 KB. The
+  15-second wake-gate privacy guard remains authoritative. Native coverage carries an eight-second
+  turn with a 1.5-second clause pause across the former 6.5-second ceiling.
+- The host has an opt-in, one-shot expected-utterance diagnostic. It records only expected-text
+  hash, word counts, edit distance/WER, and configured critical-token coverage; it requires
+  redacted logs and forbids PCM persistence. This source is not physically qualified until the
+  exact candidate is installed and the user confirms the complete sentence was spoken before the
+  response.
+
 ## Fault-Fix Candidate Update (2026-07-25)
 
 - F1 has a source-level wire guard. Once `response_start` is sent, cancellation and worker-error
@@ -274,11 +290,11 @@ Do not shorten the listening lease merely because several turns completed. That 
 progressively less patient during an active exchange. The host default is now a constant ten
 seconds and a 24-turn safety bound.
 
-PR #216 replaced the former 4.8-second endpoint with a 12-second maximum and moved the dedicated
-capture ceiling to 13 seconds. Both initial and follow-up capture now end on 550 ms of trailing
-silence. PR #217 closes the equal-threshold F2 race by renewing from device VAD speech and placing
-the hard privacy guard at 15 seconds. This bridge PR must not alter or flash the accepted firmware;
-promotion still requires exact-image physical evidence with zero new uplink errors.
+The current qualification source keeps the 12-second endpoint maximum, uses a matching 240-chunk
+12-second dedicated capture ceiling, and ends initial and follow-up capture after 2.0 seconds of
+trailing silence. PR #217's device-VAD renewal keeps the hard privacy guard at 15 seconds. This is
+candidate behavior, not accepted firmware behavior; promotion still requires exact-image physical
+evidence with zero new uplink errors and a completed supervised sentence.
 
 ---
 

@@ -20,9 +20,11 @@ struct VoiceActivityEndpointConfig {
   uint32_t sampleRate = 16000;
   uint32_t minimumCaptureMs = 600;
   uint32_t minimumSpeechMs = 150;
-  // Preserve natural clause pauses. The former 550 ms tail intermittently
-  // endpointed a speaker mid-sentence during physical conversation testing.
-  uint32_t trailingSilenceMs = 1200;
+  // Preserve natural clause pauses. Physical qualification proved that a
+  // 1200 ms tail still endpointed a deliberate mid-sentence pause after
+  // "wait until I finish". Two seconds keeps normal hesitation inside the
+  // same turn while retaining the 12 second hard capture ceiling.
+  uint32_t trailingSilenceMs = 2000;
   // Ceiling, not the normal path. Capture ends on trailing silence as soon as
   // the speaker stops; this only catches the case where silence is never
   // detected. It used to be 4800 ms, which truncated any sentence longer than

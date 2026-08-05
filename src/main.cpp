@@ -991,9 +991,10 @@ volatile bool gWakeMwwStereoDirectionPendingReady = false;
 constexpr uint32_t kWakeMwwCueCompletionTimeoutMs = 120;
 // Hard ceiling on one capture, in compile-time-sized chunks. This is the
 // backstop behind the voice-activity endpoint, which normally ends capture as
-// soon as the speaker stops. The release profile uses 800-sample chunks, so 130
-// chunks is 6.5 s (208 KB of 16 kHz mono PCM), inside the 512 KB uplink limit.
-constexpr uint16_t kWakeMwwDedicatedCaptureChunks = 130;
+// soon as the speaker stops. The release profile uses 800-sample chunks, so 240
+// chunks is 12 s (384 KB of 16 kHz mono PCM), inside the 512 KB uplink limit and
+// equal to VoiceActivityEndpointConfig::maximumCaptureMs.
+constexpr uint16_t kWakeMwwDedicatedCaptureChunks = 240;
 // One chunk is STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES at the capture rate.
 constexpr uint32_t kWakeMwwDedicatedCaptureCeilingMs =
     (static_cast<uint32_t>(kWakeMwwDedicatedCaptureChunks) *
@@ -1003,6 +1004,10 @@ constexpr uint32_t kWakeMwwDedicatedCaptureCeilingMs =
 // it closes the turn mid-utterance and the remaining chunks are rejected.
 static_assert(kWakeMwwDedicatedCaptureCeilingMs < kBridgeWakeGateMaxTurnMs,
               "wake gate max turn must exceed the dedicated capture ceiling");
+static_assert(static_cast<uint32_t>(kWakeMwwDedicatedCaptureChunks) *
+                  STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES * sizeof(int16_t) <=
+              kBridgeAudioUplinkMaxBytes,
+              "dedicated capture must fit the bridge audio uplink limit");
 RobotEvent gWakeMwwPendingCaptureEvent {};
 bool gWakeMwwPendingCaptureEventReady = false;
 bool gWakeMwwPendingCaptureIsConversationReply = false;

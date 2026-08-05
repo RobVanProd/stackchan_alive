@@ -10,6 +10,8 @@ param(
   [ValidateSet("auto", "cpu", "vulkan")]
   [string]$SttBackend = "auto",
   [string]$SttWarmupWavPath = "docs\media\voice\stackchan_spark_greeting.wav",
+  [string]$SttDiagnosticExpectedFile = "",
+  [string[]]$SttDiagnosticCriticalToken = @(),
   [int]$ReconnectTimeoutSeconds = 90,
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
   [switch]$EnableResearch,
@@ -58,6 +60,12 @@ if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile) -and
 }
 if ($SttThreads -lt 1 -or $SttThreads -gt 32) {
   throw "SttThreads must be between 1 and 32."
+}
+if (-not [string]::IsNullOrWhiteSpace($SttDiagnosticExpectedFile)) {
+  if (-not (Test-Path -LiteralPath $SttDiagnosticExpectedFile -PathType Leaf)) {
+    throw "SttDiagnosticExpectedFile does not exist: $SttDiagnosticExpectedFile"
+  }
+  $SttDiagnosticExpectedFile = (Resolve-Path -LiteralPath $SttDiagnosticExpectedFile).Path
 }
 
 function Stop-ExistingBridge {
@@ -342,6 +350,21 @@ if (-not [string]::IsNullOrWhiteSpace($RoomVisionModel)) {
 if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
   $escapedPairingCodeFile = $CameraPairingCodeFile.Replace("'", "''")
   $bridgeScript += " -CameraPairingCodeFile '$escapedPairingCodeFile'"
+}
+if (-not [string]::IsNullOrWhiteSpace($SttDiagnosticExpectedFile)) {
+  $escapedDiagnosticExpectedFile = $SttDiagnosticExpectedFile.Replace("'", "''")
+  $bridgeScript += " -SttDiagnosticExpectedFile '$escapedDiagnosticExpectedFile'"
+  $quotedCriticalTokens = @()
+  foreach ($criticalToken in $SttDiagnosticCriticalToken) {
+    if (-not [string]::IsNullOrWhiteSpace($criticalToken)) {
+      $escapedCriticalToken = $criticalToken.Replace("'", "''")
+      $quotedCriticalTokens += "'$escapedCriticalToken'"
+    }
+  }
+  if ($quotedCriticalTokens.Count -gt 0) {
+    $bridgeScript += " -SttDiagnosticCriticalToken @(" +
+      ($quotedCriticalTokens -join ",") + ")"
+  }
 }
 $BridgeStartupReady = $false
 try {

@@ -8,6 +8,8 @@ param(
   [string]$SttServerUrl = "",
   [string]$SttRestartCommand = "",
   [double]$SttHealthIntervalSeconds = 2.0,
+  [string]$SttDiagnosticExpectedFile = "",
+  [string[]]$SttDiagnosticCriticalToken = @(),
   [string]$TtsCommand = "python bridge\selected_voice_tts.py",
   [switch]$InProcessDirectMlTts,
   [string]$TtsVoice = "stackchan-rvc-bright-robot",
@@ -106,6 +108,15 @@ if ($EnablePrivateTurnEvidence -and [string]::IsNullOrWhiteSpace($AudioEvidenceD
 }
 if (-not [string]::IsNullOrWhiteSpace($AudioEvidenceDir)) {
   New-Item -ItemType Directory -Force -Path $AudioEvidenceDir | Out-Null
+}
+if (-not [string]::IsNullOrWhiteSpace($SttDiagnosticExpectedFile)) {
+  if ($EnablePrivateTurnEvidence) {
+    throw "STT expected-utterance diagnostics require redacted logs and forbid private PCM evidence."
+  }
+  if (-not (Test-Path -LiteralPath $SttDiagnosticExpectedFile -PathType Leaf)) {
+    throw "SttDiagnosticExpectedFile does not exist: $SttDiagnosticExpectedFile"
+  }
+  $SttDiagnosticExpectedFile = (Resolve-Path -LiteralPath $SttDiagnosticExpectedFile).Path
 }
 
 if ($StopExisting) {
@@ -266,6 +277,15 @@ if ($EnableDashboard) {
     "--dashboard-port", "$DashboardPort",
     "--robot-http-port", "$RobotHttpPort"
   )
+}
+
+if (-not [string]::IsNullOrWhiteSpace($SttDiagnosticExpectedFile)) {
+  $ArgsList += @("--stt-diagnostic-expected-file", $SttDiagnosticExpectedFile)
+  foreach ($CriticalToken in $SttDiagnosticCriticalToken) {
+    if (-not [string]::IsNullOrWhiteSpace($CriticalToken)) {
+      $ArgsList += @("--stt-diagnostic-critical-token", $CriticalToken)
+    }
+  }
 }
 
 if (-not [string]::IsNullOrWhiteSpace($RobotHost)) {

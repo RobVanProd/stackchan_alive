@@ -59,6 +59,11 @@ from stt_adapter import (
     transcribe_pcm,
 )
 from stt_supervisor import SttServerSupervisor, SttSupervisorConfig
+from transcript_diagnostics import (
+    expected_transcript_metrics,
+    validate_critical_tokens,
+    validate_expected_text,
+)
 from tts_adapter import (
     DEFAULT_TTS_TIMEOUT_MS,
     DEFAULT_TTS_VOICE,
@@ -771,6 +776,8 @@ class LanBridgeConfig:
     stt_health_interval_s: float = 2.0
     stt_timeout_ms: int = DEFAULT_STT_TIMEOUT_MS
     stt_min_confidence: float = 0.45
+    stt_diagnostic_expected_text: str = ""
+    stt_diagnostic_critical_tokens: tuple[str, ...] = ()
     require_audio_wake_phrase: bool = False
     tts_command: str = ""
     in_process_directml_tts: bool = False
@@ -844,6 +851,20 @@ class LanBridgeConfig:
             )
         if not 0.0 <= float(self.stt_min_confidence) <= 1.0:
             raise ValueError("stt_min_confidence must be between zero and one")
+        if self.stt_diagnostic_expected_text:
+            validate_expected_text(self.stt_diagnostic_expected_text)
+            if self.turn_log_file is None:
+                raise ValueError("STT expected-utterance diagnostics require a turn log")
+            if not self.redact_turn_text:
+                raise ValueError("STT expected-utterance diagnostics require redacted turn logs")
+            if self.audio_evidence_dir is not None:
+                raise ValueError("STT expected-utterance diagnostics forbid PCM evidence persistence")
+            validate_critical_tokens(
+                self.stt_diagnostic_expected_text,
+                self.stt_diagnostic_critical_tokens,
+            )
+        elif self.stt_diagnostic_critical_tokens:
+            raise ValueError("critical STT tokens require an expected diagnostic utterance")
         if not bridge_bind_is_loopback(self.host) and not self.robot_host.strip():
             raise ValueError("robot_host is required when the bridge bind is not loopback")
 
@@ -1499,6 +1520,7 @@ class LanBridgeSession:
         self.playback_response_seq = 0
         self.conversation_playback_complete_seq = 0
         self.audio_protocol_errors = 0
+        self._stt_diagnostic_pending = bool(config.stt_diagnostic_expected_text)
         saved_initiative = self.memory.fact_value("user.initiative_enabled")
         if self.initiative_policy is not None and saved_initiative == "false":
             self.initiative_policy.set_enabled(False)
@@ -1923,6 +1945,16 @@ class LanBridgeSession:
         self.config.turn_log_file.parent.mkdir(parents=True, exist_ok=True)
         with self.config.turn_log_file.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(serialized, separators=(",", ":"), ensure_ascii=True) + "\n")
+
+    def _take_stt_diagnostic_metrics(self, recognized_text: str) -> dict[str, object]:
+        if not self._stt_diagnostic_pending:
+            return {}
+        self._stt_diagnostic_pending = False
+        return expected_transcript_metrics(
+            self.config.stt_diagnostic_expected_text,
+            recognized_text,
+            critical_tokens=self.config.stt_diagnostic_critical_tokens,
+        )
 
     def _write_audio_evidence(
         self,
@@ -2938,6 +2970,7 @@ class LanBridgeSession:
                         ),
                     }
                 )
+                stt_log.update(self._take_stt_diagnostic_metrics(""))
             except (SttExecutionError, ValueError) as exc:
                 self._append_audio_error_log(
                     seq=seq,
@@ -2961,6 +2994,13 @@ class LanBridgeSession:
                     stt_log["stt_raw_transcript"] = stt.raw_transcript
                 if stt.transcript_normalized:
                     stt_log["stt_transcript_normalized"] = True
+                diagnostic_text = stt.raw_transcript or stt.transcript
+                diagnostic_metrics = self._take_stt_diagnostic_metrics(diagnostic_text)
+                if diagnostic_metrics:
+                    diagnostic_metrics["stt_expected_diagnostic_used_raw_transcript"] = bool(
+                        stt.raw_transcript
+                    )
+                    stt_log.update(diagnostic_metrics)
                 stt_confidence = getattr(stt, "confidence", None)
                 if stt_confidence is not None:
                     stt_log["stt_confidence"] = round(stt_confidence, 4)
@@ -4325,6 +4365,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stt-health-interval-s", type=float, default=2.0)
     parser.add_argument("--stt-timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
     parser.add_argument("--stt-min-confidence", type=float, default=0.45)
+    parser.add_argument("--stt-diagnostic-expected-file", type=Path)
+    parser.add_argument("--stt-diagnostic-critical-token", action="append", default=[])
     parser.add_argument("--require-audio-wake-phrase", action="store_true")
     parser.add_argument("--tts-command", default="")
     parser.add_argument("--in-process-directml-tts", action="store_true")
@@ -4402,6 +4444,16 @@ def main() -> int:
         parser.error("--room-observation-interval-seconds must be between 120 and 1800")
     if args.reset_memory and args.memory_file:
         reset_bridge_memory(args.memory_file)
+    diagnostic_expected_text = ""
+    if args.stt_diagnostic_expected_file is not None:
+        try:
+            diagnostic_expected_text = args.stt_diagnostic_expected_file.read_text(
+                encoding="utf-8"
+            ).strip()
+        except OSError as exc:
+            parser.error(f"could not read --stt-diagnostic-expected-file: {exc}")
+        if not diagnostic_expected_text or len(diagnostic_expected_text) > 500:
+            parser.error("--stt-diagnostic-expected-file must contain 1 to 500 characters")
     conversation_max_turns = max(1, min(50, args.conversation_max_turns))
     config = LanBridgeConfig(
         host=args.host,
@@ -4420,6 +4472,8 @@ def main() -> int:
         stt_health_interval_s=args.stt_health_interval_s,
         stt_timeout_ms=args.stt_timeout_ms,
         stt_min_confidence=args.stt_min_confidence,
+        stt_diagnostic_expected_text=diagnostic_expected_text,
+        stt_diagnostic_critical_tokens=tuple(args.stt_diagnostic_critical_token),
         require_audio_wake_phrase=args.require_audio_wake_phrase,
         tts_command=args.tts_command,
         in_process_directml_tts=args.in_process_directml_tts,
