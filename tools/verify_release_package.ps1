@@ -1077,6 +1077,78 @@ function Assert-StackchanVerifierSourceTopology {
   }
 }
 
+function Invoke-StackchanVerifierNativeCapture {
+  param(
+    [Parameter(Mandatory = $true)][string]$Executable,
+    [string[]]$Arguments = @()
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Executable)) {
+    throw 'Operational verifier refuses an empty native executable path.'
+  }
+  $previousErrorActionPreference = $ErrorActionPreference
+  $nativeExitSentinel = [int]::MinValue
+  $nativeExitCode = $nativeExitSentinel
+  $nativeOutput = @()
+  try {
+    # Windows PowerShell surfaces redirected native stderr as ErrorRecord
+    # objects. Capture those records without letting ordinary progress text
+    # unwind the verifier, then authorize only from the native exit code.
+    $ErrorActionPreference = 'Continue'
+    $global:LASTEXITCODE = $nativeExitSentinel
+    $nativeOutput = @(& $Executable @Arguments 2>&1)
+    $nativeExitCode = [int]$global:LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  if ($nativeExitCode -eq $nativeExitSentinel) {
+    throw "Operational verifier native command did not report an exit code: $Executable"
+  }
+  return [pscustomobject]@{
+    output = @($nativeOutput | ForEach-Object { [string]$_ })
+    exitCode = $nativeExitCode
+  }
+}
+
+function Test-StackchanVerifierWorktreeListContains {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$PorcelainLines,
+    [Parameter(Mandatory = $true)][string]$ExpectedPath
+  )
+
+  try {
+    $expectedFullPath = [System.IO.Path]::GetFullPath($ExpectedPath).TrimEnd(
+      [char[]]@([System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar))
+  } catch {
+    return $false
+  }
+  $comparison = if ($env:OS -eq 'Windows_NT') {
+    [System.StringComparison]::OrdinalIgnoreCase
+  } else {
+    [System.StringComparison]::Ordinal
+  }
+  $matches = 0
+  foreach ($line in $PorcelainLines) {
+    $text = [string]$line
+    if (-not $text.StartsWith('worktree ', [System.StringComparison]::Ordinal)) {
+      continue
+    }
+    try {
+      $listedFullPath = [System.IO.Path]::GetFullPath(
+        $text.Substring('worktree '.Length)).TrimEnd(
+          [char[]]@([System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar))
+    } catch {
+      continue
+    }
+    if ([string]::Equals($listedFullPath, $expectedFullPath, $comparison)) {
+      $matches++
+    }
+  }
+  return $matches -eq 1
+}
+
 function Assert-OperationalFirmwareMatchesTrustedRebuild {
   if (-not $RequireReleaseEligible) { return }
 
@@ -1149,8 +1221,10 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
     Assert-StackchanReleaseBuildPythonEnvironment -ProjectRoot $rebuildWorktree
     Assert-StackchanToolchainLeaseStateUnchanged `
       -LeaseState $script:verifierToolchainLeaseState -Context 'before PlatformIO version execution'
-    $pioVersion = ((@(& $pioExecutable --version 2>&1) | Out-String).Trim())
-    $pioVersionExit = $LASTEXITCODE
+    $pioVersionResult = Invoke-StackchanVerifierNativeCapture `
+      -Executable $pioExecutable -Arguments @('--version')
+    $pioVersion = ((@($pioVersionResult.output) | Out-String).Trim())
+    $pioVersionExit = [int]$pioVersionResult.exitCode
     Assert-StackchanToolchainLeaseStateUnchanged `
       -LeaseState $script:verifierToolchainLeaseState -Context 'after PlatformIO version execution'
     if ($pioVersionExit -ne 0 -or $pioVersion -cne 'PlatformIO Core, version 6.1.19' -or
@@ -1174,12 +1248,15 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
       New-Item -ItemType Directory -Path $env:PLATFORMIO_BUILD_CACHE_DIR | Out-Null
       Assert-StackchanToolchainLeaseStateUnchanged `
         -LeaseState $script:verifierToolchainLeaseState -Context "before $environment dependency staging"
-      $dependencyStageOutput = @(& $pioExecutable 'pkg' 'install' '-d' $rebuildWorktree '-e' $environment 2>&1)
-      $dependencyStageExit = $LASTEXITCODE
-      Assert-StackchanToolchainLeaseStateUnchanged `
-        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment dependency staging"
+      $dependencyStageResult = Invoke-StackchanVerifierNativeCapture `
+        -Executable $pioExecutable `
+        -Arguments @('pkg', 'install', '-d', $rebuildWorktree, '-e', $environment)
+      $dependencyStageOutput = @($dependencyStageResult.output)
+      $dependencyStageExit = [int]$dependencyStageResult.exitCode
       $dependencyStageOutput | Set-Content -LiteralPath (
         Join-Path $rebuildEvidenceRoot "$environment-dependency-stage.log") -Encoding UTF8
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment dependency staging"
       if ($dependencyStageExit -ne 0) {
         throw "Operational dependency staging failed: $environment (exit $dependencyStageExit)."
       }
@@ -1207,12 +1284,14 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
         if ($phase -eq 'clean') { $pioArguments += @('-t', 'clean') }
         Assert-StackchanToolchainLeaseStateUnchanged `
           -LeaseState $script:verifierToolchainLeaseState -Context "before $environment $phase"
-        $phaseOutput = @(& $pioExecutable @pioArguments 2>&1)
-        $phaseExit = $LASTEXITCODE
-        Assert-StackchanToolchainLeaseStateUnchanged `
-          -LeaseState $script:verifierToolchainLeaseState -Context "after $environment $phase"
+        $phaseResult = Invoke-StackchanVerifierNativeCapture `
+          -Executable $pioExecutable -Arguments $pioArguments
+        $phaseOutput = @($phaseResult.output)
+        $phaseExit = [int]$phaseResult.exitCode
         $phaseOutput | Set-Content -LiteralPath (
           Join-Path $rebuildEvidenceRoot "$environment-$phase.log") -Encoding UTF8
+        Assert-StackchanToolchainLeaseStateUnchanged `
+          -LeaseState $script:verifierToolchainLeaseState -Context "after $environment $phase"
         if ($phaseExit -ne 0) {
           throw "Operational independent firmware rebuild failed: $environment/$phase (exit $phaseExit)."
         }
@@ -1277,12 +1356,15 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
       }
       Assert-StackchanToolchainLeaseStateUnchanged `
         -LeaseState $script:verifierToolchainLeaseState -Context "before $environment dependency inventory"
-      $packageListOutput = @(& $pioExecutable 'pkg' 'list' '-d' $rebuildWorktree '-e' $environment 2>&1)
-      $packageListExit = $LASTEXITCODE
-      Assert-StackchanToolchainLeaseStateUnchanged `
-        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment dependency inventory"
+      $packageListResult = Invoke-StackchanVerifierNativeCapture `
+        -Executable $pioExecutable `
+        -Arguments @('pkg', 'list', '-d', $rebuildWorktree, '-e', $environment)
+      $packageListOutput = @($packageListResult.output)
+      $packageListExit = [int]$packageListResult.exitCode
       $packageListOutput | Set-Content -LiteralPath (
         Join-Path $rebuildEvidenceRoot "$environment-pkg-list.log") -Encoding UTF8
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment dependency inventory"
       if ($packageListExit -ne 0) {
         throw "Operational independent dependency inventory failed: $environment (exit $packageListExit)."
       }
@@ -1306,12 +1388,15 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
       }
       Assert-StackchanToolchainLeaseStateUnchanged `
         -LeaseState $script:verifierToolchainLeaseState -Context "before $environment verbose dependency inventory"
-      $verbosePackageOutput = @(& $pioExecutable 'pkg' 'list' '-d' $rebuildWorktree '-e' $environment '-v' 2>&1)
-      $verbosePackageExit = $LASTEXITCODE
-      Assert-StackchanToolchainLeaseStateUnchanged `
-        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment verbose dependency inventory"
+      $verbosePackageResult = Invoke-StackchanVerifierNativeCapture `
+        -Executable $pioExecutable `
+        -Arguments @('pkg', 'list', '-d', $rebuildWorktree, '-e', $environment, '-v')
+      $verbosePackageOutput = @($verbosePackageResult.output)
+      $verbosePackageExit = [int]$verbosePackageResult.exitCode
       $verbosePackageOutput | Set-Content -LiteralPath (
         Join-Path $rebuildEvidenceRoot "$environment-pkg-list-verbose.log") -Encoding UTF8
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment verbose dependency inventory"
       if ($verbosePackageExit -ne 0) {
         throw "Operational independent verbose dependency inventory failed: $environment (exit $verbosePackageExit)."
       }
@@ -1395,32 +1480,68 @@ function Assert-OperationalFirmwareMatchesTrustedRebuild {
   } catch {
     $failure = $_
     $worktreePathExists = Test-Path -LiteralPath $rebuildWorktree -PathType Container
-    $worktreeList = @(Invoke-TrustedVerifierGit -Arguments @(
-      '-C', $resolvedVerifierRoot, 'worktree', 'list', '--porcelain') 2>$null)
-    $worktreeAttached = $false
-    if ($LASTEXITCODE -eq 0) {
-      $worktreeAttached = @($worktreeList | Where-Object {
-        $_ -ceq "worktree $rebuildWorktree"
-      }).Count -eq 1
+    $worktreeProbeExitCode = $null
+    $worktreeProbeError = $null
+    $worktreeAttached = $null
+    try {
+      $previousProbeErrorActionPreference = $ErrorActionPreference
+      $worktreeProbeExitSentinel = [int]::MinValue
+      try {
+        $ErrorActionPreference = 'Continue'
+        $global:LASTEXITCODE = $worktreeProbeExitSentinel
+        $worktreeList = @(Invoke-TrustedVerifierGit -Arguments @(
+          '-C', $resolvedVerifierRoot, 'worktree', 'list', '--porcelain') 2>&1 |
+          ForEach-Object { [string]$_ })
+        $worktreeProbeExitCode = [int]$global:LASTEXITCODE
+      } finally {
+        $ErrorActionPreference = $previousProbeErrorActionPreference
+      }
+      if ($worktreeProbeExitCode -eq $worktreeProbeExitSentinel) {
+        throw 'Operational rebuild worktree attachment probe did not report an exit code.'
+      }
+      if ($worktreeProbeExitCode -eq 0) {
+        $worktreeAttached = Test-StackchanVerifierWorktreeListContains `
+          -PorcelainLines $worktreeList -ExpectedPath $rebuildWorktree
+      } else {
+        $worktreeProbeError =
+          "Trusted Git worktree attachment probe exited $worktreeProbeExitCode."
+      }
+    } catch {
+      $worktreeProbeError = [string]$_.Exception.Message
     }
-    $worktreePreserved = $worktreePathExists -and $worktreeAttached
+    $worktreePreserved = $worktreePathExists -and $worktreeAttached -eq $true
+    $worktreePreservationKnown = -not $worktreePathExists -or $null -ne $worktreeAttached
+    $failureStatus = if ($worktreePreserved) {
+      'failed-full-worktree-preserved'
+    } elseif ($worktreePreservationKnown) {
+      'failed-worktree-not-preserved'
+    } else {
+      'failed-worktree-preservation-unknown'
+    }
     [ordered]@{
       schema = 'stackchan.operational-firmware-rebuild-failure.v1'
-      status = if ($worktreePreserved) { 'failed-full-worktree-preserved' } else { 'failed-worktree-not-preserved' }
+      status = $failureStatus
       version = $Version
       sourceCommit = $ExpectedCommit
       sourceEpoch = $ExpectedSourceEpoch
       rebuildWorktree = $rebuildWorktree
       worktreePathExists = $worktreePathExists
       worktreeStillAttached = $worktreeAttached
+      worktreeProbeExitCode = $worktreeProbeExitCode
+      worktreeProbeError = $worktreeProbeError
       capturedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
       message = [string]$failure.Exception.Message
+      exceptionType = [string]$failure.Exception.GetType().FullName
+      fullyQualifiedErrorId = [string]$failure.FullyQualifiedErrorId
+      scriptStackTrace = [string]$failure.ScriptStackTrace
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (
       Join-Path $rebuildEvidenceRoot 'FAILURE_EVIDENCE.json') -Encoding UTF8
     if ($worktreePreserved) {
       Write-Warning "Operational firmware rebuild failed; exact worktree remains attached at $rebuildWorktree; evidence: $rebuildEvidenceRoot"
+    } elseif (-not $worktreePreservationKnown) {
+      Write-Warning "Operational firmware rebuild failed and worktree preservation could not be proven; evidence: $rebuildEvidenceRoot"
     }
-    throw $failure.Exception
+    throw
   } finally {
     foreach ($environmentName in $environmentNames) {
       $savedValue = $savedEnvironment[$environmentName]

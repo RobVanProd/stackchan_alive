@@ -454,6 +454,42 @@ the copy. The count and path allowlists remain fail closed for undeclared files.
 remains in force until this correction passes the broad contracts, exact-head CI, and a fresh
 governed package plus independent verification.
 
+Qualification head `611f609f8df1e4608a9249314eeff9ae3e8845c2` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `31017406734`. Governed packaging for
+`sec-002-611f609f` completed two clean cycles and exact size/SHA-256 comparison of all 15 artifact
+pairs. The public `stackchan_release_full` firmware from both cycles is 2,803,504 bytes with
+SHA-256 `8FF304E88F7B03A114D96B2ADB16D3475B7508148FAF3A025524916935CC2E76`. The provisional
+189,657,088-byte ZIP has SHA-256
+`18530C8AC81FEC49618BD56BA734EBC0F6D088DCBBA85C6A42969A4177B8F2A1`. Packaging passed the broad
+contracts and credential hygiene before package assembly. The independent verifier passed
+voice/RVC, preview media, face phases A-E, and release assets, then failed closed at
+`verify_release_package.ps1:1177` during the fresh exact-commit rebuild's first dependency-staging
+command. Windows PowerShell 5.1 promoted
+Git's ordinary `Cloning into ...` stderr progress to a terminating `RemoteException` under the
+verifier's global `Stop` policy, before PlatformIO's native exit code or dependency-stage log could
+be captured. The PlatformIO result is therefore unknown and must not be classified as a dependency
+or network failure.
+
+Failure evidence under
+`output/private/operational-firmware-rebuilds/20260805-160150-528-146af296067c` also incorrectly
+recorded `failed-worktree-not-preserved`: Git listed the generated worktree with forward slashes,
+while the catch path compared it literally and case-sensitively against the backslash path. The
+clean detached worktree actually remains registered at `D:\sc-vrfy-0000000528-c19e1066` on exact
+head `611f609f8df1e4608a9249314eeff9ae3e8845c2`. The provisional ZIP and output under
+`output/release/sec-002-611f609f` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction routes all five captured PlatformIO sites through one narrowly scoped native
+stderr collector, restores the global `Stop` policy in `finally`, and keeps native exit codes as the
+only process authority. Captured process logs are persisted before post-command lease assertions,
+and AST plus behavioral mutation contracts bind all five call sites to the reviewed executable,
+argument, result, output consumer, exit, and unconditional-failure topology. It canonicalizes Git worktree paths
+with OS-appropriate comparison, requires one exact registration, records an explicit
+preservation-unknown state when the probe itself cannot be trusted, retains richer exception
+evidence, and uses a context-preserving bare rethrow. The SEC-002 hold remains in force until this
+correction passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

@@ -241,11 +241,140 @@ foreach ($needle in @(
     'Assert-OperationalFirmwareMatchesTrustedRebuild')) {
   Require-Text $verifierText $needle "Verifier does not independently enforce toolchain proof: $needle"
 }
-Require-Order $verifierText 'Assert-StackchanReleaseBuildPythonEnvironment -ProjectRoot $rebuildWorktree' `
-  '$pioExecutable --version' `
-  'Verifier executes PlatformIO before establishing the approved build-Python environment.'
-Require-Order $verifierText '$pioExecutable --version' "& `$pioExecutable 'pkg' 'install'" `
-  'Verifier does not validate the exact PlatformIO launcher before dependency staging.'
+$verifierTokens = $null
+$verifierParseErrors = $null
+$verifierAst = [System.Management.Automation.Language.Parser]::ParseFile(
+  $verifierPath, [ref]$verifierTokens, [ref]$verifierParseErrors)
+if (@($verifierParseErrors).Count -ne 0) {
+  throw 'Release verifier cannot be parsed for PlatformIO execution-order testing.'
+}
+$operationalRebuildFunctions = @($verifierAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Assert-OperationalFirmwareMatchesTrustedRebuild'
+}, $true))
+if ($operationalRebuildFunctions.Count -ne 1) {
+  throw 'Release verifier must define one operational independent-rebuild function.'
+}
+$operationalCommands = @($operationalRebuildFunctions[0].Body.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.CommandAst]
+}, $true))
+$buildPythonAssertions = @($operationalCommands | Where-Object {
+  $_.GetCommandName() -ceq 'Assert-StackchanReleaseBuildPythonEnvironment'
+})
+$nativeCaptureCalls = @($operationalCommands | Where-Object {
+  $_.GetCommandName() -ceq 'Invoke-StackchanVerifierNativeCapture'
+})
+$captureSpecifications = @(
+  [ordered]@{
+    result = '$pioVersionResult'; arguments = "@('--version')"
+    consumer = '$pioVersion'
+    consumerRhs = '((@($pioVersionResult.output) | Out-String).Trim())'
+  },
+  [ordered]@{
+    result = '$dependencyStageResult'
+    arguments = "@('pkg', 'install', '-d', `$rebuildWorktree, '-e', `$environment)"
+    consumer = '$dependencyStageOutput'; consumerRhs = '@($dependencyStageResult.output)'
+  },
+  [ordered]@{
+    result = '$phaseResult'; arguments = '$pioArguments'
+    consumer = '$phaseOutput'; consumerRhs = '@($phaseResult.output)'
+  },
+  [ordered]@{
+    result = '$packageListResult'
+    arguments = "@('pkg', 'list', '-d', `$rebuildWorktree, '-e', `$environment)"
+    consumer = '$packageListOutput'; consumerRhs = '@($packageListResult.output)'
+  },
+  [ordered]@{
+    result = '$verbosePackageResult'
+    arguments = "@('pkg', 'list', '-d', `$rebuildWorktree, '-e', `$environment, '-v')"
+    consumer = '$verbosePackageOutput'; consumerRhs = '@($verbosePackageResult.output)'
+  }
+)
+if ($buildPythonAssertions.Count -ne 1 -or
+    $nativeCaptureCalls.Count -ne $captureSpecifications.Count) {
+  throw 'Verifier operational PlatformIO execution topology is not the reviewed five-site shape.'
+}
+$boundCaptureCalls = @{}
+$operationalAssignments = @($operationalRebuildFunctions[0].Body.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.AssignmentStatementAst]
+}, $true))
+foreach ($specification in $captureSpecifications) {
+  $matches = @($nativeCaptureCalls | Where-Object {
+    $_.Parent -is [System.Management.Automation.Language.PipelineAst] -and
+    $_.Parent.Parent -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $_.Parent.Parent.Left.Extent.Text -ceq [string]$specification.result
+  })
+  if ($matches.Count -ne 1) {
+    throw "Verifier PlatformIO capture is not bound to its reviewed result: $($specification.result)"
+  }
+  $call = $matches[0]
+  $elements = @($call.CommandElements)
+  if ($call.Parent.Parent.Operator -ne
+        [System.Management.Automation.Language.TokenKind]::Equals -or
+      $call.Parent.Parent.Right -ne $call.Parent -or $elements.Count -ne 5 -or
+      $elements[1] -isnot [System.Management.Automation.Language.CommandParameterAst] -or
+      $elements[1].ParameterName -cne 'Executable' -or
+      $elements[2] -isnot [System.Management.Automation.Language.VariableExpressionAst] -or
+      $elements[2].VariablePath.UserPath -cne 'pioExecutable' -or
+      $elements[3] -isnot [System.Management.Automation.Language.CommandParameterAst] -or
+      $elements[3].ParameterName -cne 'Arguments' -or
+      [regex]::Replace($elements[4].Extent.Text.Trim(), '\s+', ' ') -cne
+        [string]$specification.arguments) {
+    throw "Verifier PlatformIO executable/arguments differ from reviewed topology: $($specification.result)"
+  }
+  $resultAssignments = @($operationalAssignments | Where-Object {
+    $_.Left.Extent.Text -ceq [string]$specification.result
+  })
+  $consumerAssignments = @($operationalAssignments | Where-Object {
+    $_.Left.Extent.Text -ceq [string]$specification.consumer
+  })
+  if ($resultAssignments.Count -ne 1 -or
+      $resultAssignments[0].Extent.StartOffset -ne $call.Parent.Parent.Extent.StartOffset -or
+      $consumerAssignments.Count -ne 1 -or
+      $consumerAssignments[0].Operator -ne
+        [System.Management.Automation.Language.TokenKind]::Equals -or
+      [regex]::Replace($consumerAssignments[0].Right.Extent.Text.Trim(), '\s+', ' ') -cne
+        [string]$specification.consumerRhs -or
+      $call.Extent.StartOffset -ge $consumerAssignments[0].Extent.StartOffset) {
+    throw "Verifier PlatformIO output is not uniquely bound to its reviewed consumer: $($specification.result)"
+  }
+  $boundCaptureCalls[[string]$specification.result] = $call
+}
+$pioArgumentAssignments = @($operationalRebuildFunctions[0].Body.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $node.Left.Extent.Text -ceq '$pioArguments'
+}, $true))
+$phaseLoops = @($operationalRebuildFunctions[0].Body.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.ForEachStatementAst] -and
+    $node.Variable.VariablePath.UserPath -ceq 'phase' -and
+    [regex]::Replace($node.Condition.Extent.Text.Trim(), '\s+', ' ') -ceq
+      "@('clean', 'build')"
+}, $true))
+if ($pioArgumentAssignments.Count -ne 2 -or $phaseLoops.Count -ne 1 -or
+    @($pioArgumentAssignments | Where-Object {
+      $_.Operator -eq [System.Management.Automation.Language.TokenKind]::Equals -and
+      [regex]::Replace($_.Right.Extent.Text.Trim(), '\s+', ' ') -ceq
+        "@('run', '-d', `$rebuildWorktree, '-e', `$environment)"
+    }).Count -ne 1 -or
+    @($pioArgumentAssignments | Where-Object {
+      $_.Operator -eq [System.Management.Automation.Language.TokenKind]::PlusEquals -and
+      [regex]::Replace($_.Right.Extent.Text.Trim(), '\s+', ' ') -ceq "@('-t', 'clean')"
+    }).Count -ne 1) {
+  throw 'Verifier clean/build PlatformIO argument construction is not the reviewed loop topology.'
+}
+$pioVersionCall = $boundCaptureCalls['$pioVersionResult']
+$dependencyStageCall = $boundCaptureCalls['$dependencyStageResult']
+if ($buildPythonAssertions[0].Extent.StartOffset -ge $pioVersionCall.Extent.StartOffset) {
+  throw 'Verifier executes PlatformIO before establishing the approved build-Python environment.'
+}
+if ($pioVersionCall.Extent.StartOffset -ge $dependencyStageCall.Extent.StartOffset) {
+  throw 'Verifier does not validate the exact PlatformIO launcher before dependency staging.'
+}
 
 foreach ($needle in @(
     'release-toolchain-identity-policy-source', 'Environment',

@@ -912,6 +912,108 @@ foreach ($gitBootstrapMarker in @(
   }
 }
 
+$nativeCaptureFunctions = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Invoke-StackchanVerifierNativeCapture'
+}, $true))
+if ($nativeCaptureFunctions.Count -ne 1) {
+  throw 'Operational verifier native-capture helper is ambiguous.'
+}
+$nativeCaptureText = $nativeCaptureFunctions[0].Extent.Text
+foreach ($marker in @(
+  '$previousErrorActionPreference = $ErrorActionPreference',
+  '$ErrorActionPreference = ''Continue''',
+  '$global:LASTEXITCODE = $nativeExitSentinel',
+  '$nativeExitCode = [int]$global:LASTEXITCODE',
+  '$ErrorActionPreference = $previousErrorActionPreference',
+  '$nativeExitCode -eq $nativeExitSentinel',
+  'output = @($nativeOutput | ForEach-Object { [string]$_ })',
+  'exitCode = $nativeExitCode'
+)) {
+  if (-not $nativeCaptureText.Contains($marker)) {
+    throw "Operational verifier native capture is missing: $marker"
+  }
+}
+. ([scriptblock]::Create($nativeCaptureText))
+$savedNativeCaptureErrorPreference = $ErrorActionPreference
+try {
+  $ErrorActionPreference = 'Stop'
+  $nativeFixtureExecutable = (Get-Process -Id $PID).Path
+  $nativeSuccess = Invoke-StackchanVerifierNativeCapture `
+    -Executable $nativeFixtureExecutable `
+    -Arguments @('-NoProfile', '-NonInteractive', '-Command',
+      "[Console]::Out.WriteLine('native-stdout'); [Console]::Error.WriteLine('Cloning into fixture...'); exit 0")
+  $nativeSuccessText = @($nativeSuccess.output) -join "`n"
+  if ([int]$nativeSuccess.exitCode -ne 0 -or
+      $nativeSuccessText -notmatch 'native-stdout' -or
+      $nativeSuccessText -notmatch 'Cloning into fixture' -or
+      $ErrorActionPreference -cne 'Stop') {
+    throw 'Operational verifier native capture did not preserve successful stderr and exit authority.'
+  }
+  $nativeFailure = Invoke-StackchanVerifierNativeCapture `
+    -Executable $nativeFixtureExecutable `
+    -Arguments @('-NoProfile', '-NonInteractive', '-Command',
+      "[Console]::Error.WriteLine('native-failure-stderr'); exit 23")
+  if ([int]$nativeFailure.exitCode -ne 23 -or
+      (@($nativeFailure.output) -join "`n") -notmatch 'native-failure-stderr' -or
+      $ErrorActionPreference -cne 'Stop') {
+    throw 'Operational verifier native capture lost nonzero exit or stderr evidence.'
+  }
+} finally {
+  $ErrorActionPreference = $savedNativeCaptureErrorPreference
+  Remove-Item Function:\Invoke-StackchanVerifierNativeCapture -ErrorAction SilentlyContinue
+}
+
+$worktreeListFunctions = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Test-StackchanVerifierWorktreeListContains'
+}, $true))
+if ($worktreeListFunctions.Count -ne 1) {
+  throw 'Operational verifier worktree-list helper is ambiguous.'
+}
+$worktreeListText = $worktreeListFunctions[0].Extent.Text
+foreach ($marker in @(
+  '[System.IO.Path]::GetFullPath($ExpectedPath)',
+  "StartsWith('worktree ', [System.StringComparison]::Ordinal)",
+  '[System.StringComparison]::OrdinalIgnoreCase',
+  'return $matches -eq 1'
+)) {
+  if (-not $worktreeListText.Contains($marker)) {
+    throw "Operational verifier worktree-list normalization is missing: $marker"
+  }
+}
+. ([scriptblock]::Create($worktreeListText))
+try {
+  $worktreeFixturePath = if ($env:OS -eq 'Windows_NT') {
+    Join-Path ([System.IO.Path]::GetPathRoot($repoRoot)) 'sc-vrfy-path-contract'
+  } else {
+    Join-Path ([System.IO.Path]::GetTempPath()) 'sc-vrfy-path-contract'
+  }
+  $worktreeFixtureGitPath = $worktreeFixturePath.Replace('\', '/')
+  if ($env:OS -eq 'Windows_NT') {
+    $worktreeFixtureGitPath = $worktreeFixtureGitPath.ToUpperInvariant()
+  }
+  if (-not (Test-StackchanVerifierWorktreeListContains `
+      -PorcelainLines @("worktree $worktreeFixtureGitPath", 'HEAD 1111111') `
+      -ExpectedPath $worktreeFixturePath)) {
+    throw 'Operational verifier did not match an equivalent Git worktree path.'
+  }
+  if (Test-StackchanVerifierWorktreeListContains `
+      -PorcelainLines @("worktree $worktreeFixtureGitPath-neighbor") `
+      -ExpectedPath $worktreeFixturePath) {
+    throw 'Operational verifier matched a neighboring Git worktree path.'
+  }
+  if (Test-StackchanVerifierWorktreeListContains `
+      -PorcelainLines @("worktree $worktreeFixtureGitPath", "worktree $worktreeFixtureGitPath") `
+      -ExpectedPath $worktreeFixturePath) {
+    throw 'Operational verifier accepted an ambiguous duplicate worktree registration.'
+  }
+} finally {
+  Remove-Item Function:\Test-StackchanVerifierWorktreeListContains -ErrorAction SilentlyContinue
+}
+
 $operationalRebuildFunctions = @($verifyAst.FindAll({
   param($node)
   $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
@@ -922,6 +1024,259 @@ if ($operationalRebuildFunctions.Count -ne 1) {
 }
 $operationalRebuild = $operationalRebuildFunctions[0]
 $operationalRebuildText = $operationalRebuild.Extent.Text
+
+function ConvertTo-OperationalContractText {
+  param([Parameter(Mandatory = $true)][string]$Text)
+  return [regex]::Replace($Text.Trim(), '\s+', ' ')
+}
+
+function Get-OperationalCaptureSpecifications {
+  return @(
+    [ordered]@{
+      result = '$pioVersionResult'; arguments = "@('--version')"
+      consumer = '$pioVersion'
+      consumerRhs = '((@($pioVersionResult.output) | Out-String).Trim())'
+      exit = '$pioVersionExit'; condition =
+        '$pioVersionExit -ne 0 -or $pioVersion -cne ''PlatformIO Core, version 6.1.19'' -or [string]$dependencyLock.platformioCore -cne $pioVersion'
+      throwText = 'throw "Operational independent rebuild requires the packaged PlatformIO Core 6.1.19 identity."'
+      output = $null; logLeaf = $null
+      postContext = '-Context ''after PlatformIO version execution'''
+    },
+    [ordered]@{
+      result = '$dependencyStageResult'
+      arguments = "@('pkg', 'install', '-d', `$rebuildWorktree, '-e', `$environment)"
+      consumer = '$dependencyStageOutput'
+      consumerRhs = '@($dependencyStageResult.output)'
+      exit = '$dependencyStageExit'; condition = '$dependencyStageExit -ne 0'
+      throwText = 'throw "Operational dependency staging failed: $environment (exit $dependencyStageExit)."'
+      output = '$dependencyStageOutput'; logLeaf = '"$environment-dependency-stage.log"'
+      postContext = '-Context "after $environment dependency staging"'
+    },
+    [ordered]@{
+      result = '$phaseResult'; arguments = '$pioArguments'
+      consumer = '$phaseOutput'; consumerRhs = '@($phaseResult.output)'
+      exit = '$phaseExit'; condition = '$phaseExit -ne 0'
+      throwText = 'throw "Operational independent firmware rebuild failed: $environment/$phase (exit $phaseExit)."'
+      output = '$phaseOutput'; logLeaf = '"$environment-$phase.log"'
+      postContext = '-Context "after $environment $phase"'
+    },
+    [ordered]@{
+      result = '$packageListResult'
+      arguments = "@('pkg', 'list', '-d', `$rebuildWorktree, '-e', `$environment)"
+      consumer = '$packageListOutput'
+      consumerRhs = '@($packageListResult.output)'
+      exit = '$packageListExit'; condition = '$packageListExit -ne 0'
+      throwText = 'throw "Operational independent dependency inventory failed: $environment (exit $packageListExit)."'
+      output = '$packageListOutput'; logLeaf = '"$environment-pkg-list.log"'
+      postContext = '-Context "after $environment dependency inventory"'
+    },
+    [ordered]@{
+      result = '$verbosePackageResult'
+      arguments = "@('pkg', 'list', '-d', `$rebuildWorktree, '-e', `$environment, '-v')"
+      consumer = '$verbosePackageOutput'
+      consumerRhs = '@($verbosePackageResult.output)'
+      exit = '$verbosePackageExit'; condition = '$verbosePackageExit -ne 0'
+      throwText = 'throw "Operational independent verbose dependency inventory failed: $environment (exit $verbosePackageExit)."'
+      output = '$verbosePackageOutput'; logLeaf = '"$environment-pkg-list-verbose.log"'
+      postContext = '-Context "after $environment verbose dependency inventory"'
+    }
+  )
+}
+
+function Assert-OperationalPioCaptureTopology {
+  param(
+    [Parameter(Mandatory = $true)]
+    [System.Management.Automation.Language.FunctionDefinitionAst]$FunctionAst
+  )
+
+  $rawPioInvocations = @($FunctionAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.CommandAst] -and
+      $node.InvocationOperator -eq [System.Management.Automation.Language.TokenKind]::Ampersand -and
+      $node.CommandElements.Count -gt 0 -and
+      $node.CommandElements[0].Extent.Text -ceq '$pioExecutable'
+  }, $true))
+  if ($rawPioInvocations.Count -ne 0) {
+    throw 'Operational independent rebuild bypasses the governed native-capture helper.'
+  }
+  $captureCalls = @($FunctionAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.CommandAst] -and
+      $node.GetCommandName() -ceq 'Invoke-StackchanVerifierNativeCapture'
+  }, $true))
+  $specifications = @(Get-OperationalCaptureSpecifications)
+  if ($captureCalls.Count -ne $specifications.Count) {
+    throw "Operational independent rebuild must contain five governed PlatformIO capture sites; got $($captureCalls.Count)."
+  }
+
+  $allAssignments = @($FunctionAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.AssignmentStatementAst]
+  }, $true))
+  $allIfStatements = @($FunctionAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.IfStatementAst]
+  }, $true))
+  $allCommands = @($FunctionAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.CommandAst]
+  }, $true))
+  $allPipelines = @($FunctionAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.PipelineAst]
+  }, $true))
+
+  foreach ($specification in $specifications) {
+    $boundCalls = @($captureCalls | Where-Object {
+      $_.Parent -is [System.Management.Automation.Language.PipelineAst] -and
+      $_.Parent.Parent -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+      $_.Parent.Parent.Left.Extent.Text -ceq [string]$specification.result
+    })
+    if ($boundCalls.Count -ne 1) {
+      throw "Operational capture is not bound to its reviewed result: $($specification.result)"
+    }
+    $call = $boundCalls[0]
+    $assignment = $call.Parent.Parent
+    $elements = @($call.CommandElements)
+    if ($assignment.Operator -ne [System.Management.Automation.Language.TokenKind]::Equals -or
+        $assignment.Right -ne $call.Parent -or $elements.Count -ne 5 -or
+        $elements[1] -isnot [System.Management.Automation.Language.CommandParameterAst] -or
+        $elements[1].ParameterName -cne 'Executable' -or
+        $elements[2] -isnot [System.Management.Automation.Language.VariableExpressionAst] -or
+        $elements[2].VariablePath.UserPath -cne 'pioExecutable' -or
+        $elements[3] -isnot [System.Management.Automation.Language.CommandParameterAst] -or
+        $elements[3].ParameterName -cne 'Arguments' -or
+        (ConvertTo-OperationalContractText $elements[4].Extent.Text) -cne
+          (ConvertTo-OperationalContractText ([string]$specification.arguments))) {
+      throw "Operational capture executable/arguments differ from reviewed topology: $($specification.result)"
+    }
+
+    $resultAssignments = @($allAssignments | Where-Object {
+      $_.Left.Extent.Text -ceq [string]$specification.result
+    })
+    $consumerAssignments = @($allAssignments | Where-Object {
+      $_.Left.Extent.Text -ceq [string]$specification.consumer
+    })
+    if ($resultAssignments.Count -ne 1 -or
+        $resultAssignments[0].Extent.StartOffset -ne $assignment.Extent.StartOffset -or
+        $consumerAssignments.Count -ne 1 -or
+        $consumerAssignments[0].Operator -ne
+          [System.Management.Automation.Language.TokenKind]::Equals -or
+        (ConvertTo-OperationalContractText $consumerAssignments[0].Right.Extent.Text) -cne
+          [string]$specification.consumerRhs -or
+        $assignment.Extent.StartOffset -ge $consumerAssignments[0].Extent.StartOffset) {
+      throw "Operational capture output is not uniquely bound to its reviewed consumer: $($specification.result)"
+    }
+
+    $exitAssignments = @($allAssignments | Where-Object {
+      $_.Left.Extent.Text -ceq [string]$specification.exit
+    })
+    $expectedExitExpression = "[int]$([string]$specification.result).exitCode"
+    if ($exitAssignments.Count -ne 1 -or
+        $exitAssignments[0].Operator -ne [System.Management.Automation.Language.TokenKind]::Equals -or
+        (ConvertTo-OperationalContractText $exitAssignments[0].Right.Extent.Text) -cne
+          $expectedExitExpression -or
+        $consumerAssignments[0].Extent.StartOffset -ge $exitAssignments[0].Extent.StartOffset) {
+      throw "Operational capture exit is not bound to its reviewed result: $($specification.exit)"
+    }
+
+    $gates = @($allIfStatements | Where-Object {
+      $_.Clauses.Count -eq 1 -and
+      (ConvertTo-OperationalContractText $_.Clauses[0].Item1.Extent.Text) -ceq
+        [string]$specification.condition
+    })
+    if ($gates.Count -ne 1 -or $null -ne $gates[0].ElseClause -or
+        $gates[0].Clauses[0].Item2.Statements.Count -ne 1 -or
+        $gates[0].Clauses[0].Item2.Statements[0] -isnot
+          [System.Management.Automation.Language.ThrowStatementAst] -or
+        (ConvertTo-OperationalContractText `
+          $gates[0].Clauses[0].Item2.Statements[0].Extent.Text) -cne
+          [string]$specification.throwText -or
+        $exitAssignments[0].Extent.StartOffset -ge $gates[0].Extent.StartOffset) {
+      throw "Operational capture nonzero result is not guarded by its reviewed unconditional throw: $($specification.exit)"
+    }
+
+    $postLeaseCommands = @($allCommands | Where-Object {
+      $_.GetCommandName() -ceq 'Assert-StackchanToolchainLeaseStateUnchanged' -and
+      (ConvertTo-OperationalContractText $_.Extent.Text).Contains(
+        [string]$specification.postContext)
+    })
+    if ($postLeaseCommands.Count -ne 1 -or
+        $exitAssignments[0].Extent.StartOffset -ge $postLeaseCommands[0].Extent.StartOffset -or
+        $postLeaseCommands[0].Extent.StartOffset -ge $gates[0].Extent.StartOffset) {
+      throw "Operational capture post-command lease/gate ordering is not reviewed: $($specification.result)"
+    }
+
+    if ($null -ne $specification.output) {
+      $logPipelines = @($allPipelines | Where-Object {
+        $_.PipelineElements.Count -eq 2 -and
+        $_.PipelineElements[0].Extent.Text -ceq [string]$specification.output -and
+        $_.PipelineElements[1] -is [System.Management.Automation.Language.CommandAst] -and
+        $_.PipelineElements[1].GetCommandName() -ceq 'Set-Content'
+      })
+      if ($logPipelines.Count -ne 1) {
+        throw "Operational capture log pipeline is not uniquely bound: $($specification.result)"
+      }
+      $setContentElements = @($logPipelines[0].PipelineElements[1].CommandElements)
+      $joinPathCommands = @(if ($setContentElements.Count -eq 5) {
+        $setContentElements[2].FindAll({
+          param($node)
+          $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -ceq 'Join-Path'
+        }, $true)
+      })
+      if ($setContentElements.Count -ne 5 -or
+          $setContentElements[1] -isnot
+            [System.Management.Automation.Language.CommandParameterAst] -or
+          $setContentElements[1].ParameterName -cne 'LiteralPath' -or
+          $setContentElements[3] -isnot
+            [System.Management.Automation.Language.CommandParameterAst] -or
+          $setContentElements[3].ParameterName -cne 'Encoding' -or
+          $setContentElements[4].Extent.Text -cne 'UTF8' -or
+          $joinPathCommands.Count -ne 1 -or
+          $joinPathCommands[0].CommandElements.Count -ne 3 -or
+          $joinPathCommands[0].CommandElements[1] -isnot
+            [System.Management.Automation.Language.VariableExpressionAst] -or
+          $joinPathCommands[0].CommandElements[1].VariablePath.UserPath -cne
+            'rebuildEvidenceRoot' -or
+          $joinPathCommands[0].CommandElements[2].Extent.Text -cne
+            [string]$specification.logLeaf -or
+          $exitAssignments[0].Extent.StartOffset -ge $logPipelines[0].Extent.StartOffset -or
+          $logPipelines[0].Extent.StartOffset -ge $postLeaseCommands[0].Extent.StartOffset) {
+        throw "Operational capture log is not retained before the post-command lease assertion: $($specification.result)"
+      }
+    }
+  }
+
+  $pioArgumentAssignments = @($allAssignments | Where-Object {
+    $_.Left.Extent.Text -ceq '$pioArguments'
+  })
+  $pioArgumentBase = @($pioArgumentAssignments | Where-Object {
+    $_.Operator -eq [System.Management.Automation.Language.TokenKind]::Equals -and
+    (ConvertTo-OperationalContractText $_.Right.Extent.Text) -ceq
+      "@('run', '-d', `$rebuildWorktree, '-e', `$environment)"
+  })
+  $pioArgumentClean = @($pioArgumentAssignments | Where-Object {
+    $_.Operator -eq [System.Management.Automation.Language.TokenKind]::PlusEquals -and
+    (ConvertTo-OperationalContractText $_.Right.Extent.Text) -ceq "@('-t', 'clean')"
+  })
+  $phaseLoops = @($FunctionAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.ForEachStatementAst] -and
+      $node.Variable.VariablePath.UserPath -ceq 'phase' -and
+      (ConvertTo-OperationalContractText $node.Condition.Extent.Text) -ceq "@('clean', 'build')"
+  }, $true))
+  if ($pioArgumentAssignments.Count -ne 2 -or $pioArgumentBase.Count -ne 1 -or
+      $pioArgumentClean.Count -ne 1 -or $phaseLoops.Count -ne 1 -or
+      $pioArgumentBase[0].Extent.StartOffset -lt $phaseLoops[0].Extent.StartOffset -or
+      $pioArgumentBase[0].Extent.EndOffset -gt $phaseLoops[0].Extent.EndOffset -or
+      $pioArgumentClean[0].Extent.StartOffset -lt $phaseLoops[0].Extent.StartOffset -or
+      $pioArgumentClean[0].Extent.EndOffset -gt $phaseLoops[0].Extent.EndOffset) {
+    throw 'Operational clean/build PlatformIO argument construction is not the reviewed loop topology.'
+  }
+}
+
+Assert-OperationalPioCaptureTopology -FunctionAst $operationalRebuild
 $expectedOperationalArtifacts = @(
   'firmware.bin', 'firmware.elf', 'bootloader.bin', 'partitions.bin', 'boot_app0.bin'
 )
@@ -953,13 +1308,13 @@ foreach ($requiredRebuildMarker in @(
   '`$pioExecutable = `$resolvedPlatformioExecutable',
   "`$pioVersion -cne 'PlatformIO Core, version 6.1.19'",
   '[string]$dependencyLock.platformioCore -cne $pioVersion',
-  "@(& `$pioExecutable 'pkg' 'list' '-d' `$rebuildWorktree '-e' `$environment 2>&1)",
+  '$packageListResult = Invoke-StackchanVerifierNativeCapture',
   'Compare-Object -ReferenceObject $expectedDependencyIdentity',
   '-DifferenceObject $actualDependencyIdentity -CaseSensitive',
   'Get-StackchanVerbosePlatformSource',
   '[string]$spec.coreDir',
   '[string]$expectedEnvironmentLock.platformSourceLeaf',
-  "@(& `$pioExecutable 'pkg' 'install' '-d' `$rebuildWorktree '-e' `$environment 2>&1)",
+  '$dependencyStageResult = Invoke-StackchanVerifierNativeCapture',
   'Assert-StackchanReleaseToolchainIdentity',
   '-Phase PostBuild -Environment $environment',
   'Assert-StackchanReleaseBuildPythonEnvironment'
@@ -968,6 +1323,159 @@ foreach ($requiredRebuildMarker in @(
   if (-not $operationalRebuildText.Contains($marker)) {
     throw "Operational rebuild contract is missing: $marker"
   }
+}
+
+function New-OperationalAstMutation {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourceText,
+    [Parameter(Mandatory = $true)]
+    [System.Management.Automation.Language.FunctionDefinitionAst]$SourceFunction,
+    [Parameter(Mandatory = $true)]
+    [System.Management.Automation.Language.IScriptExtent]$TargetExtent,
+    [AllowEmptyString()][string]$Replacement
+  )
+
+  $relativeStart = $TargetExtent.StartOffset - $SourceFunction.Extent.StartOffset
+  if ($relativeStart -lt 0 -or
+      $relativeStart + $TargetExtent.Text.Length -gt $SourceText.Length) {
+    throw 'Operational mutation target is outside the independent-rebuild function.'
+  }
+  return $SourceText.Substring(0, $relativeStart) + $Replacement +
+    $SourceText.Substring($relativeStart + $TargetExtent.Text.Length)
+}
+
+function Assert-OperationalMutationRejected {
+  param(
+    [Parameter(Mandatory = $true)][string]$Text,
+    [Parameter(Mandatory = $true)][string]$Label
+  )
+
+  $mutationTokens = $null
+  $mutationParseErrors = $null
+  $mutationAst = [System.Management.Automation.Language.Parser]::ParseInput(
+    $Text, [ref]$mutationTokens, [ref]$mutationParseErrors)
+  if (@($mutationParseErrors).Count -ne 0) {
+    throw "Operational mutation fixture is not valid PowerShell: $Label"
+  }
+  $mutationFunctions = @($mutationAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+      $node.Name -ceq 'Assert-OperationalFirmwareMatchesTrustedRebuild'
+  }, $true))
+  if ($mutationFunctions.Count -ne 1) {
+    throw "Operational mutation fixture lost its independent-rebuild function: $Label"
+  }
+  $mutationAccepted = $false
+  try {
+    Assert-OperationalPioCaptureTopology -FunctionAst $mutationFunctions[0]
+    $mutationAccepted = $true
+  } catch {
+    $mutationAccepted = $false
+  }
+  if ($mutationAccepted) {
+    throw "Operational PlatformIO authority mutation survived: $Label"
+  }
+}
+
+$baselineCaptureCalls = @($operationalRebuild.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.CommandAst] -and
+    $node.GetCommandName() -ceq 'Invoke-StackchanVerifierNativeCapture'
+}, $true))
+$baselineAssignments = @($operationalRebuild.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.AssignmentStatementAst]
+}, $true))
+$baselineIfStatements = @($operationalRebuild.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.IfStatementAst]
+}, $true))
+$baselinePipelines = @($operationalRebuild.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.PipelineAst]
+}, $true))
+foreach ($specification in @(Get-OperationalCaptureSpecifications)) {
+  $call = @($baselineCaptureCalls | Where-Object {
+    $_.Parent.Parent -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $_.Parent.Parent.Left.Extent.Text -ceq [string]$specification.result
+  })[0]
+  $exitAssignment = @($baselineAssignments | Where-Object {
+    $_.Left.Extent.Text -ceq [string]$specification.exit
+  })[0]
+  $consumerAssignment = @($baselineAssignments | Where-Object {
+    $_.Left.Extent.Text -ceq [string]$specification.consumer
+  })[0]
+  $gate = @($baselineIfStatements | Where-Object {
+    $_.Clauses.Count -eq 1 -and
+    (ConvertTo-OperationalContractText $_.Clauses[0].Item1.Extent.Text) -ceq
+      [string]$specification.condition
+  })[0]
+  $throwStatement = $gate.Clauses[0].Item2.Statements[0]
+  $mutations = @(
+    [ordered]@{ label = "$($specification.result) executable"; extent = $call.CommandElements[2].Extent; replacement = '$resolvedPythonExecutable' },
+    [ordered]@{ label = "$($specification.result) arguments"; extent = $call.CommandElements[4].Extent; replacement = "@('contract-mutation')" },
+    [ordered]@{ label = "$($specification.result) binding"; extent = $call.Parent.Parent.Left.Extent; replacement = '$contractMutationResult' },
+    [ordered]@{ label = "$($specification.result) consumer"; extent = $consumerAssignment.Right.Extent; replacement = "@('contract-mutation')" },
+    [ordered]@{ label = "$($specification.exit) binding"; extent = $exitAssignment.Right.Extent; replacement = '0' },
+    [ordered]@{ label = "$($specification.exit) throw replacement"; extent = $throwStatement.Extent; replacement = "`$null = 'contract-mutation'" },
+    [ordered]@{ label = "$($specification.exit) throw removal"; extent = $throwStatement.Extent; replacement = '' }
+  )
+  foreach ($mutation in $mutations) {
+    $mutationText = New-OperationalAstMutation `
+      -SourceText $operationalRebuildText -SourceFunction $operationalRebuild `
+      -TargetExtent $mutation.extent -Replacement ([string]$mutation.replacement)
+    Assert-OperationalMutationRejected -Text $mutationText -Label ([string]$mutation.label)
+  }
+  $duplicateResultReplacement =
+    ([string]$specification.result) + " = `$null`r`n" + $call.Parent.Parent.Extent.Text
+  $mutationText = New-OperationalAstMutation `
+    -SourceText $operationalRebuildText -SourceFunction $operationalRebuild `
+    -TargetExtent $call.Parent.Parent.Extent -Replacement $duplicateResultReplacement
+  Assert-OperationalMutationRejected -Text $mutationText `
+    -Label "$($specification.result) duplicate preinitialization"
+
+  $moveStart = $call.Parent.Parent.Extent.StartOffset -
+    $operationalRebuild.Extent.StartOffset
+  $moveEnd = $exitAssignment.Extent.EndOffset - $operationalRebuild.Extent.StartOffset
+  $movedExitReplacement = $exitAssignment.Extent.Text + "`r`n" +
+    $call.Parent.Parent.Extent.Text + "`r`n" + $consumerAssignment.Extent.Text
+  $mutationText = $operationalRebuildText.Substring(0, $moveStart) +
+    $movedExitReplacement + $operationalRebuildText.Substring($moveEnd)
+  Assert-OperationalMutationRejected -Text $mutationText `
+    -Label "$($specification.exit) before capture"
+
+  if ($null -ne $specification.output) {
+    $logPipeline = @($baselinePipelines | Where-Object {
+      $_.PipelineElements.Count -eq 2 -and
+      $_.PipelineElements[0].Extent.Text -ceq [string]$specification.output -and
+      $_.PipelineElements[1] -is [System.Management.Automation.Language.CommandAst] -and
+      $_.PipelineElements[1].GetCommandName() -ceq 'Set-Content'
+    })[0]
+    $mutationText = New-OperationalAstMutation `
+      -SourceText $operationalRebuildText -SourceFunction $operationalRebuild `
+      -TargetExtent $logPipeline.Extent -Replacement "`$null = 'contract-mutation'"
+    Assert-OperationalMutationRejected -Text $mutationText `
+      -Label "$($specification.result) pre-lease log"
+  }
+}
+
+$phaseLoop = @($operationalRebuild.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.ForEachStatementAst] -and
+    $node.Variable.VariablePath.UserPath -ceq 'phase'
+}, $true))[0]
+$pioArgumentAssignments = @($baselineAssignments | Where-Object {
+  $_.Left.Extent.Text -ceq '$pioArguments'
+})
+foreach ($mutation in @(
+  [ordered]@{ label = 'phase inventory'; extent = $phaseLoop.Condition.Extent; replacement = "@('build')" },
+  [ordered]@{ label = 'run arguments'; extent = $pioArgumentAssignments[0].Right.Extent; replacement = "@('run')" },
+  [ordered]@{ label = 'clean arguments'; extent = $pioArgumentAssignments[1].Right.Extent; replacement = "@('-t', 'upload')" }
+)) {
+  $mutationText = New-OperationalAstMutation `
+    -SourceText $operationalRebuildText -SourceFunction $operationalRebuild `
+    -TargetExtent $mutation.extent -Replacement ([string]$mutation.replacement)
+  Assert-OperationalMutationRejected -Text $mutationText -Label ([string]$mutation.label)
 }
 
 $evidenceParentAssignments = @($operationalRebuild.FindAll({
@@ -1025,13 +1533,24 @@ if ($operationalReturns.Count -ne 1 -or
 foreach ($failureProbeMarker in @(
   '$worktreePathExists = Test-Path -LiteralPath $rebuildWorktree -PathType Container',
   "'worktree', 'list', '--porcelain'",
-  '$_ -ceq "worktree $rebuildWorktree"',
-  '$worktreePreserved = $worktreePathExists -and $worktreeAttached',
-  "status = if (`$worktreePreserved) { 'failed-full-worktree-preserved' } else { 'failed-worktree-not-preserved' }"
+  '$ErrorActionPreference = ''Continue''',
+  '$worktreeProbeExitCode = [int]$global:LASTEXITCODE',
+  'Test-StackchanVerifierWorktreeListContains',
+  '$worktreePreserved = $worktreePathExists -and $worktreeAttached -eq $true',
+  "'failed-worktree-preservation-unknown'",
+  'worktreeProbeExitCode = $worktreeProbeExitCode',
+  'worktreeProbeError = $worktreeProbeError',
+  'exceptionType = [string]$failure.Exception.GetType().FullName',
+  'fullyQualifiedErrorId = [string]$failure.FullyQualifiedErrorId',
+  'scriptStackTrace = [string]$failure.ScriptStackTrace'
 )) {
   if (-not $operationalRebuildText.Contains($failureProbeMarker)) {
     throw "Operational rebuild failure status is not derived from actual worktree probes: $failureProbeMarker"
   }
+}
+if ($operationalRebuildText.Contains('$_ -ceq "worktree $rebuildWorktree"') -or
+    $operationalRebuildText.Contains('throw $failure.Exception')) {
+  throw 'Operational rebuild retains separator-sensitive probing or context-stripping rethrow.'
 }
 $publicVerifierGuards = @($packageAst.EndBlock.Statements | Where-Object {
   $_ -is [System.Management.Automation.Language.IfStatementAst] -and
