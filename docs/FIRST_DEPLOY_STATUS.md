@@ -314,6 +314,24 @@ An audit of verifier script-scope cache reads found no second uninitialized cach
 remains in force until this correction passes the broad contracts, exact-head CI, and a fresh
 governed package plus independent verification.
 
+Qualification head `760d94465c2a973b37636d44a9b5546619298c77` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30978581265`. Governed packaging for
+`sec-002-760d9446` completed both equal-length firmware cycles, exact size/SHA-256 comparison of
+all 15 artifact pairs, package assembly, voice/RVC status export, provisional ZIP creation, and
+launch of the independent release-eligible verifier. Verification then failed closed before
+release eligibility at `verify_release_package.ps1:663`: Windows PowerShell 5.1 rejected
+`Join-Path` when its valid package enumeration root used the `\\?\` extended-length prefix and
+reported the misleading internal error that argument `drive` was null. The provisional ZIP and
+partial output under `output/release/sec-002-760d9446` are not candidates. No flash, OTA request,
+COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction preserves the extended-length enumeration root and replaces all four provider-backed
+joins against it with `System.IO.Path.Combine`. The verifier trust contract now rejects any
+`Join-Path` use against that root, pins the four governed child joins, and exercises traversal of a
+combined Windows extended-length child. The SEC-002 hold remains in force until this correction
+passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
 A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
 `output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
 `036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that

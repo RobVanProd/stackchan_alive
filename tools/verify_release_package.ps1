@@ -660,7 +660,7 @@ function Get-PackagedFileInventory {
   if ($PackagePrefix -notin @('tools', 'provenance')) {
     throw "Operational package inventory refuses unsupported prefix: $PackagePrefix"
   }
-  $inventoryRoot = Join-Path $packageEnumerationRoot $PackagePrefix
+  $inventoryRoot = [System.IO.Path]::Combine($packageEnumerationRoot, $PackagePrefix)
   if (-not (Test-Path -LiteralPath $inventoryRoot -PathType Container)) {
     throw "Operational package inventory is missing directory: $PackagePrefix"
   }
@@ -932,7 +932,7 @@ function Assert-OperationalPackageGitBindings {
   $outerCopyMappings = [System.Collections.Generic.Dictionary[string,string]]::new(
     [System.StringComparer]::Ordinal)
   foreach ($prefix in @('bridge', 'docs', 'data', 'personas', 'site')) {
-    $treeRoot = Join-Path $packageEnumerationRoot $prefix
+    $treeRoot = [System.IO.Path]::Combine($packageEnumerationRoot, $prefix)
     if (-not (Test-Path -LiteralPath $treeRoot -PathType Container)) {
       throw "Operational package is missing trusted copy tree: $prefix"
     }
@@ -978,7 +978,7 @@ function Assert-OperationalPackageGitBindings {
     'media/voice/rvc/model.pth',
     'media/voice/rvc/model.index'
   )
-  $mediaTreeRoot = Join-Path $packageEnumerationRoot 'media'
+  $mediaTreeRoot = [System.IO.Path]::Combine($packageEnumerationRoot, 'media')
   foreach ($item in Get-ChildItem -LiteralPath $mediaTreeRoot -Recurse -File -Force) {
     $packageRelative = (Get-PackageItemFullName $item).Substring(
       $packageRootPrefix.Length).Replace('\', '/')
@@ -6070,7 +6070,8 @@ function Assert-OperationalWholePackageInventory {
     [void]$allowedThirdParty.Add('third_party_licenses/' + [string]$relative)
   }
   $actualThirdParty = @(
-    Get-ChildItem -LiteralPath (Join-Path $packageEnumerationRoot 'third_party_licenses') `
+    Get-ChildItem -LiteralPath ([System.IO.Path]::Combine(
+        $packageEnumerationRoot, 'third_party_licenses')) `
       -File -Recurse -Force | ForEach-Object {
         (Get-PackageItemFullName $_).Substring($packageRootPrefix.Length).Replace('\', '/')
       })

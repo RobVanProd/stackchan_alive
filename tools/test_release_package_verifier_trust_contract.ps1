@@ -383,6 +383,66 @@ if ($operationalCommitMapInitializations.Count -ne 1 -or
       $operationalCommitMapFunctions[0].Extent.StartOffset) {
   throw 'Operational trusted-commit map cache must have one top-level null initialization before strict-mode access.'
 }
+function Test-PackageEnumerationJoinPathCommand {
+  param([Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Node)
+  if ($Node -isnot [System.Management.Automation.Language.CommandAst] -or
+      $Node.GetCommandName() -ine 'Join-Path') {
+    return $false
+  }
+  return @($Node.FindAll({
+    param($descendant)
+    $descendant -is [System.Management.Automation.Language.VariableExpressionAst] -and
+      $descendant.VariablePath.UserPath -ieq 'packageEnumerationRoot'
+  }, $true)).Count -gt 0
+}
+$packageEnumerationJoinPathCalls = @($verifyAst.FindAll({
+  param($node)
+  Test-PackageEnumerationJoinPathCommand -Node $node
+}, $true))
+if ($packageEnumerationJoinPathCalls.Count -ne 0) {
+  throw 'Operational package enumeration must not pass an extended-length root to provider-backed Join-Path.'
+}
+$joinPathCanaryTokens = $null
+$joinPathCanaryErrors = $null
+$joinPathCanaryAst = [System.Management.Automation.Language.Parser]::ParseInput(
+  'join-path ([string]$PackageEnumerationRoot) ''tools''',
+  [ref]$joinPathCanaryTokens, [ref]$joinPathCanaryErrors)
+$joinPathCanaryMatches = @($joinPathCanaryAst.FindAll({
+  param($node)
+  Test-PackageEnumerationJoinPathCommand -Node $node
+}, $true))
+if ($joinPathCanaryErrors.Count -ne 0 -or $joinPathCanaryMatches.Count -ne 1) {
+  throw 'Operational package enumeration Join-Path guard missed a mixed-case wrapped-variable mutation canary.'
+}
+$packageEnumerationCombines = @($verifyAst.FindAll({
+  param($node)
+  $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+    $node.Static -and
+    $node.Expression -is [System.Management.Automation.Language.TypeExpressionAst] -and
+    $node.Expression.TypeName.FullName -ceq 'System.IO.Path' -and
+    $node.Member.Value -ceq 'Combine' -and
+    $node.Arguments.Count -eq 2 -and
+    $node.Arguments[0] -is [System.Management.Automation.Language.VariableExpressionAst] -and
+    $node.Arguments[0].VariablePath.UserPath -ceq 'packageEnumerationRoot'
+}, $true))
+if ($packageEnumerationCombines.Count -ne 4) {
+  throw "Operational package enumeration must contain four extended-root Path.Combine joins; got $($packageEnumerationCombines.Count)."
+}
+$packageEnumerationCombineChildren = @(
+  $packageEnumerationCombines | ForEach-Object { $_.Arguments[1].Extent.Text })
+foreach ($expectedChild in @('$PackagePrefix', '$prefix', "'media'", "'third_party_licenses'")) {
+  if (@($packageEnumerationCombineChildren | Where-Object { $_ -ceq $expectedChild }).Count -ne 1) {
+    throw "Operational package enumeration is missing its exact extended-root child join: $expectedChild"
+  }
+}
+if ($env:OS -eq 'Windows_NT') {
+  $extendedContractRoot = '\\?\' + $repoRoot
+  $extendedContractTools = [System.IO.Path]::Combine($extendedContractRoot, 'tools')
+  if (-not (Test-Path -LiteralPath $extendedContractTools -PathType Container) -or
+      @(Get-ChildItem -LiteralPath $extendedContractTools -File -Recurse -Force).Count -eq 0) {
+    throw 'Operational package enumeration cannot traverse a combined Windows extended-length child path.'
+  }
+}
 $sidecarCalls = @($verifyAst.FindAll({
   param($node)
   $node -is [System.Management.Automation.Language.CommandAst] -and
