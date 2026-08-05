@@ -816,13 +816,13 @@ Test-TextEvidence `
   -Id "pc-brain-deploy-evidence-helper" `
   -Name "PC Brain deploy evidence collector" `
   -RelativePaths @("tools/collect_pc_brain_deploy_evidence.ps1") `
-  -Patterns @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch")
+  -Patterns @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "device_debug_schema_invalid", "device_debug_route_invalid", "bridge_downlink_playback_not_started", "bridge_downlink_playback_not_completed", "bridge_downlink_playback_not_drained", "speaker_playback_chunk_mismatch")
 
 Test-TextEvidence `
   -Id "pc-brain-deploy-evidence-check" `
   -Name "PC Brain deploy evidence checker" `
   -RelativePaths @("tools/check_pc_brain_deploy_evidence.ps1") `
-  -Patterns @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")
+  -Patterns @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "playback-started", "playback-completed", "playback-drained", "speaker-playback-chunks-match", "RequireTests", "RequireReady")
 
 Test-TextEvidence `
   -Id "pc-brain-quiet-soak-runner" `

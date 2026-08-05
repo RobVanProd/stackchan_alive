@@ -4078,14 +4078,14 @@ foreach ($pattern in @("stackchan.voice-v2-supervised-check.v1", "voice-v2-super
 }
 
 $collectPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/collect_pc_brain_deploy_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "bridge_downlink_playback_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch", "RunTests")) {
+foreach ($pattern in @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "device_debug_schema_invalid", "device_debug_route_invalid", "bridge_downlink_playback_not_started", "bridge_downlink_playback_not_completed", "bridge_downlink_playback_not_drained", "speaker_playback_chunk_mismatch", "RunTests")) {
   if ($collectPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
     throw "tools/collect_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence support: $pattern"
   }
 }
 
 $checkPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/check_pc_brain_deploy_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")) {
+foreach ($pattern in @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "playback-started", "playback-completed", "playback-drained", "speaker-playback-chunks-match", "RequireTests", "RequireReady")) {
   if ($checkPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence check support: $pattern"
   }
