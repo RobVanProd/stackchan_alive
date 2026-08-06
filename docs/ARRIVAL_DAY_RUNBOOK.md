@@ -67,6 +67,16 @@ provenance reference: 10/10 real polls, 5.172 seconds monotonic coverage in 6.05
 gap 1.157 seconds, zero motion breach, unchanged counters, and only the preserved panic reset plus
 its summary propagation failed. It is still a short expected-fail diagnostic, not P1 evidence.
 
+The 600-second focused reference at
+`output/pc-brain/passive-no-motion-600s-6de75980-20260805-204103` ran from clean, pushed source
+`6de75980a6fc8ad443ec2bc0e1fe973fd707d821`: 300/300 physical polls, 598.767 seconds monotonic
+coverage in 601.219 seconds, maximum 2.773-second gap, zero motion breaches or stop calls, unchanged
+motion/power counters, and host/bridge/socket ready in every sample. Sampled VBUS stayed at or above
+4,950 mV, chip temperature reached 60.5 C, and display frame time reached 34,820 us. Its only checker
+failures were the preserved panic reset and the summary fields that carry that failure. Treat it as
+valid focused expected-fail evidence, not full P1: reset provenance is not clean and this installed
+image has camera/host vision compiled out.
+
 Qualification checkout authority (2026-08-05): run current M0/P0 commands only from
 `D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
 `codex/aliveness-repository-truth`. Require `git status --short` to be empty and require

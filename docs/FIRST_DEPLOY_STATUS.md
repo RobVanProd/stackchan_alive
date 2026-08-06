@@ -39,6 +39,17 @@ unchanged motion/rail/write counters, and motion/rail/torque off afterward. The 
 gate except clean reset and the summary fields that truthfully carry that panic hold. This proves the
 committed recorder's real-device mechanics, not P1 or long-term stability.
 
+The focused 600-second physical run at
+`output/pc-brain/passive-no-motion-600s-6de75980-20260805-204103` used clean, pushed recorder source
+`6de75980a6fc8ad443ec2bc0e1fe973fd707d821`. It completed 300/300 successful hardware polls over
+601.219 seconds with 598.767 seconds of monotonic coverage and a maximum 2.773-second gap. It
+observed zero motion breaches, no safety-stop call, no motion/rail/torque authority, unchanged
+motion and power counters, a live exact host PID/bridge/socket on every sample, minimum sampled VBUS
+4,950 mV, maximum chip temperature 60.5 C, and maximum display frame time 34,820 us. The checker
+failed only `clean-reset` plus the summary fields that propagate the preserved panic code `4`.
+This is valid focused no-motion evidence for the installed image; it is an expected failure, not a
+P1 pass, because reset provenance is not clean and camera/host vision are compiled out.
+
 The dated records below remain evidence. This checkpoint supersedes their former claims that no
 replacement was installed or that the live bridge was absent. It does not transfer old qualification
 or soak evidence to the current SHA.

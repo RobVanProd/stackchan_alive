@@ -45,6 +45,15 @@ State timestamp: 2026-08-05 America/New_York
   zero motion breaches, unchanged counters, and motion/rail/torque off afterward. The independent
   checker passed every gate except the preserved panic reset and the resulting summary status. This
   validates the committed cadence/provenance path but remains a short expected-fail diagnostic.
+- The completed 600-second focused run at
+  `output/pc-brain/passive-no-motion-600s-6de75980-20260805-204103` used clean, pushed recorder
+  source `6de75980a6fc8ad443ec2bc0e1fe973fd707d821`. It produced 300/300 successful physical polls,
+  598.767 seconds of monotonic coverage in 601.219 seconds, maximum gap 2.773 seconds, zero motion
+  breaches, no safety-stop call, unchanged motion/power counters, host/bridge/socket ready on every
+  sample, minimum sampled VBUS 4,950 mV, maximum chip temperature 60.5 C, and maximum frame time
+  34,820 us. It failed only the preserved panic reset and its truthful summary propagation. This is
+  focused exact-image evidence, not a P1 pass; camera/host vision are compiled out and reset
+  provenance remains unclean.
 - The preserved `4d31de41` / `4256F2E5...B31055` image remains historical evidence only. It requests
   motion and autonomous refresh at boot and must never be used for P1.
 
