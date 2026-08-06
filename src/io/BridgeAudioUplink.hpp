@@ -16,12 +16,29 @@ constexpr uint32_t kBridgeAudioUplinkSampleRate = 16000;
 constexpr uint32_t kBridgeAudioUplinkMaxBytes = 512u * 1024u;
 constexpr size_t kBridgeAudioUplinkErrorMax = kBridgeErrorMax;
 
+enum class BridgeAudioTerminalKind : uint8_t {
+  None = 0,
+  End,
+  Cancel,
+};
+
+enum class BridgeAudioTerminalServiceResult : uint8_t {
+  Idle = 0,
+  Queued,
+  Pending,
+  FailedClosed,
+};
+
 struct BridgeAudioUplinkConfig {
   bool enabled = STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK != 0;
   bool wakeGateRequired = true;  // privacy gate: audio may leave only after wake/explicit activation.
   uint32_t sampleRate = kBridgeAudioUplinkSampleRate;
   uint32_t maxAudioBytes = kBridgeAudioUplinkMaxBytes;
   uint16_t maxChunkBytes = kBridgeAudioStreamChunkPayloadMax;
+  // A terminal frame may wait for the single-slot socket writer to drain, but
+  // it must never wait forever. Expiry closes the socket so the host discards
+  // the unterminated upload.
+  uint32_t terminalRetryMs = 1000;
 };
 
 struct BridgeAudioUplinkTelemetry {
@@ -29,6 +46,7 @@ struct BridgeAudioUplinkTelemetry {
   bool enabled = false;
   bool active = false;
   bool wakeGateRequired = true;
+  bool terminalPending = false;
   uint32_t turnsStarted = 0;
   uint32_t turnsCompleted = 0;
   uint32_t turnsAborted = 0;
@@ -40,6 +58,13 @@ struct BridgeAudioUplinkTelemetry {
   uint32_t lastSeq = 0;
   uint32_t activeBytes = 0;
   uint32_t activeChunks = 0;
+  uint32_t terminalAttempts = 0;
+  uint32_t terminalRetries = 0;
+  uint32_t terminalTimeouts = 0;
+  uint32_t cancelFramesQueued = 0;
+  uint32_t terminalRequestedAtMs = 0;
+  BridgeAudioTerminalKind pendingTerminal = BridgeAudioTerminalKind::None;
+  BridgeAudioTerminalKind lastTerminal = BridgeAudioTerminalKind::None;
   char lastError[kBridgeAudioUplinkErrorMax] = {};
 };
 
@@ -54,6 +79,7 @@ class BridgeAudioUplink {
   bool submitPcmBytes(uint32_t seq, const uint8_t* payload, size_t length, uint32_t nowMs);
   bool endTurn(uint32_t seq, uint32_t nowMs);
   void abort(uint32_t nowMs, const char* reason = nullptr);
+  BridgeAudioTerminalServiceResult servicePendingTerminal(uint32_t nowMs);
 
   const BridgeAudioUplinkTelemetry& telemetry() const {
     return telemetry_;
@@ -65,12 +91,20 @@ class BridgeAudioUplink {
   bool queueBinary(const uint8_t* payload, size_t length);
   bool writeStartFrame(uint32_t seq, char* out, size_t outSize) const;
   bool writeEndFrame(uint32_t seq, char* out, size_t outSize) const;
+  bool writeCancelFrame(uint32_t seq, const char* reason, char* out, size_t outSize) const;
+  bool requestTerminal(BridgeAudioTerminalKind kind,
+                       uint32_t seq,
+                       uint32_t nowMs,
+                       const char* reason);
+  void copyTerminalReason(const char* reason);
   bool fail(const char* reason);
   void copyError(const char* reason);
 
   BridgeAudioUplinkConfig config_;
   BridgeAudioUplinkTelemetry telemetry_;
   BridgeNetworkSession* session_ = nullptr;
+  uint32_t pendingTerminalSeq_ = 0;
+  char pendingTerminalReason_[kBridgeAudioUplinkErrorMax] = {};
 };
 
 }  // namespace stackchan

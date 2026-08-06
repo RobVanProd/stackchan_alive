@@ -41,6 +41,7 @@ struct BridgeSocketWriterTelemetry {
   uint32_t binaryFramesEncoded = 0;
   uint32_t binaryFramesWritten = 0;
   uint32_t partialWrites = 0;
+  uint32_t writeDeferrals = 0;
   uint32_t writeFailures = 0;
   uint32_t textBytesQueued = 0;
   uint32_t textBytesWritten = 0;
@@ -57,6 +58,10 @@ class BridgeSocketWriterSink {
 
   virtual bool isConnected() const = 0;
   virtual size_t write(const uint8_t* data, size_t length) = 0;
+  // A zero-byte write normally means the connection failed. Network sinks may
+  // instead report transient backpressure so the retained frame is retried by
+  // a later service pass without blocking the real-time audio capture path.
+  virtual bool lastWriteWouldBlock() const { return false; }
 };
 
 class BridgeSocketWriter {

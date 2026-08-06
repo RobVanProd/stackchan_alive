@@ -2200,6 +2200,178 @@ class LanServiceTests(unittest.TestCase):
         self.assertFalse(session.audio.active)
         self.assertEqual(0, session.audio.bytes_received)
 
+    def test_audio_capture_absolute_lease_exceeds_firmware_max_but_cannot_be_refreshed(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        self.assertGreater(session.config.audio_capture_absolute_lease_ms, 12_000)
+        self.assertLessEqual(session.config.audio_capture_absolute_lease_ms, 15_000)
+        session.handle_text(
+            json.dumps({"type": "utterance_start", "seq": 41, "sample_rate": 16000})
+        )
+        session.handle_binary(b"\x01\x00\x02\x00")
+        current = time.perf_counter()
+        session.audio.started_at_monotonic = current - (
+            session.config.audio_capture_absolute_lease_ms + 1
+        ) / 1000.0
+        session.audio.last_activity_at_monotonic = current
+
+        expired = session.handle_binary(b"\x03\x00\x04\x00")
+
+        self.assertEqual("audio_capture_absolute_lease_expired", expired[0]["code"])
+        self.assertEqual(4, expired[0]["audio_bytes"])
+        self.assertFalse(session.audio.active)
+        self.assertEqual(0, session.audio.bytes_received)
+        self.assertEqual(1, expired[0]["audio_uploads_expired"])
+
+    def test_audio_capture_valid_after_twelve_seconds_with_recent_pcm(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        session.handle_text(
+            json.dumps({"type": "utterance_start", "seq": 42, "sample_rate": 16000})
+        )
+        session.handle_binary(b"\x01\x00\x02\x00")
+        current = time.perf_counter()
+        session.audio.started_at_monotonic = current - 12.25
+        session.audio.last_activity_at_monotonic = current
+        runner_result = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "I heard the complete sentence.",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.0},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=1.0,
+            approx_tokens_per_sec=10.0,
+        )
+
+        with patch("lan_service.run_runner_profile", return_value=runner_result) as runner:
+            frames = session.handle_text(
+                json.dumps(
+                    {"type": "utterance_end", "seq": 42, "text": "complete sentence"}
+                )
+            )
+
+        runner.assert_called_once()
+        thinking = next(frame for frame in frames if frame.get("type") == "thinking")
+        self.assertGreaterEqual(thinking["audio_capture_elapsed_ms"], 12_000)
+        self.assertNotIn("audio_capture_reject_code", thinking)
+        self.assertFalse(session.audio.active)
+
+    def test_audio_capture_inactivity_discards_partial_pcm_and_rejects_late_end(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        session.handle_text(
+            json.dumps({"type": "utterance_start", "seq": 43, "sample_rate": 16000})
+        )
+        session.handle_binary(b"\x01\x00\x02\x00")
+        current = time.perf_counter()
+        session.audio.last_activity_at_monotonic = current - (
+            session.config.audio_capture_inactivity_lease_ms + 1
+        ) / 1000.0
+
+        with (
+            patch("lan_service.transcribe_pcm") as stt,
+            patch("lan_service.run_runner_profile") as runner,
+            patch("lan_service.synthesize_speech") as tts,
+        ):
+            expired = session.handle_binary(b"\x03\x00\x04\x00")
+            late_end = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 43, "text": "stale"})
+            )
+
+        self.assertEqual("audio_capture_inactivity_expired", expired[0]["code"])
+        self.assertEqual("utterance_end_stale", late_end[0]["code"])
+        self.assertEqual(
+            "audio_capture_inactivity_expired",
+            late_end[0]["audio_capture_reject_code"],
+        )
+        stt.assert_not_called()
+        runner.assert_not_called()
+        tts.assert_not_called()
+
+    def test_heartbeat_expires_inactive_capture_without_dropping_heartbeat(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        session.handle_text(json.dumps({"type": "utterance_start", "seq": 48}))
+        session.handle_binary(b"\x01\x00\x02\x00")
+        current = time.perf_counter()
+        session.audio.last_activity_at_monotonic = current - (
+            session.config.audio_capture_inactivity_lease_ms + 1
+        ) / 1000.0
+
+        frames = session.handle_text(
+            json.dumps({"type": "heartbeat", "power_source": "wall"})
+        )
+
+        self.assertEqual("audio_capture_inactivity_expired", frames[0]["code"])
+        self.assertEqual("heartbeat", frames[1]["type"])
+        self.assertFalse(session.audio.active)
+
+    def test_utterance_cancel_is_idempotent_and_late_end_runs_no_pipeline(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        session.handle_text(
+            json.dumps({"type": "utterance_start", "seq": 44, "sample_rate": 16000})
+        )
+        session.handle_binary(b"\x01\x00\x02\x00")
+
+        with (
+            patch("lan_service.transcribe_pcm") as stt,
+            patch("lan_service.run_runner_profile") as runner,
+            patch("lan_service.synthesize_speech") as tts,
+        ):
+            cancelled = session.handle_text(
+                json.dumps(
+                    {"type": "utterance_cancel", "seq": 44, "reason": "capture_discontinuity"}
+                )
+            )
+            duplicate = session.handle_text(
+                json.dumps(
+                    {"type": "utterance_cancel", "seq": 44, "reason": "capture_discontinuity"}
+                )
+            )
+            late_end = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 44, "text": "unfinished"})
+            )
+
+        self.assertTrue(cancelled[0]["utterance_cancelled"])
+        self.assertFalse(cancelled[0]["utterance_cancel_duplicate"])
+        self.assertEqual(4, cancelled[0]["audio_bytes"])
+        self.assertTrue(duplicate[0]["utterance_cancel_duplicate"])
+        self.assertEqual("utterance_end_stale", late_end[0]["code"])
+        self.assertEqual("audio_capture_cancelled", late_end[0]["audio_capture_reject_code"])
+        self.assertFalse(session.audio.active)
+        self.assertEqual(0, session.audio.bytes_received)
+        stt.assert_not_called()
+        runner.assert_not_called()
+        tts.assert_not_called()
+
+    def test_wrong_terminal_sequence_does_not_finalize_active_capture(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        session.handle_text(
+            json.dumps({"type": "utterance_start", "seq": 45, "sample_rate": 16000})
+        )
+        session.handle_binary(b"\x01\x00\x02\x00")
+
+        mismatch = session.handle_text(
+            json.dumps({"type": "utterance_end", "seq": 46, "text": "wrong turn"})
+        )
+
+        self.assertEqual("utterance_end_seq_mismatch", mismatch[0]["code"])
+        self.assertTrue(session.audio.active)
+        self.assertEqual(4, session.audio.bytes_received)
+
+    def test_audio_lease_telemetry_is_exposed_in_diagnostics(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        session.handle_text(json.dumps({"type": "utterance_start", "seq": 47}))
+
+        diagnostics = session.handle_text(json.dumps({"type": "diagnostics_request"}))[0]
+
+        self.assertTrue(diagnostics["audio"]["audio_upload_active"])
+        self.assertEqual(1, diagnostics["audio"]["audio_uploads_started"])
+        self.assertEqual(14_500, diagnostics["audio"]["audio_capture_absolute_lease_ms"])
+        self.assertEqual(4_000, diagnostics["audio"]["audio_capture_inactivity_lease_ms"])
+
     def test_empty_utterance_end_does_not_run_runner(self):
         session = LanBridgeSession(LanBridgeConfig(runner_case="greeting"))
 

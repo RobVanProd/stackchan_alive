@@ -2,6 +2,10 @@
 
 #include <cerrno>
 
+#if defined(ARDUINO_ARCH_ESP32)
+#include <lwip/sockets.h>
+#endif
+
 namespace stackchan {
 
 namespace {
@@ -102,10 +106,23 @@ int BridgeWiFiClientSocket::read(uint8_t* out, size_t outSize) {
 
 size_t BridgeWiFiClientSocket::write(const uint8_t* data, size_t length) {
 #if defined(ARDUINO_ARCH_ESP32)
+  lastWriteWouldBlock_ = false;
   if (data == nullptr || length == 0) {
     return 0;
   }
-  return client_.write(data, length);
+  const int socketFd = client_.fd();
+  if (socketFd < 0 || !client_.connected()) {
+    return 0;
+  }
+  errno = 0;
+  const int result = ::send(socketFd, data, length, MSG_DONTWAIT);
+  if (result > 0) {
+    return static_cast<size_t>(result);
+  }
+  if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+    lastWriteWouldBlock_ = true;
+  }
+  return 0;
 #else
   (void)data;
   (void)length;
@@ -114,6 +131,7 @@ size_t BridgeWiFiClientSocket::write(const uint8_t* data, size_t length) {
 }
 
 void BridgeWiFiClientSocket::stop() {
+  lastWriteWouldBlock_ = false;
 #if defined(ARDUINO_ARCH_ESP32)
   client_.stop();
   client_ = WiFiClient {};

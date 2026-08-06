@@ -162,6 +162,12 @@ BridgeSocketWriterDrainResult BridgeSocketWriter::drainPending(uint32_t nowMs,
   const size_t remaining = frameBytes_ - frameOffset_;
   const size_t written = sink_->write(frame_ + frameOffset_, remaining);
   if (written == 0) {
+    if (sink_->lastWriteWouldBlock()) {
+      telemetry_.writeDeferrals++;
+      telemetry_.frameBuffered = true;
+      telemetry_.lastError[0] = '\0';
+      return BridgeSocketWriterDrainResult::Partial;
+    }
     telemetry_.writeFailures++;
     copyError("socket_write_failed");
     return BridgeSocketWriterDrainResult::WriteFailed;

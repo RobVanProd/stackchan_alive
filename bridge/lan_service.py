@@ -113,6 +113,8 @@ WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_MAX_AUDIO_BYTES = 512 * 1024
+DEFAULT_AUDIO_CAPTURE_ABSOLUTE_LEASE_MS = 14_500
+DEFAULT_AUDIO_CAPTURE_INACTIVITY_LEASE_MS = 4_000
 DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 DEFAULT_DOWNLINK_BINARY_FRAME_DELAY_MS = 180
 DEFAULT_DOWNLINK_TEXT_FRAME_DELAY_MS = 40
@@ -791,6 +793,8 @@ class LanBridgeConfig:
     client_idle_timeout_s: float = DEFAULT_CLIENT_IDLE_TIMEOUT_S
     disable_audio_downlink: bool = False
     max_audio_bytes: int = DEFAULT_MAX_AUDIO_BYTES
+    audio_capture_absolute_lease_ms: int = DEFAULT_AUDIO_CAPTURE_ABSOLUTE_LEASE_MS
+    audio_capture_inactivity_lease_ms: int = DEFAULT_AUDIO_CAPTURE_INACTIVITY_LEASE_MS
     audio_evidence_dir: Path | None = None
     memory_file: Path | None = None
     turn_log_file: Path | None = None
@@ -851,6 +855,14 @@ class LanBridgeConfig:
             )
         if not 0.0 <= float(self.stt_min_confidence) <= 1.0:
             raise ValueError("stt_min_confidence must be between zero and one")
+        if not 12_500 <= int(self.audio_capture_absolute_lease_ms) <= 15_000:
+            raise ValueError("audio_capture_absolute_lease_ms must be between 12500 and 15000")
+        if not 1_000 <= int(self.audio_capture_inactivity_lease_ms) < int(
+            self.audio_capture_absolute_lease_ms
+        ):
+            raise ValueError(
+                "audio_capture_inactivity_lease_ms must be between 1000 and the absolute lease"
+            )
         if self.stt_diagnostic_expected_text:
             validate_expected_text(self.stt_diagnostic_expected_text)
             if self.turn_log_file is None:
@@ -883,25 +895,55 @@ class AudioUpload:
     chunks: int = 0
     truncated: bool = False
     buffer: bytearray = field(default_factory=bytearray)
-    started_at_monotonic: float = 0.0
+    seq: int = 0
+    absolute_lease_ms: int = DEFAULT_AUDIO_CAPTURE_ABSOLUTE_LEASE_MS
+    inactivity_lease_ms: int = DEFAULT_AUDIO_CAPTURE_INACTIVITY_LEASE_MS
+    started_at_monotonic: float | None = None
+    last_activity_at_monotonic: float | None = None
 
-    def start(self, sample_rate: object = DEFAULT_SAMPLE_RATE) -> None:
+    def start(
+        self,
+        sample_rate: object = DEFAULT_SAMPLE_RATE,
+        *,
+        seq: int = 0,
+        absolute_lease_ms: int = DEFAULT_AUDIO_CAPTURE_ABSOLUTE_LEASE_MS,
+        inactivity_lease_ms: int = DEFAULT_AUDIO_CAPTURE_INACTIVITY_LEASE_MS,
+    ) -> None:
         self.clear()
         try:
             parsed_rate = int(sample_rate)
         except (TypeError, ValueError):
             parsed_rate = DEFAULT_SAMPLE_RATE
         self.sample_rate = max(8000, min(48000, parsed_rate))
+        self.seq = max(0, int(seq))
+        self.absolute_lease_ms = max(1, int(absolute_lease_ms))
+        self.inactivity_lease_ms = max(1, int(inactivity_lease_ms))
         self.active = True
         self.started_at_monotonic = time.perf_counter()
+        self.last_activity_at_monotonic = self.started_at_monotonic
 
     def clear(self) -> None:
         self.active = False
         self.bytes_received = 0
         self.chunks = 0
         self.truncated = False
-        self.started_at_monotonic = 0.0
+        self.seq = 0
+        self.started_at_monotonic = None
+        self.last_activity_at_monotonic = None
         self.buffer.clear()
+
+    def expiry_code(self, at_monotonic: float | None = None) -> str:
+        if not self.active or self.started_at_monotonic is None:
+            return ""
+        current = time.perf_counter() if at_monotonic is None else float(at_monotonic)
+        absolute_elapsed_ms = (current - self.started_at_monotonic) * 1000.0
+        if absolute_elapsed_ms >= self.absolute_lease_ms:
+            return "audio_capture_absolute_lease_expired"
+        if self.last_activity_at_monotonic is not None:
+            inactivity_elapsed_ms = (current - self.last_activity_at_monotonic) * 1000.0
+            if inactivity_elapsed_ms >= self.inactivity_lease_ms:
+                return "audio_capture_inactivity_expired"
+        return ""
 
     def append(self, payload: bytes, max_bytes: int) -> None:
         if not self.active:
@@ -913,6 +955,7 @@ class AudioUpload:
             self.truncated = True
         if allowed > 0:
             self.buffer.extend(payload[:allowed])
+        self.last_activity_at_monotonic = time.perf_counter()
 
     @property
     def stored_bytes(self) -> int:
@@ -932,12 +975,21 @@ class AudioUpload:
             "audio_sample_rate": self.sample_rate,
             "audio_duration_ms": self.duration_ms,
             "audio_truncated": self.truncated,
+            "audio_capture_seq": self.seq,
+            "audio_capture_absolute_lease_ms": self.absolute_lease_ms,
+            "audio_capture_inactivity_lease_ms": self.inactivity_lease_ms,
         }
-        if self.started_at_monotonic > 0.0:
+        if self.started_at_monotonic is not None:
+            current = time.perf_counter()
             summary["audio_capture_elapsed_ms"] = round(
-                (time.perf_counter() - self.started_at_monotonic) * 1000.0,
+                (current - self.started_at_monotonic) * 1000.0,
                 2,
             )
+            if self.last_activity_at_monotonic is not None:
+                summary["audio_capture_inactivity_ms"] = round(
+                    (current - self.last_activity_at_monotonic) * 1000.0,
+                    2,
+                )
         return summary
 
     def finish_and_clear(self) -> dict[str, object]:
@@ -1520,6 +1572,12 @@ class LanBridgeSession:
         self.playback_response_seq = 0
         self.conversation_playback_complete_seq = 0
         self.audio_protocol_errors = 0
+        self.audio_uploads_started = 0
+        self.audio_uploads_cancelled = 0
+        self.audio_uploads_expired = 0
+        self.audio_stale_ends_rejected = 0
+        self.audio_last_reject_code = ""
+        self._rejected_audio_turns: dict[int, str] = {}
         self._stt_diagnostic_pending = bool(config.stt_diagnostic_expected_text)
         saved_initiative = self.memory.fact_value("user.initiative_enabled")
         if self.initiative_policy is not None and saved_initiative == "false":
@@ -1776,6 +1834,10 @@ class LanBridgeSession:
             self._finalize_memory_session()
 
     def connection_closed(self) -> None:
+        self._cancel_audio_capture(
+            reason="bridge connection closed before a terminal marker",
+            code="audio_capture_connection_closed",
+        )
         if self.conversation is not None and self.conversation.phase != ConversationPhase.IDLE:
             self._conversation_payload(self.conversation.bridge_lost())
 
@@ -2009,18 +2071,165 @@ class LanBridgeSession:
                 record[key] = audio_summary[key]
         self._append_turn_log(record)
 
-    def _append_audio_protocol_event(self, *, code: str, payload_bytes: int) -> None:
+    def _append_audio_protocol_event(
+        self,
+        *,
+        code: str,
+        payload_bytes: int,
+        seq: int = 0,
+        detail: str = "",
+    ) -> None:
         self.audio_protocol_errors += 1
-        self._append_turn_log(
-            {
-                "schema": "stackchan.audio-protocol-event.v1",
-                "generated_at": utc_timestamp(),
-                "session": self.session,
-                "code": code,
-                "payload_bytes": max(0, int(payload_bytes)),
-                "audio_protocol_errors": self.audio_protocol_errors,
-            }
+        record: dict[str, object] = {
+            "schema": "stackchan.audio-protocol-event.v1",
+            "generated_at": utc_timestamp(),
+            "session": self.session,
+            "code": code,
+            "payload_bytes": max(0, int(payload_bytes)),
+            "audio_protocol_errors": self.audio_protocol_errors,
+        }
+        if seq > 0:
+            record["seq"] = seq
+        if detail:
+            record["detail"] = detail[:160]
+        self._append_turn_log(record)
+
+    def _append_audio_capture_event(
+        self,
+        *,
+        code: str,
+        payload_bytes: int,
+        seq: int = 0,
+        detail: str = "",
+    ) -> None:
+        record: dict[str, object] = {
+            "schema": "stackchan.audio-capture-event.v1",
+            "generated_at": utc_timestamp(),
+            "session": self.session,
+            "code": code,
+            "payload_bytes": max(0, int(payload_bytes)),
+        }
+        if seq > 0:
+            record["seq"] = seq
+        if detail:
+            record["detail"] = detail[:160]
+        self._append_turn_log(record)
+
+    @staticmethod
+    def _audio_message_seq(message: dict[str, Any]) -> int:
+        try:
+            return max(0, int(message.get("seq") or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    def _audio_upload_telemetry(self) -> dict[str, object]:
+        return {
+            "audio_upload_active": self.audio.active,
+            "audio_uploads_started": self.audio_uploads_started,
+            "audio_uploads_cancelled": self.audio_uploads_cancelled,
+            "audio_uploads_expired": self.audio_uploads_expired,
+            "audio_stale_ends_rejected": self.audio_stale_ends_rejected,
+            "audio_protocol_errors": self.audio_protocol_errors,
+            "audio_last_reject_code": self.audio_last_reject_code,
+            "audio_capture_absolute_lease_ms": self.config.audio_capture_absolute_lease_ms,
+            "audio_capture_inactivity_lease_ms": self.config.audio_capture_inactivity_lease_ms,
+        }
+
+    def _remember_audio_rejection(self, seq: int, code: str) -> None:
+        self.audio_last_reject_code = code
+        if seq <= 0:
+            return
+        self._rejected_audio_turns[seq] = code
+        while len(self._rejected_audio_turns) > 16:
+            self._rejected_audio_turns.pop(next(iter(self._rejected_audio_turns)))
+
+    def _cancel_audio_capture(self, *, reason: str, code: str) -> dict[str, object] | None:
+        if not self.audio.active:
+            return None
+        summary = self.audio.summary()
+        seq = self.audio.seq
+        payload_bytes = self.audio.bytes_received
+        self.audio.clear()
+        self.audio_uploads_cancelled += 1
+        self._remember_audio_rejection(seq, code)
+        self._append_audio_capture_event(
+            code=code,
+            payload_bytes=payload_bytes,
+            seq=seq,
+            detail=reason,
         )
+        summary.update(self._audio_upload_telemetry())
+        return summary
+
+    def _expire_audio_capture(self) -> dict[str, object] | None:
+        code = self.audio.expiry_code()
+        if not code:
+            return None
+        summary = self.audio.summary()
+        seq = self.audio.seq
+        payload_bytes = self.audio.bytes_received
+        self.audio.clear()
+        self.audio_uploads_expired += 1
+        self._remember_audio_rejection(seq, code)
+        self._append_audio_capture_event(
+            code=code,
+            payload_bytes=payload_bytes,
+            seq=seq,
+            detail="partial PCM discarded before STT",
+        )
+        transition = self.conversation.cancel(now_ms(), code) if self.conversation is not None else None
+        frame = error_frame(code, "partial PCM discarded before STT")
+        frame.update(summary)
+        frame.update(self._audio_upload_telemetry())
+        frame.update(self._conversation_payload(transition))
+        return frame
+
+    def prepare_utterance_end(
+        self,
+        message: dict[str, Any],
+        *,
+        finalized_audio: FinalizedAudioUpload | None = None,
+    ) -> dict[str, object] | None:
+        seq = self._audio_message_seq(message)
+        if finalized_audio is not None:
+            finalized_reject = str(
+                finalized_audio.summary.get("audio_capture_reject_code", "")
+            )
+            if finalized_reject:
+                frame = error_frame(finalized_reject, "partial PCM discarded before STT")
+                frame.update(finalized_audio.summary)
+                frame.update(self._audio_upload_telemetry())
+                return frame
+        expired = self._expire_audio_capture()
+        if expired is not None:
+            return expired
+        if self.audio.active and self.audio.seq > 0 and seq > 0 and seq != self.audio.seq:
+            self.audio_stale_ends_rejected += 1
+            self.audio_last_reject_code = "utterance_end_seq_mismatch"
+            self._append_audio_protocol_event(
+                code="utterance_end_seq_mismatch",
+                payload_bytes=0,
+                seq=seq,
+                detail=f"active capture seq is {self.audio.seq}",
+            )
+            frame = error_frame("utterance_end_seq_mismatch", f"active capture seq is {self.audio.seq}")
+            frame.update(self._audio_upload_telemetry())
+            return frame
+        rejected_code = self._rejected_audio_turns.get(seq, "") if seq > 0 else ""
+        if not self.audio.active and rejected_code:
+            self.audio_stale_ends_rejected += 1
+            self.audio_last_reject_code = "utterance_end_stale"
+            self._append_audio_protocol_event(
+                code="utterance_end_stale",
+                payload_bytes=0,
+                seq=seq,
+                detail=rejected_code,
+            )
+            frame = error_frame("utterance_end_stale", rejected_code)
+            frame["audio_capture_reject_code"] = rejected_code
+            frame.update(self._audio_upload_telemetry())
+            return frame
+        return None
 
     @staticmethod
     def _validate_audio_end_declaration(
@@ -2209,6 +2418,7 @@ class LanBridgeSession:
             self.endpoint_id = str(frame.get("endpoint_id", self.endpoint_id)) if frame.get("type") != "error" else self.endpoint_id
             return [frame]
         if message_type == "heartbeat":
+            audio_expired = self._expire_audio_capture()
             self.robot_embodiment.update(message)
             self._last_robot_heartbeat = dict(message)
             if (
@@ -2233,7 +2443,7 @@ class LanBridgeSession:
             if endpoint_id:
                 frame["endpoint_id"] = endpoint_id
             frame.update(self._conversation_payload(conversation_transition))
-            return [frame]
+            return ([audio_expired] if audio_expired is not None else []) + [frame]
         if message_type == "claim_brain":
             return [self.control_state.claim_brain(message)]
         if message_type == "release_brain":
@@ -2250,6 +2460,9 @@ class LanBridgeSession:
             return [self._handle_settings_set(message)]
         if message_type == "diagnostics_request":
             frame = self.control_state.diagnostics_snapshot(self.config)
+            audio_diagnostics = frame.get("audio")
+            if isinstance(audio_diagnostics, dict):
+                audio_diagnostics.update(self._audio_upload_telemetry())
             frame.update(self._conversation_payload())
             return [frame]
         if message_type == "capability_update":
@@ -2263,11 +2476,68 @@ class LanBridgeSession:
             )
             if conversation_error is not None:
                 return [conversation_error]
-            self.audio.start(message.get("sample_rate", DEFAULT_SAMPLE_RATE))
-            return [{"type": "listening", **self.audio.summary(), **self._conversation_payload()}]
+            capture_seq = self._audio_message_seq(message)
+            self._cancel_audio_capture(
+                reason="a newer utterance_start superseded the capture",
+                code="audio_capture_superseded",
+            )
+            if capture_seq > 0:
+                self._rejected_audio_turns.pop(capture_seq, None)
+            self.audio.start(
+                message.get("sample_rate", DEFAULT_SAMPLE_RATE),
+                seq=capture_seq,
+                absolute_lease_ms=self.config.audio_capture_absolute_lease_ms,
+                inactivity_lease_ms=self.config.audio_capture_inactivity_lease_ms,
+            )
+            self.audio_uploads_started += 1
+            return [
+                {
+                    "type": "listening",
+                    **self.audio.summary(),
+                    **self._audio_upload_telemetry(),
+                    **self._conversation_payload(),
+                }
+            ]
+        if message_type == "utterance_cancel":
+            owner_error = self._owner_gate(message)
+            if owner_error is not None:
+                return [owner_error]
+            reason = str(message.get("reason") or "capture_cancelled")
+            seq = self._audio_message_seq(message)
+            if self.audio.active and self.audio.seq > 0 and seq > 0 and seq != self.audio.seq:
+                return [
+                    error_frame("utterance_cancel_seq_mismatch", f"active capture seq is {self.audio.seq}")
+                    | self._audio_upload_telemetry()
+                ]
+            known_duplicate = seq > 0 and seq in self._rejected_audio_turns
+            summary = self._cancel_audio_capture(
+                reason=reason,
+                code="audio_capture_cancelled",
+            )
+            transition = None
+            if summary is not None or not known_duplicate:
+                if summary is None:
+                    self._remember_audio_rejection(seq, "audio_capture_cancelled")
+                self.cancel_active_turn(reason)
+                transition = (
+                    self.conversation.cancel(now_ms(), reason)
+                    if self.conversation is not None
+                    else None
+                )
+            frame: dict[str, object] = {
+                "type": "heartbeat",
+                "utterance_cancelled": True,
+                "utterance_cancel_seq": seq,
+                "utterance_cancel_duplicate": summary is None,
+                **self._audio_upload_telemetry(),
+            }
+            if summary is not None:
+                frame.update(summary)
+            frame.update(self._conversation_payload(transition))
+            return [frame]
         if message_type == "cancel":
-            self.audio.clear()
             reason = str(message.get("reason") or "cancelled")
+            self._cancel_audio_capture(reason=reason, code="audio_capture_cancelled")
             self.cancel_active_turn(reason)
             if self.conversation is not None:
                 transition = self.conversation.cancel(now_ms(), reason)
@@ -2282,6 +2552,12 @@ class LanBridgeSession:
             owner_error = self._owner_gate(message)
             if owner_error is not None:
                 return [owner_error]
+            audio_end_error = self.prepare_utterance_end(
+                message,
+                finalized_audio=finalized_audio,
+            )
+            if audio_end_error is not None:
+                return [audio_end_error]
             return self._handle_utterance_end(
                 message,
                 suppress_thinking=suppress_thinking,
@@ -2579,6 +2855,15 @@ class LanBridgeSession:
         return frame
 
     def finalize_audio_upload(self) -> FinalizedAudioUpload:
+        expired = self._expire_audio_capture()
+        if expired is not None:
+            summary = {
+                key: value
+                for key, value in expired.items()
+                if key not in {"type", "code", "detail"}
+            }
+            summary["audio_capture_reject_code"] = str(expired["code"])
+            return FinalizedAudioUpload(pcm=b"", summary=summary)
         return self.audio.finalize()
 
     def handle_binary(self, payload: bytes) -> list[dict[str, object]]:
@@ -2588,6 +2873,9 @@ class LanBridgeSession:
         self.control_state.reconcile_owner()
         if self.endpoint_id and self.control_state.active_brain_owner and self.endpoint_id != self.control_state.active_brain_owner:
             return [error_frame("brain_owner_mismatch", self.endpoint_id)]
+        expired = self._expire_audio_capture()
+        if expired is not None:
+            return [expired]
         try:
             self.audio.append(payload, self.config.max_audio_bytes)
         except WebSocketProtocolError as exc:
@@ -2598,7 +2886,13 @@ class LanBridgeSession:
             frame = error_frame("audio_without_utterance", str(exc))
             frame["audio_protocol_errors"] = self.audio_protocol_errors
             return [frame]
-        return [{"type": "heartbeat", **self.audio.summary()}]
+        return [
+            {
+                "type": "heartbeat",
+                **self.audio.summary(),
+                **self._audio_upload_telemetry(),
+            }
+        ]
 
     def _handle_text_audio(self, message: dict[str, Any]) -> list[dict[str, object]]:
         encoded = str(message.get("pcm_b64") or message.get("audio_b64") or "").strip()
@@ -2899,6 +3193,12 @@ class LanBridgeSession:
         finalized = finalized_audio if finalized_audio is not None else self.finalize_audio_upload()
         pcm = finalized.pcm
         audio_summary = dict(finalized.summary)
+        finalized_reject = str(audio_summary.get("audio_capture_reject_code", ""))
+        if finalized_reject:
+            frame = error_frame(finalized_reject, "partial PCM discarded before STT")
+            frame.update(audio_summary)
+            frame.update(self._audio_upload_telemetry())
+            return [frame]
         has_audio = int(audio_summary["audio_bytes"]) > 0
         declaration_error = self._validate_audio_end_declaration(message, audio_summary)
         if declaration_error:
@@ -4101,6 +4401,11 @@ def handle_connection(
                         close_interrupted_response("playback_interrupted")
 
                 if text_message_type == "utterance_end":
+                    if isinstance(parsed_text, dict):
+                        audio_end_error = session.prepare_utterance_end(parsed_text)
+                        if audio_end_error is not None:
+                            send_live(audio_end_error)
+                            continue
                     if turn_thread is not None and turn_thread.is_alive():
                         turn_thread.join(timeout=1.5)
                     if turn_thread is not None and turn_thread.is_alive():
@@ -4108,6 +4413,14 @@ def handle_connection(
                         continue
                     early_frame = session.early_thinking_frame(text)
                     finalized_audio = session.finalize_audio_upload()
+                    if isinstance(parsed_text, dict):
+                        audio_end_error = session.prepare_utterance_end(
+                            parsed_text,
+                            finalized_audio=finalized_audio,
+                        )
+                        if audio_end_error is not None:
+                            send_live(audio_end_error)
+                            continue
                     if early_frame is not None:
                         sent_at = send_live(early_frame)
                         if sent_at is not None and isinstance(parsed_text, dict):
@@ -4380,6 +4693,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--client-idle-timeout-s", type=float, default=DEFAULT_CLIENT_IDLE_TIMEOUT_S)
     parser.add_argument("--disable-audio-downlink", action="store_true")
     parser.add_argument("--max-audio-bytes", type=int, default=DEFAULT_MAX_AUDIO_BYTES)
+    parser.add_argument(
+        "--audio-capture-absolute-lease-ms",
+        type=int,
+        default=DEFAULT_AUDIO_CAPTURE_ABSOLUTE_LEASE_MS,
+    )
+    parser.add_argument(
+        "--audio-capture-inactivity-lease-ms",
+        type=int,
+        default=DEFAULT_AUDIO_CAPTURE_INACTIVITY_LEASE_MS,
+    )
     parser.add_argument("--audio-evidence-dir", type=Path)
     parser.add_argument("--memory-file", type=Path)
     parser.add_argument("--turn-log-file", type=Path)
@@ -4436,6 +4759,12 @@ def main() -> int:
         parser.error("--conversation-reply-window-step-ms cannot be negative")
     if not 0.0 <= args.stt_min_confidence <= 1.0:
         parser.error("--stt-min-confidence must be between 0 and 1")
+    if not 12_500 <= args.audio_capture_absolute_lease_ms <= 15_000:
+        parser.error("--audio-capture-absolute-lease-ms must be between 12500 and 15000")
+    if not 1_000 <= args.audio_capture_inactivity_lease_ms < args.audio_capture_absolute_lease_ms:
+        parser.error(
+            "--audio-capture-inactivity-lease-ms must be between 1000 and the absolute lease"
+        )
     if not 0 <= args.conversation_acoustic_tail_ms <= 2_000:
         parser.error("--conversation-acoustic-tail-ms must be between 0 and 2000")
     if args.initiative_min_interval_seconds < MIN_UNPROMPTED_INTERVAL_MS // 1000:
@@ -4487,6 +4816,8 @@ def main() -> int:
         client_idle_timeout_s=max(1.0, args.client_idle_timeout_s),
         disable_audio_downlink=args.disable_audio_downlink,
         max_audio_bytes=args.max_audio_bytes,
+        audio_capture_absolute_lease_ms=args.audio_capture_absolute_lease_ms,
+        audio_capture_inactivity_lease_ms=args.audio_capture_inactivity_lease_ms,
         audio_evidence_dir=args.audio_evidence_dir,
         memory_file=args.memory_file,
         turn_log_file=args.turn_log_file,
