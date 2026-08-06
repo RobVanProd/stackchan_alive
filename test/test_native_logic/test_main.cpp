@@ -1640,8 +1640,12 @@ void test_voice_activity_endpoint_ends_after_sustained_speech_and_trailing_silen
   TEST_ASSERT_TRUE(endpoint.telemetry().speechSeen);
   TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
                     static_cast<int>(endpoint.process(silence, 800, 200)));
-  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
                     static_cast<int>(endpoint.process(silence, 800, 300)));
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(silence, 800, 350)));
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
+                    static_cast<int>(endpoint.process(silence, 800, 400)));
   TEST_ASSERT_FALSE(endpoint.telemetry().active);
   TEST_ASSERT_EQUAL_UINT32(1, endpoint.telemetry().endpointsDetected);
   TEST_ASSERT_EQUAL_STRING(
@@ -1821,6 +1825,65 @@ void test_voice_activity_endpoint_disabled_path_preserves_fixed_capture() {
                     static_cast<int>(endpoint.process(speech, 800, 1000)));
   TEST_ASSERT_FALSE(endpoint.telemetry().active);
   TEST_ASSERT_EQUAL_UINT32(0, endpoint.telemetry().capturesStarted);
+}
+
+void test_voice_activity_endpoint_ignores_missing_wall_time_for_semantic_silence() {
+  VoiceActivityEndpointConfig config;
+  config.enabled = true;
+  config.minimumCaptureMs = 100;
+  config.minimumSpeechMs = 100;
+  config.trailingSilenceMs = 200;
+  config.maximumCaptureMs = 500;
+  VoiceActivityEndpoint endpoint;
+  TEST_ASSERT_TRUE(endpoint.begin(config, 1000));
+
+  int16_t speech[800] = {};
+  int16_t silence[800] = {};
+  fillVoiceEndpointSpeech(speech, 800);
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(speech, 800, 1050)));
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(speech, 800, 1100)));
+  TEST_ASSERT_TRUE(endpoint.telemetry().speechSeen);
+
+  // An IntentTask/microphone/transport stall is not captured silence. Only one
+  // 50 ms silence chunk follows, despite the 7.5 second wall-clock jump.
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(silence, 800, 8600)));
+  TEST_ASSERT_TRUE(endpoint.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(150, endpoint.telemetry().capturedAudioMs);
+  TEST_ASSERT_EQUAL_UINT32(100, endpoint.telemetry().lastSpeechAudioMs);
+
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(silence, 800, 8650)));
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(silence, 800, 8700)));
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
+                    static_cast<int>(endpoint.process(silence, 800, 8750)));
+  TEST_ASSERT_EQUAL_UINT32(300, endpoint.telemetry().capturedAudioMs);
+}
+
+void test_voice_activity_endpoint_ignores_missing_wall_time_for_maximum() {
+  VoiceActivityEndpointConfig config;
+  config.enabled = true;
+  config.minimumCaptureMs = 100;
+  config.minimumSpeechMs = 100;
+  config.trailingSilenceMs = 200;
+  config.maximumCaptureMs = 500;
+  VoiceActivityEndpoint endpoint;
+  TEST_ASSERT_TRUE(endpoint.begin(config, 1000));
+
+  int16_t silence[800] = {};
+  for (uint32_t chunk = 1; chunk < 10; ++chunk) {
+    const uint32_t sparseWallMs = 1000u + chunk * 5000u;
+    TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                      static_cast<int>(endpoint.process(silence, 800, sparseWallMs)));
+  }
+  TEST_ASSERT_TRUE(endpoint.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(450, endpoint.telemetry().capturedAudioMs);
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::MaxDuration),
+                    static_cast<int>(endpoint.process(silence, 800, 51000)));
+  TEST_ASSERT_EQUAL_UINT32(500, endpoint.telemetry().capturedAudioMs);
 }
 
 void test_embodied_energy_classifies_with_hysteresis_and_charging_priority() {
@@ -5875,16 +5938,29 @@ class CapturingBridgeSocketSink final : public BridgeSocketWriterSink {
 
   size_t write(const uint8_t* data, size_t length) override {
     if (!connected || data == nullptr || length == 0) {
+      writeWouldBlock = false;
       return 0;
     }
+    if (deferredWrites > 0) {
+      --deferredWrites;
+      writeWouldBlock = true;
+      return 0;
+    }
+    writeWouldBlock = false;
     const size_t allowed = maxWriteBytes == 0 || maxWriteBytes > length ? length : maxWriteBytes;
     bytes.insert(bytes.end(), data, data + allowed);
     writes++;
     return allowed;
   }
 
+  bool lastWriteWouldBlock() const override {
+    return writeWouldBlock;
+  }
+
   bool connected = true;
   size_t maxWriteBytes = 0;
+  uint32_t deferredWrites = 0;
+  bool writeWouldBlock = false;
   uint32_t writes = 0;
   std::vector<uint8_t> bytes;
 };
@@ -7013,6 +7089,204 @@ void test_bridge_audio_uplink_rejects_bad_sequence_and_limits() {
   TEST_ASSERT_TRUE(socket.outgoing.empty());
 }
 
+void test_bridge_socket_writer_retains_frame_during_transient_backpressure() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 701));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      702));
+
+  CapturingBridgeSocketSink sink;
+  sink.deferredWrites = 1;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x44556679));
+  TEST_ASSERT_TRUE(writer.queueTextFrame("{\"type\":\"utterance_cancel\",\"seq\":7}"));
+
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::Partial),
+                    static_cast<int>(writer.drainPendingFrame(703)));
+  TEST_ASSERT_TRUE(writer.telemetry().frameBuffered);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().writeDeferrals);
+  TEST_ASSERT_EQUAL_UINT32(0, writer.telemetry().writeFailures);
+  TEST_ASSERT_EQUAL_UINT32(0, writer.telemetry().framesWritten);
+
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingFrame(704)));
+  TEST_ASSERT_FALSE(writer.telemetry().frameBuffered);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesWritten);
+}
+
+void test_bridge_audio_uplink_retries_retained_end_after_writer_drains() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 960);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+  TEST_ASSERT_TRUE(uplink.beginTurn(21, 1000, true));
+  session.update(1001);
+  socket.clearOutgoing();
+
+  const int16_t samples[] = {100, -200, 300, -400};
+  TEST_ASSERT_TRUE(uplink.submitPcmChunk(21, samples, 4, 1002));
+  session.update(1003);
+  std::vector<uint8_t> decodedAudio;
+  TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(socket.outgoing, decodedAudio));
+  socket.clearOutgoing();
+  TEST_ASSERT_TRUE(session.queueTextFrame("{\"type\":\"busy\"}"));
+  // The text slot is occupied. Ending must stop capture but retain the terminal
+  // rather than discard the only utterance_end attempt.
+  TEST_ASSERT_TRUE(uplink.endTurn(21, 1004));
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_TRUE(uplink.telemetry().terminalPending);
+  TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().turnsCompleted);
+
+  session.update(1005);
+  socket.clearOutgoing();
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeAudioTerminalServiceResult::Queued),
+                    static_cast<int>(uplink.servicePendingTerminal(1006)));
+  TEST_ASSERT_FALSE(uplink.telemetry().terminalPending);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeAudioTerminalKind::End),
+                    static_cast<int>(uplink.telemetry().lastTerminal));
+
+  session.update(1007);
+  char decodedEnd[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedEnd, sizeof(decodedEnd)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"type\":\"utterance_end\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"audio_bytes\":8"));
+}
+
+void test_bridge_audio_uplink_abort_queues_explicit_cancel() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 970);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+  TEST_ASSERT_TRUE(uplink.beginTurn(22, 1100, true));
+  session.update(1101);
+  socket.clearOutgoing();
+
+  uplink.abort(1102, "capture stalled");
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_FALSE(uplink.telemetry().terminalPending);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().turnsAborted);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().cancelFramesQueued);
+  session.update(1103);
+  char decodedCancel[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(
+      decodeMaskedClientTextFrame(socket.outgoing, decodedCancel, sizeof(decodedCancel)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"type\":\"utterance_cancel\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"seq\":22"));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"reason\":\"capture_stalled\""));
+}
+
+void test_bridge_audio_uplink_terminal_timeout_closes_socket_fail_closed() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 980);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  config.terminalRetryMs = 100;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+  TEST_ASSERT_TRUE(uplink.beginTurn(23, 1200, true));
+  session.update(1201);
+  socket.clearOutgoing();
+
+  TEST_ASSERT_TRUE(session.queueTextFrame("{\"type\":\"busy\"}"));
+  TEST_ASSERT_TRUE(uplink.endTurn(23, 1202));
+  TEST_ASSERT_TRUE(uplink.telemetry().terminalPending);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeAudioTerminalServiceResult::Pending),
+                    static_cast<int>(uplink.servicePendingTerminal(1301)));
+  TEST_ASSERT_TRUE(socket.connected);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeAudioTerminalServiceResult::FailedClosed),
+                    static_cast<int>(uplink.servicePendingTerminal(1302)));
+  TEST_ASSERT_FALSE(socket.connected);
+  TEST_ASSERT_EQUAL_UINT32(1, socket.stops);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().terminalTimeouts);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().turnsAborted);
+  TEST_ASSERT_EQUAL_STRING("utterance_terminal_delivery_timeout",
+                           uplink.telemetry().lastError);
+}
+
+void test_bridge_wake_gate_services_retained_terminal_after_writer_drains() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 990);
+
+  BridgeAudioUplinkConfig uplinkConfig;
+  uplinkConfig.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(uplinkConfig, &session));
+  BridgeWakeGate gate;
+  TEST_ASSERT_TRUE(gate.begin(BridgeWakeGateConfig {}, &uplink));
+
+  RobotEvent wake;
+  wake.type = EventType::WakeWord;
+  gate.applyEvent(wake, 1400);
+  // Do not drain utterance_start before speech end: this reproduces the full
+  // writer slot that formerly lost utterance_end.
+  RobotEvent ended;
+  ended.type = EventType::SpeechEnded;
+  gate.applyEvent(ended, 1401);
+  TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_TRUE(uplink.telemetry().terminalPending);
+
+  session.update(1402);
+  socket.clearOutgoing();
+  gate.update(1403);
+  TEST_ASSERT_FALSE(gate.telemetry().turnActive);
+  TEST_ASSERT_FALSE(uplink.telemetry().terminalPending);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsCompleted);
+  session.update(1404);
+  char decodedEnd[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedEnd, sizeof(decodedEnd)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"type\":\"utterance_end\""));
+}
+
+void test_bridge_wake_gate_observes_direct_uplink_cancel() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 995);
+
+  BridgeAudioUplinkConfig uplinkConfig;
+  uplinkConfig.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(uplinkConfig, &session));
+  BridgeWakeGate gate;
+  TEST_ASSERT_TRUE(gate.begin(BridgeWakeGateConfig {}, &uplink));
+
+  RobotEvent wake;
+  wake.type = EventType::WakeWord;
+  gate.applyEvent(wake, 1500);
+  session.update(1501);
+  socket.clearOutgoing();
+  uplink.abort(1502, "capture_phase_timeout");
+  TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+  gate.update(1503);
+  TEST_ASSERT_FALSE(gate.telemetry().turnActive);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsAborted);
+  TEST_ASSERT_EQUAL_UINT32(0, gate.telemetry().turnsCompleted);
+}
+
 void test_bridge_wake_gate_suppresses_turn_when_uplink_disabled() {
   BridgeAudioUplink uplink;
   TEST_ASSERT_TRUE(uplink.begin());
@@ -7360,7 +7634,15 @@ void test_bridge_wake_gate_survives_a_long_utterance() {
   gate.update(turnStartedMs + kBridgeWakeGateMaxTurnMs);
   TEST_ASSERT_FALSE(gate.telemetry().gateOpen);
   TEST_ASSERT_FALSE(gate.telemetry().turnActive);
-  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(0, gate.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsAborted);
+  session.update(turnStartedMs + kBridgeWakeGateMaxTurnMs + 1u);
+  char decodedCancel[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(
+      decodeMaskedClientTextFrame(socket.outgoing, decodedCancel, sizeof(decodedCancel)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"type\":\"utterance_cancel\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel,
+                                   "\"reason\":\"bridge_wake_gate_max_turn\""));
 }
 
 void test_bridge_wake_gate_max_turn_outlasts_the_capture_ceiling() {
@@ -7418,7 +7700,15 @@ void test_bridge_wake_gate_renews_on_speech_and_expires() {
   TEST_ASSERT_FALSE(gate.telemetry().gateOpen);
   TEST_ASSERT_FALSE(gate.telemetry().turnActive);
   TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().gatesExpired);
-  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(0, gate.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsAborted);
+  session.update(3601);
+  char decodedCancel[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(
+      decodeMaskedClientTextFrame(socket.outgoing, decodedCancel, sizeof(decodedCancel)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"type\":\"utterance_cancel\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel,
+                                   "\"reason\":\"bridge_wake_gate_timeout\""));
 }
 
 void test_bridge_network_session_reconnects_after_socket_disconnect() {
@@ -8277,6 +8567,24 @@ void test_dedicated_wake_capture_submission_requires_all_owners() {
   TEST_ASSERT_FALSE(dedicatedWakeCaptureMaySubmit(false, false, false));
 }
 
+void test_dedicated_wake_capture_continuity_and_commit_fail_closed() {
+  TEST_ASSERT_TRUE(dedicatedWakeCaptureChunkContinuous(50000, 250000, 0, 100, 300));
+  TEST_ASSERT_TRUE(dedicatedWakeCaptureChunkContinuous(50000, 250000, 100, 350, 300));
+  TEST_ASSERT_FALSE(dedicatedWakeCaptureChunkContinuous(7503802, 250000, 100, 150, 300));
+  TEST_ASSERT_FALSE(dedicatedWakeCaptureChunkContinuous(50000, 250000, 100, 401, 300));
+
+  TEST_ASSERT_TRUE(dedicatedWakeCaptureMayCommit(
+      VoiceActivityEndpointReason::TrailingSilence, true, false, false, false));
+  TEST_ASSERT_FALSE(dedicatedWakeCaptureMayCommit(
+      VoiceActivityEndpointReason::MaxDuration, true, true, false, false));
+  TEST_ASSERT_FALSE(dedicatedWakeCaptureMayCommit(
+      VoiceActivityEndpointReason::TrailingSilence, true, false, true, false));
+  TEST_ASSERT_FALSE(dedicatedWakeCaptureMayCommit(
+      VoiceActivityEndpointReason::TrailingSilence, true, false, false, true));
+  TEST_ASSERT_TRUE(dedicatedWakeCaptureMayCommit(
+      VoiceActivityEndpointReason::None, false, true, false, false));
+}
+
 void test_dedicated_wake_capture_keeps_queue_failures_visible_while_authorized() {
   BridgeClient bridge;
   FakeBridgeNetworkSocket socket;
@@ -8362,15 +8670,16 @@ void test_dedicated_wake_capture_retry_stops_when_backpressure_reaches_gate_edge
   TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().queueFailures);
   TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().chunksQueued);
 
-  RobotEvent ended;
-  ended.type = EventType::SpeechEnded;
-  gate.applyEvent(ended, kGateEdgeMs);
+  // Expiry is an integrity cancel, not a semantic utterance end. The host must
+  // discard the partial PCM rather than transcribe it as if the user stopped.
+  gate.update(kGateEdgeMs);
   session.update(kGateEdgeMs + 1u);
-  char decodedEnd[kBridgeEndpointControlResponseMax] = {};
-  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedEnd, sizeof(decodedEnd)));
-  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"type\":\"utterance_end\""));
-  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"audio_bytes\":8"));
-  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"chunks\":1"));
+  char decodedCancel[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(
+      decodeMaskedClientTextFrame(socket.outgoing, decodedCancel, sizeof(decodedCancel)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"type\":\"utterance_cancel\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"audio_bytes\":8"));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"chunks\":1"));
 }
 
 void test_dedicated_wake_capture_stops_cleanly_at_release_gate_boundary() {
@@ -8457,9 +8766,7 @@ void test_dedicated_wake_capture_stops_cleanly_at_release_gate_boundary() {
             gate.isGateOpen(capturedAtMs),
             gate.telemetry().turnActive,
             uplink.telemetry().active)) {
-      RobotEvent ended;
-      ended.type = EventType::SpeechEnded;
-      gate.applyEvent(ended, capturedAtMs);
+      gate.update(capturedAtMs);
       endpoint.cancel();
       captureEndedAtMs = capturedAtMs;
       expiredDuringCapture = true;
@@ -8481,15 +8788,16 @@ void test_dedicated_wake_capture_stops_cleanly_at_release_gate_boundary() {
     socket.clearOutgoing();
   }
 
-  // Clean expiry still emits the one closing control frame, after all accepted
-  // binary frames. Its declaration must match exactly what crossed the wire.
+  // Privacy-gate expiry emits an explicit cancel after all accepted binary
+  // frames. Its declaration still matches exactly what crossed the wire.
   session.update(captureEndedAtMs + 1u);
-  char decodedEnd[kBridgeEndpointControlResponseMax] = {};
-  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedEnd, sizeof(decodedEnd)));
-  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"type\":\"utterance_end\""));
-  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"seq\":1"));
-  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"audio_bytes\":190400"));
-  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"chunks\":119"));
+  char decodedCancel[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(
+      decodeMaskedClientTextFrame(socket.outgoing, decodedCancel, sizeof(decodedCancel)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"type\":\"utterance_cancel\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"seq\":1"));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"audio_bytes\":190400"));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"chunks\":119"));
   ++endFrames;
   socket.clearOutgoing();
   session.update(captureEndedAtMs + 2u);
@@ -8515,7 +8823,8 @@ void test_dedicated_wake_capture_stops_cleanly_at_release_gate_boundary() {
   TEST_ASSERT_FALSE(gate.telemetry().turnActive);
   TEST_ASSERT_FALSE(uplink.telemetry().active);
   TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsStarted);
-  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(0, gate.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsAborted);
   TEST_ASSERT_FALSE(endpoint.telemetry().speechSeen);
   TEST_ASSERT_EQUAL_UINT32(0, endpoint.telemetry().speechChunks);
 }
@@ -8961,6 +9270,8 @@ int main() {
   RUN_TEST(test_voice_activity_endpoint_default_preserves_one_and_a_half_second_natural_pause);
   RUN_TEST(test_voice_activity_endpoint_default_continuous_speech_still_hits_maximum);
   RUN_TEST(test_voice_activity_endpoint_disabled_path_preserves_fixed_capture);
+  RUN_TEST(test_voice_activity_endpoint_ignores_missing_wall_time_for_semantic_silence);
+  RUN_TEST(test_voice_activity_endpoint_ignores_missing_wall_time_for_maximum);
   RUN_TEST(test_audio_capture_adapter_disabled_default_is_ready_without_source);
   RUN_TEST(test_audio_capture_adapter_rejects_oversized_window);
   RUN_TEST(test_audio_capture_adapter_records_pcm_and_emits_reflex_events);
@@ -9172,6 +9483,7 @@ int main() {
   RUN_TEST(test_bridge_socket_writer_writes_pending_endpoint_response_frame);
   RUN_TEST(test_bridge_socket_writer_retains_partial_frame_until_complete);
   RUN_TEST(test_bridge_socket_writer_disconnected_keeps_pending_response);
+  RUN_TEST(test_bridge_socket_writer_retains_frame_during_transient_backpressure);
   RUN_TEST(test_bridge_socket_writer_writes_queued_text_frame);
   RUN_TEST(test_bridge_socket_writer_bounds_queued_text_frame);
   RUN_TEST(test_bridge_socket_writer_writes_queued_binary_frame);
@@ -9193,12 +9505,18 @@ int main() {
   RUN_TEST(test_bridge_audio_uplink_requires_wake_gate_before_start);
   RUN_TEST(test_bridge_audio_uplink_queues_start_chunk_and_end_frames);
   RUN_TEST(test_bridge_audio_uplink_rejects_bad_sequence_and_limits);
+  RUN_TEST(test_bridge_audio_uplink_retries_retained_end_after_writer_drains);
+  RUN_TEST(test_bridge_audio_uplink_abort_queues_explicit_cancel);
+  RUN_TEST(test_bridge_audio_uplink_terminal_timeout_closes_socket_fail_closed);
   RUN_TEST(test_bridge_wake_gate_suppresses_turn_when_uplink_disabled);
   RUN_TEST(test_bridge_wake_gate_starts_and_completes_uplink_turn);
+  RUN_TEST(test_bridge_wake_gate_services_retained_terminal_after_writer_drains);
+  RUN_TEST(test_bridge_wake_gate_observes_direct_uplink_cancel);
   RUN_TEST(test_bridge_wake_gate_can_start_uplink_turn_from_speech_when_enabled);
   RUN_TEST(test_bridge_wake_gate_renews_on_speech_and_expires);
   RUN_TEST(test_bridge_wake_gate_survives_a_long_utterance);
   RUN_TEST(test_dedicated_wake_capture_submission_requires_all_owners);
+  RUN_TEST(test_dedicated_wake_capture_continuity_and_commit_fail_closed);
   RUN_TEST(test_dedicated_wake_capture_keeps_queue_failures_visible_while_authorized);
   RUN_TEST(test_dedicated_wake_capture_retry_stops_when_backpressure_reaches_gate_edge);
   RUN_TEST(test_dedicated_wake_capture_stops_cleanly_at_release_gate_boundary);

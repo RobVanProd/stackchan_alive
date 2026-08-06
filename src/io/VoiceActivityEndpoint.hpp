@@ -51,6 +51,11 @@ struct VoiceActivityEndpointTelemetry {
   uint32_t captureStartedAtMs = 0;
   uint32_t lastSpeechAtMs = 0;
   uint32_t lastEndpointAtMs = 0;
+  // Semantic endpoint timing is based only on PCM that was actually captured.
+  // Wall time above remains diagnostic and must not turn a transport/microphone
+  // stall into apparent silence.
+  uint32_t capturedAudioMs = 0;
+  uint32_t lastSpeechAudioMs = 0;
   float lastLevel = 0.0f;
   float lastZeroCrossingRate = 0.0f;
   float noiseFloor = 0.015f;
@@ -73,7 +78,9 @@ class VoiceActivityEndpoint {
 
   VoiceActivityEndpointConfig config_;
   VoiceActivityEndpointTelemetry telemetry_;
-  uint32_t consecutiveSpeechMs_ = 0;
+  uint64_t capturedSamples_ = 0;
+  uint64_t consecutiveSpeechSamples_ = 0;
+  uint64_t lastSpeechEndSample_ = 0;
 };
 
 const char* voiceActivityEndpointReasonName(VoiceActivityEndpointReason reason);

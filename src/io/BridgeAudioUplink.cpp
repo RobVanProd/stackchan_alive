@@ -23,13 +23,15 @@ bool BridgeAudioUplink::begin(const BridgeAudioUplinkConfig& config,
     return fail("audio_uplink_session_missing");
   }
   if (config_.sampleRate == 0 || config_.maxAudioBytes == 0 ||
-      config_.maxChunkBytes == 0 ||
+      config_.maxChunkBytes == 0 || config_.terminalRetryMs == 0 ||
       config_.maxChunkBytes > kBridgeAudioStreamChunkPayloadMax) {
     telemetry_.ready = false;
     return fail("audio_uplink_bad_config");
   }
 
   telemetry_.lastError[0] = '\0';
+  pendingTerminalSeq_ = 0;
+  pendingTerminalReason_[0] = '\0';
   return true;
 }
 
@@ -39,6 +41,8 @@ void BridgeAudioUplink::reset() {
   telemetry_.ready = ready;
   telemetry_.enabled = config_.enabled;
   telemetry_.wakeGateRequired = config_.wakeGateRequired;
+  pendingTerminalSeq_ = 0;
+  pendingTerminalReason_[0] = '\0';
   if (!config_.enabled) {
     copyError("audio_uplink_disabled");
   }
@@ -55,7 +59,7 @@ bool BridgeAudioUplink::beginTurn(uint32_t seq, uint32_t nowMs, bool wakeGateOpe
   if (session_ == nullptr) {
     return fail("audio_uplink_session_missing");
   }
-  if (telemetry_.active) {
+  if (telemetry_.active || telemetry_.terminalPending) {
     return fail("audio_uplink_already_active");
   }
   if (config_.wakeGateRequired && !wakeGateOpen) {
@@ -74,6 +78,7 @@ bool BridgeAudioUplink::beginTurn(uint32_t seq, uint32_t nowMs, bool wakeGateOpe
   telemetry_.lastSeq = seq;
   telemetry_.activeBytes = 0;
   telemetry_.activeChunks = 0;
+  telemetry_.lastTerminal = BridgeAudioTerminalKind::None;
   telemetry_.lastError[0] = '\0';
   return true;
 }
@@ -131,7 +136,6 @@ bool BridgeAudioUplink::submitPcmBytes(uint32_t seq,
 }
 
 bool BridgeAudioUplink::endTurn(uint32_t seq, uint32_t nowMs) {
-  (void)nowMs;
   if (!configured()) {
     return fail("audio_uplink_not_ready");
   }
@@ -145,26 +149,67 @@ bool BridgeAudioUplink::endTurn(uint32_t seq, uint32_t nowMs) {
     return fail("audio_uplink_seq_mismatch");
   }
 
-  char frame[kBridgeEndpointControlResponseMax] = {};
-  if (!writeEndFrame(seq, frame, sizeof(frame)) || !queueText(frame)) {
-    telemetry_.queueFailures++;
-    return fail("utterance_end_queue_failed");
-  }
-
-  telemetry_.active = false;
-  telemetry_.turnsCompleted++;
-  telemetry_.lastSeq = seq;
-  telemetry_.lastError[0] = '\0';
-  return true;
+  return requestTerminal(BridgeAudioTerminalKind::End, seq, nowMs, nullptr);
 }
 
 void BridgeAudioUplink::abort(uint32_t nowMs, const char* reason) {
-  (void)nowMs;
-  if (telemetry_.active) {
-    telemetry_.turnsAborted++;
+  if (!telemetry_.active && !telemetry_.terminalPending) {
+    copyError(reason != nullptr ? reason : "audio_uplink_aborted");
+    return;
   }
-  telemetry_.active = false;
-  copyError(reason != nullptr ? reason : "audio_uplink_aborted");
+  requestTerminal(BridgeAudioTerminalKind::Cancel,
+                  telemetry_.lastSeq,
+                  nowMs,
+                  reason != nullptr ? reason : "audio_uplink_aborted");
+}
+
+BridgeAudioTerminalServiceResult BridgeAudioUplink::servicePendingTerminal(uint32_t nowMs) {
+  if (!telemetry_.terminalPending) {
+    return BridgeAudioTerminalServiceResult::Idle;
+  }
+
+  char frame[kBridgeEndpointControlResponseMax] = {};
+  const bool encoded = telemetry_.pendingTerminal == BridgeAudioTerminalKind::End
+                           ? writeEndFrame(pendingTerminalSeq_, frame, sizeof(frame))
+                           : writeCancelFrame(pendingTerminalSeq_,
+                                              pendingTerminalReason_,
+                                              frame,
+                                              sizeof(frame));
+  telemetry_.terminalAttempts++;
+  if (encoded && queueText(frame)) {
+    const BridgeAudioTerminalKind delivered = telemetry_.pendingTerminal;
+    telemetry_.terminalPending = false;
+    telemetry_.pendingTerminal = BridgeAudioTerminalKind::None;
+    telemetry_.lastTerminal = delivered;
+    telemetry_.lastSeq = pendingTerminalSeq_;
+    if (delivered == BridgeAudioTerminalKind::End) {
+      telemetry_.turnsCompleted++;
+      telemetry_.lastError[0] = '\0';
+    } else {
+      telemetry_.turnsAborted++;
+      telemetry_.cancelFramesQueued++;
+      copyError(pendingTerminalReason_);
+    }
+    return BridgeAudioTerminalServiceResult::Queued;
+  }
+
+  telemetry_.queueFailures++;
+  telemetry_.terminalRetries++;
+  if (nowMs - telemetry_.terminalRequestedAtMs < config_.terminalRetryMs) {
+    copyError("utterance_terminal_queue_pending");
+    return BridgeAudioTerminalServiceResult::Pending;
+  }
+
+  if (session_ != nullptr) {
+    session_->stop(nowMs);
+  }
+  telemetry_.terminalTimeouts++;
+  telemetry_.turnsAborted++;
+  telemetry_.terminalPending = false;
+  telemetry_.pendingTerminal = BridgeAudioTerminalKind::None;
+  telemetry_.lastTerminal = BridgeAudioTerminalKind::Cancel;
+  fail("utterance_terminal_delivery_timeout");
+  return BridgeAudioTerminalServiceResult::FailedClosed;
 }
 
 bool BridgeAudioUplink::configured() const {
@@ -204,6 +249,68 @@ bool BridgeAudioUplink::writeEndFrame(uint32_t seq, char* out, size_t outSize) c
                                static_cast<unsigned long>(telemetry_.activeBytes),
                                static_cast<unsigned long>(telemetry_.activeChunks));
   return written > 0 && static_cast<size_t>(written) < outSize;
+}
+
+bool BridgeAudioUplink::writeCancelFrame(uint32_t seq,
+                                         const char* reason,
+                                         char* out,
+                                         size_t outSize) const {
+  if (out == nullptr || outSize == 0 || reason == nullptr || reason[0] == '\0') {
+    return false;
+  }
+  const int written = snprintf(out,
+                               outSize,
+                               "{\"type\":\"utterance_cancel\",\"seq\":%lu,"
+                               "\"reason\":\"%s\",\"audio_bytes\":%lu,\"chunks\":%lu}",
+                               static_cast<unsigned long>(seq),
+                               reason,
+                               static_cast<unsigned long>(telemetry_.activeBytes),
+                               static_cast<unsigned long>(telemetry_.activeChunks));
+  return written > 0 && static_cast<size_t>(written) < outSize;
+}
+
+bool BridgeAudioUplink::requestTerminal(BridgeAudioTerminalKind kind,
+                                        uint32_t seq,
+                                        uint32_t nowMs,
+                                        const char* reason) {
+  if (kind == BridgeAudioTerminalKind::None) {
+    return fail("audio_uplink_bad_terminal");
+  }
+
+  const uint32_t resolvedSeq = seq != 0 ? seq : telemetry_.lastSeq;
+  const bool alreadyPending = telemetry_.terminalPending;
+  telemetry_.active = false;
+  telemetry_.terminalPending = true;
+  telemetry_.pendingTerminal = kind;
+  if (!alreadyPending) {
+    telemetry_.terminalRequestedAtMs = nowMs;
+  }
+  pendingTerminalSeq_ = resolvedSeq;
+  copyTerminalReason(reason != nullptr ? reason : "audio_uplink_aborted");
+  const BridgeAudioTerminalServiceResult result = servicePendingTerminal(nowMs);
+  return result == BridgeAudioTerminalServiceResult::Queued ||
+         result == BridgeAudioTerminalServiceResult::Pending;
+}
+
+void BridgeAudioUplink::copyTerminalReason(const char* reason) {
+  if (reason == nullptr) {
+    pendingTerminalReason_[0] = '\0';
+    return;
+  }
+  size_t out = 0;
+  while (reason[out] != '\0' && out < sizeof(pendingTerminalReason_) - 1u) {
+    const char value = reason[out];
+    const bool safe = (value >= 'a' && value <= 'z') ||
+                      (value >= 'A' && value <= 'Z') ||
+                      (value >= '0' && value <= '9') ||
+                      value == '_' || value == '-' || value == '.' || value == ':';
+    pendingTerminalReason_[out] = safe ? value : '_';
+    ++out;
+  }
+  pendingTerminalReason_[out] = '\0';
+  if (out == 0) {
+    copyTerminalReason("audio_uplink_aborted");
+  }
 }
 
 bool BridgeAudioUplink::fail(const char* reason) {
