@@ -69,6 +69,7 @@ pio run -e stackchan_release_full
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_full_system_soak_evidence_contract.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_current_lead_reproducibility_contract.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_archive_current_lead_contract.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_passive_no_motion_evidence_contract.ps1
 ```
 
 Use `tools/check_full_system_soak_evidence.ps1` for completed hardware runs. A build or short

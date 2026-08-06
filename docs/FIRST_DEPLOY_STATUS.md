@@ -1,15 +1,49 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-08-04 America/New_York
+Status timestamp: 2026-08-05 America/New_York
 
-## Qualification Checkout Authority (2026-08-04)
+## Current Exact-Image Physical Checkpoint (2026-08-05)
+
+The installed firmware and running host source checkpoint is
+`a0f56b76f0bece2f4f732f70d3115bc6800c843d`. Private candidate
+`stackchan_release_forensics` SHA-256
+`2e9924e621e305b10642c2a0db395ed6aee7bdbd9766ea90faca7760a971fb62` was installed by LAN OTA and
+confirmed on `app0`. Live evidence reports motion request, autonomous motion, servo rail, and torque
+off. The first candidate boot reports ESP panic code `4` with PMIC boot event `none`; no cause is
+assigned. Preserve the boot and hold P1/P2 rather than rebooting, reflashing, or discarding evidence.
+
+The candidate passed 304/304 native tests, 577/577 bridge tests, 124/124 focused transcript/LAN tests,
+the silent trusted-facts smoke, the DirectML launcher contract, a public build, and one clean private
+build. It has not passed two-cycle reproducibility or full physical P1. Camera and host vision are
+compiled out. The 2026-08-05 23:55Z armed physical speech attempt failed: firmware reported 81
+uplink chunks / 129,600 bytes (about 4.05 seconds of 16 kHz PCM) over an 18.436-second capture
+interval, but the host received no completed `utterance_end`, invoked no STT, and produced no reply.
+The operator reported that they had not finished the sentence. The one-shot expected-versus-Whisper
+diagnostic remains unconsumed, so this trial has no valid WER and must be classified as endpoint/turn
+delivery failure. This image can support focused audio diagnosis only; it cannot earn full P1.
+
+A reviewer-approved four-second physical recorder diagnostic is sealed at
+`output/pc-brain/passive-no-motion-diagnostic-a0f56b76-20260805-202408`. It recorded 6/6 successful
+exact-image/host polls, a stable boot count, zero motion breaches, no safety-stop call, and unchanged
+zero motion-enable, refresh, rail-enable, power-grant, and actuator-write counters. VBUS stayed at or
+above 4,959 mV during the sample (reported boot minimum 4,947 mV), chip temperature reached 60.5 C,
+and the maximum display frame was 20,422 us. It correctly failed only because the evidence tooling
+tree was dirty and the preserved reset reason is panic. This validates recorder mechanics against
+the real robot; it is not P1 evidence.
+
+The dated records below remain evidence. This checkpoint supersedes their former claims that no
+replacement was installed or that the live bridge was absent. It does not transfer old qualification
+or soak evidence to the current SHA.
+
+## Qualification Checkout Authority (2026-08-05)
 
 The authoritative checkout for the current M0/P0 qualification lane is the clean worktree at
 `D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
 `codex/aliveness-repository-truth`. Do not infer qualification state from the repository's default
-working directory or from another retained worktree. The pushed evidence checkpoint immediately
-before this reconciliation was `3ace8f63fbd8d546ee9d234138b627badefdae51`; it matched its remote
-branch and was 20 commits ahead of `origin/main` with no commits behind.
+working directory or from another retained worktree. At this checkpoint the exact clean head and
+remote branch must be checked immediately before every qualification command with `git status`,
+`git rev-parse HEAD`, and `git rev-parse origin/codex/aliveness-repository-truth`. The tooling head
+is expected to advance when reviewed evidence code lands; it is not the installed firmware identity.
 
 The primary checkout at `D:\CodexProjects\stackchan_alive` was cleanly moved from
 `agent/away-cloudflare-bridge` to current local `main`, and local `main` was fast-forwarded to the
@@ -21,7 +55,7 @@ package, or qualify that exact branch. Any explicitly approved future remote-acc
 implemented afresh from the then-current qualification head and receive a separate security,
 privacy, protocol-authority, and motion-containment review.
 
-## Current SEC-002 Qualification Hold (2026-08-03)
+## Historical SEC-002 Qualification Hold (2026-08-03)
 
 The clean `SEC-002` package built from `4d31de41` is preserved as source/package evidence only.
 Its public `full_online` image is SHA-256

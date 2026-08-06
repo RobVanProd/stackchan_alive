@@ -1,14 +1,18 @@
 # Branch Ledger
 
-Audit timestamp: 2026-08-02 America/New_York
+Audit timestamp: 2026-08-05 America/New_York
 
-## Active Qualification Routing (2026-08-04)
+## Active Qualification Routing (2026-08-05)
 
 - **Sole M0/P0 qualification worktree:**
   `D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
   `codex/aliveness-repository-truth`. Verify its exact head and clean state before every
-  qualification command. No other retained worktree is a qualification input.
-- **The primary checkout is not a qualification host.** It is clean `main` at
+  qualification command, and require it to match `origin/codex/aliveness-repository-truth`. Do not
+  hard-code the qualification-tooling head: it advances when reviewed evidence tooling is committed.
+  The currently installed firmware and running host were both launched from source checkpoint
+  `a0f56b76f0bece2f4f732f70d3115bc6800c843d`; that installed-source identity is distinct from the
+  recorder/checker source identity. No other retained worktree is a qualification input.
+- **The primary checkout is not a qualification host.** As of this audit it is clean `main` at
   `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`; use it only as the current default source checkout.
 - **`agent/away-cloudflare-bridge` is quarantined, not merely paused.** Preserve it unchanged at
   `269b11beeac788f76fff5d566446a91b8688bf8f`. It predates SEC-001/SEC-002, ships

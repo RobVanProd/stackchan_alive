@@ -1,8 +1,50 @@
 # Project State
 
-State timestamp: 2026-08-03 America/New_York
+State timestamp: 2026-08-05 America/New_York
 
-## Current Objective
+## Current Physical Qualification Checkpoint (2026-08-05)
+
+- The sole qualification checkout is `output/worktrees/aliveness-repository-truth` on
+  `codex/aliveness-repository-truth`. Before qualification, require its current HEAD to be clean,
+  pushed, and identical to `origin/codex/aliveness-repository-truth`; do not hard-code a tooling
+  head. The primary checkout remains non-authoritative for qualification. The installed firmware
+  and running host source checkpoint is separately fixed at
+  `a0f56b76f0bece2f4f732f70d3115bc6800c843d`.
+- Private candidate `stackchan_release_forensics` SHA-256
+  `2e9924e621e305b10642c2a0db395ed6aee7bdbd9766ea90faca7760a971fb62` was installed by LAN OTA,
+  confirmed on `app0`, and reports motion request, autonomous motion, servo rail, and torque off.
+  Its source archive is SHA-256
+  `884ce08be8f61e4e53c7330f0ea4f1be77606d1aa5a50e95ca0c2e09d469949a`.
+- The first candidate boot reports ESP `reset_reason=panic`, code `4`; the PMIC boot event is `none`.
+  This is a preserved P1 hold. No crash, firmware, power, USB, or board cause is assigned without
+  matching evidence. Do not reboot, reflash, or discard the boot merely to see whether it repeats.
+- Exact-source gates completed before installation: native logic 304/304, bridge 577/577, focused
+  transcript/LAN tests 124/124, silent trusted-facts smoke with zero model invocations and audio,
+  the DirectML launcher contract, public build, and one clean private build. One private build is
+  not two-cycle reproducibility and none of these source gates substitutes for P1 hardware proof.
+- The candidate intentionally has camera and host vision compiled out. It can gather focused audio
+  evidence but cannot satisfy full P1. Its two-second speech tail and 12-second cap are deployed.
+  The 2026-08-05 23:55Z armed physical attempt failed: firmware reported 81 uplink chunks / 129,600
+  bytes (about 4.05 seconds of 16 kHz PCM) across an 18.436-second capture interval, while the host
+  received no completed `utterance_end`, invoked no STT, and produced no reply. The operator reported
+  that they had not finished the sentence. The one-shot expected-versus-Whisper diagnostic therefore
+  remains unconsumed; this attempt has no honest WER and is an endpoint/turn-delivery failure, not an
+  STT pass or STT-only failure. P2 remains prohibited until a complete exact-image P1 packet passes
+  independent review.
+- A reviewer-approved four-second physical recorder diagnostic is sealed at
+  `output/pc-brain/passive-no-motion-diagnostic-a0f56b76-20260805-202408`. It recorded 6/6 exact
+  firmware/host polls, one stable boot, zero motion breaches, unchanged zero motion-stop, enable,
+  refresh, rail-enable, power-grant, and actuator-write counters, VBUS minimum 4,959 mV (reported
+  boot minimum 4,947 mV), maximum 60.5 C, and maximum display frame 20,422 us. It correctly failed
+  only `runner_source_dirty` and `reset_reason_not_clean`; it validates the recorder against the
+  real robot but is not qualification evidence.
+- The preserved `4d31de41` / `4256F2E5...B31055` image remains historical evidence only. It requests
+  motion and autonomous refresh at boot and must never be used for P1.
+
+Older dated sections below are historical design and evidence records. When they conflict with this
+checkpoint, this checkpoint and live exact-image evidence control.
+
+## Historical M0 Objective Snapshot (2026-08-03)
 
 Keep stop-ship security and release-truth work ahead of aliveness features. Milestone 0, the
 independently verified `SEC-001` host admission repair, and the public boot-motion correction are
@@ -44,7 +86,7 @@ ordered behind truthful presence; durable recognition is ordered behind memory s
 owner-admin consent, and verified deletion; motion styling is limited to a deterministic low-
 dimensional projection behind controlled-source final-actuator and physical-safety gates.
 
-## Source Identity
+## Historical Source Identity Snapshot (2026-08-03)
 
 - Repository: `RobVanProd/stackchan_alive`
 - Working branch: `codex/aliveness-repository-truth`
@@ -553,20 +595,29 @@ qualifies the installed firmware or authorizes a service restart.
 
 ## Exact Next Action
 
-Keep `SEC-002`/`PRIV-001` and release truth ahead of the queued aliveness lanes. Reconcile the M0
-scope/state record, independently close command and toolchain trust, and keep release-grade paths
-blocked until a reviewed exact allowlist can authorize them. Then commit the governance slice and
-produce two clean identical builds for all three packaged environments, add and verify the OTA-
-selector-safe installer and guarded private rollback helper, and build a clean package bound to its
-exact source and application SHA-256. Only that replacement may enter the dedicated passive no-
-motion qualification; the old `4d31de41` / `4256F2E5...B31055` package and every diagnostic package
-must be refused.
-After a passing passive gate, conduct the separately reviewed supervised emergency-stop proof and
-final release gates. Do not design credentials or read a pairing file.
-`PERCEPT-002`, `IDENT-001`, and `MOTION-001` remain preregistration/research only until their ordered
-dependencies, expected-red tests, and explicit recognition/physical promotion checkpoints pass.
+Complete the armed physical speech turn on the installed exact image and preserve the privacy-safe
+expected-versus-Whisper metrics plus the operator's endpoint observation. Do not tune from source or
+simulation alone. In parallel, add a strictly passive `emergency_stop_only` evidence path and seal
+the current focused-audio evidence without claiming full P1.
 
-## Unauthorized Actions
+Then produce a reproducible, private, motion-off candidate with camera, host vision, and the required
+sensors enabled. Run the complete P1 matrix: exact identity, display, wake/capture, bridge, camera,
+sensors, conversation, playback, memory, dashboard, OTA health, reconnect, bridge restart, host-loss
+fallback, stale-command rejection, thermal/power stability, and continuous proof that no motion
+request, rail, torque, following, or identity recognition occurred. The reset-panic hold must remain
+visible until evidence resolves it. Only a passing, independently reviewed P1 packet authorizes the
+operator-present P2 emergency-stop proof. The historical `4d31de41` image and diagnostic packages
+remain refused.
+
+After P2, advance the typed hardware/model integration and measured performance baseline, then the
+person/pet shadow-perception, consented identity/removal, following, and personality-shaped emotional
+motion milestones under their preregistered safety and privacy gates.
+
+## Historical Authorization Snapshot (2026-08-03)
+
+The bullets below record the authority boundary at that dated checkpoint. They are retained as
+history, not as current-state evidence or a substitute for the repository's hardware safety,
+privacy, containment, and release gates.
 
 - No firmware flash, OTA, reboot, recovery, wake reset, serial command, robot endpoint write,
   motion resume, motion refresh, or actuator test.

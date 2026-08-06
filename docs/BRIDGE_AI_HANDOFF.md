@@ -125,6 +125,20 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   redacted logs and forbids PCM persistence. This source is not physically qualified until the
   exact candidate is installed and the user confirms the complete sentence was spoken before the
   response.
+- The installed corrected image's 2026-08-05 23:55Z physical attempt failed before STT. Firmware
+  emitted 81 x 800-sample chunks (4.05 seconds PCM) across 18.436 seconds of wall capture, one
+  serialized capture-service call took 7.504 seconds, and VAD reported zero endpoints and zero max
+  fallbacks. The host received no `utterance_end`, correctly ran no STT/model/TTS, and later closed
+  the lease as `reply_timeout`; the expected diagnostic remains armed. Do not tune the silence tail
+  from this attempt or assign a WER.
+- The correction order is now: bound and separately time mic wait/socket drain/chunk submit; cancel
+  rather than semantically end any discontinuous or hard-wall-expired capture; retain and retry one
+  explicit end/cancel terminal until writer drain or bounded socket close; and give the host a
+  capture-commit lease longer than the 12-second firmware ceiling while retaining a non-refreshable
+  absolute privacy cap. Binary chunks may refresh only a short inactivity deadline. Timeout/cancel
+  clears partial PCM and permits zero STT/model/TTS. Physical acceptance requires continuous PCM,
+  exactly one terminal marker, the operator finishing first, and only then the expected-vs-Whisper
+  metrics.
 
 ## Fault-Fix Candidate Update (2026-07-25)
 

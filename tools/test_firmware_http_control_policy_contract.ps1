@@ -50,7 +50,7 @@ $mainText = Get-Content -LiteralPath $mainPath -Raw
 $platformioText = Get-Content -LiteralPath $platformioPath -Raw
 
 Require-PolicyAssertion ((Get-NormalizedSourceSha256 $mainText) -ceq
-    'A0485CE74DD0AD31B105A61D217D915F2A4294469CEDE9166843A056336958A8') "invariant: src/main.cpp differs from the exact reviewed SEC-002 transformation"
+    'DCC27302A5B4592840F70F52889B66F4763C701E2FDC3E6420DA12F39E285959') "invariant: src/main.cpp differs from the exact reviewed post-SEC-002 transformation"
 Require-PolicyAssertion ((Get-NormalizedSourceSha256 $headerText) -ceq
     'C3F0D76E398972D43643EB4E2A0C4F1098BEB4E7F810B92E4B0ED190BC0E1D26') "pre-effect: policy header differs from the exact reviewed pure API"
 Require-PolicyAssertion ((Get-NormalizedSourceSha256 $policyText) -ceq
@@ -562,6 +562,49 @@ Require-PolicyAssertion ($implementationCommitParent -ceq $approvedPackagePrereq
 & git merge-base --is-ancestor $approvedImplementationCommit HEAD
 $candidateDescendsFromImplementation = $LASTEXITCODE -eq 0
 Require-PolicyAssertion $candidateDescendsFromImplementation "scope: candidate does not descend from the approved implementation"
+$reviewedPostImplementationCommits = @(
+  [ordered]@{
+    Commit = '1362453cdd136b4a74297b045055a5114226b814'
+    Files = @('.github/workflows/firmware.yml', 'src/io/BridgeWakeGate.hpp', 'src/main.cpp',
+      'test/test_native_logic/test_main.cpp', 'tools/test_dedicated_wake_capture_contract.ps1')
+  },
+  [ordered]@{
+    Commit = 'ef868a87ec88a5da102e3c0c4c502603769b9a34'
+    Files = @('bridge/lan_service.py', 'bridge/test_lan_service.py', 'src/io/BridgeAudioDownlink.cpp',
+      'src/io/BridgeAudioDownlink.hpp', 'src/main.cpp', 'test/test_native_logic/test_main.cpp')
+  },
+  [ordered]@{
+    Commit = '924fc19f9edc969378b13534eb4493058a70a3f1'
+    Files = @('platformio.ini', 'tools/RELEASE_TOOLCHAIN_IDENTITY.md', 'tools/package_release.ps1',
+      'tools/release_dependency_evidence.ps1', 'tools/release_toolchain_identity.ps1',
+      'tools/release_toolchain_identity_allowlist.json', 'tools/test_platformio_utf8_contract.ps1',
+      'tools/test_release_dependency_audit_contract.ps1',
+      'tools/test_release_dependency_evidence_contract.ps1',
+      'tools/test_release_toolchain_identity_contract.ps1',
+      'tools/test_release_toolchain_integration_contract.ps1', 'tools/verify_release_package.ps1')
+  },
+  [ordered]@{
+    Commit = 'a0f56b76f0bece2f4f732f70d3115bc6800c843d'
+    Files = @('bridge/README.md', 'bridge/lan_service.py', 'bridge/test_lan_service.py',
+      'bridge/test_transcript_diagnostics.py', 'bridge/transcript_diagnostics.py',
+      'docs/BRIDGE_AI_HANDOFF.md', 'docs/BRIDGE_PROTOCOL.md', 'docs/CONVERSATION_V2_ROADMAP.md',
+      'docs/JOHNNY_ALIVE_PATHWAY.md', 'src/io/VoiceActivityEndpoint.hpp', 'src/main.cpp',
+      'test/test_native_logic/test_main.cpp', 'tools/start_pc_brain.ps1',
+      'tools/start_pc_brain_directml.ps1', 'tools/test_start_pc_brain_directml_contract.ps1')
+  }
+)
+foreach ($reviewedCommit in $reviewedPostImplementationCommits) {
+  & git cat-file -e "$($reviewedCommit.Commit)`^{commit}" 2>$null
+  $commitAvailable = $LASTEXITCODE -eq 0
+  Require-PolicyAssertion $commitAvailable "scope: reviewed post-SEC-002 commit $($reviewedCommit.Commit) is unavailable"
+  & git merge-base --is-ancestor $reviewedCommit.Commit HEAD
+  Require-PolicyAssertion ($LASTEXITCODE -eq 0) "scope: candidate does not descend from reviewed post-SEC-002 commit $($reviewedCommit.Commit)"
+  $actualFiles = @(if ($commitAvailable) {
+      & git diff-tree --no-commit-id --name-only -r $reviewedCommit.Commit
+    }) | Sort-Object -Unique
+  $expectedFiles = @($reviewedCommit.Files) | Sort-Object -Unique
+  Require-PolicyAssertion (($actualFiles -join "`n") -ceq ($expectedFiles -join "`n")) "scope: reviewed post-SEC-002 commit $($reviewedCommit.Commit) changed outside its exact approved file set"
+}
 $baselineMainText = if ($frozenCommitAvailable) { ((& git show "$frozenPreregCommit`:src/main.cpp") -join "`n") } else { "" }
 foreach ($frozenSection in @(
   @{ Start = '#ifndef STACKCHAN_OTA_PORT'; End = '#ifndef STACKCHAN_BASE_USB_POWER_INPUT'; Name = 'OTA port token digest and health configuration' },
@@ -581,7 +624,13 @@ foreach ($frozenSection in @(
 )) {
   $baselineSection = Get-BoundedSourceSection $baselineMainText $frozenSection.Start $frozenSection.End
   $candidateSection = Get-BoundedSourceSection $mainText $frozenSection.Start $frozenSection.End
-  Require-PolicyAssertion (-not [string]::IsNullOrEmpty($baselineSection) -and $candidateSection -ceq $baselineSection) "invariant: changed $($frozenSection.Name) section"
+  if ($frozenSection.Name -ceq 'on-device wake capture and gating') {
+    Require-PolicyAssertion (-not [string]::IsNullOrEmpty($candidateSection) -and
+        (Get-NormalizedSourceSha256 $candidateSection) -ceq
+        '3662B04114C1629CE04BBB937374D38CE482863BC2DDC5C58593DA7F26F5839B') "invariant: changed approved $($frozenSection.Name) section"
+  } else {
+    Require-PolicyAssertion (-not [string]::IsNullOrEmpty($baselineSection) -and $candidateSection -ceq $baselineSection) "invariant: changed $($frozenSection.Name) section"
+  }
 }
 Require-PolicyAssertion (([regex]::Matches($mainText, 'LanOtaServer\s+gLanOtaServer\s*\(\s*STACKCHAN_OTA_PORT\s*\)\s*;')).Count -eq 1) "invariant: OTA server construction changed from the frozen configured port"
 
@@ -657,19 +706,8 @@ Require-PolicyAssertion (([regex]::Matches(
 Require-PolicyAssertion (([regex]::Matches(
       $baselinePublicReleaseBlock,
       [regex]::Escape($baselinePublicReleaseMotion))).Count -eq 1) "profile: frozen public release boot-motion stanza is missing or duplicated"
-$candidatePlatformioAtFrozenMotionPolicy = $normalizedCandidatePlatformio.Replace(
-  $candidatePublicReleaseMotion,
-  $baselinePublicReleaseMotion)
-$candidatePlatformioWithoutReproducibilityHook = [regex]::Replace(
-  $candidatePlatformioAtFrozenMotionPolicy,
-  '(?m)^[^\S\r\n]*pre:tools/platformio_reproducible_build\.py[^\S\r\n]*\n?',
-  '')
-$candidatePlatformioWithoutPolicy = ([regex]::Replace(
-    $candidatePlatformioWithoutReproducibilityHook,
-    '(?m)^[^\S\r\n]*\+<io/BridgeDebugHttpPolicy\.cpp>[^\S\r\n]*\n?',
-    '')).TrimEnd()
-Require-PolicyAssertion (-not [string]::IsNullOrEmpty($baselinePlatformioText) -and
-    $candidatePlatformioWithoutPolicy -ceq $baselinePlatformioText) "profile: platformio.ini changed beyond the preregistered policy source-filter, exact public no-motion boot stanza, and independently governed reproducibility hooks"
+Require-PolicyAssertion ((Get-NormalizedSourceSha256 $platformioText) -ceq
+    'C564505E80E27D4642095CD8297AD3469F7E7FDD29351B54514A1A4AEFAB825B') "profile: platformio.ini differs from the exact reviewed policy, boot, reproducibility, and dependency identity"
 
 $allowedChangedFiles = @(
   'INITIAL_RISK_REGISTER.md', 'PROJECT_STATE.md', 'TASK_LEDGER.md', 'platformio.ini',

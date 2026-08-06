@@ -4,9 +4,69 @@ Use this when bringing up a physical Stackchan device from the public `v0.2.0` r
 locally rebuilt or post-release firmware as a new candidate until its applicable evidence gates
 below are complete.
 
-Qualification checkout authority (2026-08-04): run current M0/P0 commands only from
+Current exact-image checkpoint (2026-08-05): the installed firmware and running host source is
+`a0f56b76f0bece2f4f732f70d3115bc6800c843d`. Private `stackchan_release_forensics` candidate
+SHA-256 `2e9924e621e305b10642c2a0db395ed6aee7bdbd9766ea90faca7760a971fb62` is confirmed on `app0` with
+motion request, autonomous motion, servo rail, and torque off. Its first candidate boot reports ESP
+panic code `4`; PMIC boot event is `none`. Assign no cause, preserve the boot, and keep P1/P2 on hold.
+The image has camera and host vision compiled out and cannot earn full P1. Its deployed two-second
+speech tail and 12-second cap failed the 2026-08-05 23:55Z armed physical attempt: 81 chunks / 129,600
+bytes reached the host, but no completed `utterance_end`, STT invocation, or reply followed, and the
+operator had not finished speaking. Do not assign a WER when the expected diagnostic was never
+consumed; preserve this as an endpoint/turn-delivery failure. Older dated statements that no
+replacement image or bridge exists are historical and are superseded by this checkpoint; their
+physical qualification evidence does not transfer to the current SHA.
+
+Passive P1 recorder rule: do not use `run_full_system_soak_http_motion.ps1` as a no-motion
+workaround under `emergency_stop_only`. Use the dedicated read-only recorder, which performs only
+`GET /debug` during an eligible run. Its sole robot-write path is the mandatory safety exception
+`GET /motion-stop` after an observed motion/rail/torque authority breach; that event fails the run
+and is preserved. The recorder never refreshes motion, changes a network adapter, starts/stops the
+bridge, reboots, or reflashes the device. Run it only from a committed, clean qualification head:
+
+```powershell
+$firmwareSource = "<exact 40-character firmware source commit>"
+$firmwareSha = "<exact 64-character installed firmware SHA-256>"
+$candidateManifest = "<absolute path to the archived exact candidate manifest.json>"
+$runnerSource = (& git rev-parse HEAD).Trim()
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$evidence = "output\pc-brain\passive-no-motion-$stamp"
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  tools\run_passive_no_motion_evidence.ps1 `
+  -EvidenceRoot $evidence `
+  -FirmwareSourceCommit $firmwareSource `
+  -ExpectedFirmwareSha256 $firmwareSha `
+  -CandidateManifestPath $candidateManifest `
+  -DurationSeconds 600
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  tools\check_passive_no_motion_evidence.ps1 `
+  -SummaryJsonPath "$evidence\summary.json" `
+  -FirmwareSourceCommit $firmwareSource `
+  -ExpectedFirmwareSha256 $firmwareSha `
+  -RunnerSourceCommit $runnerSource `
+  -MinDurationSeconds 600 -Json
+```
+
+For a complete P1 candidate, add `-RequireObservedTurn` and `-RequireCameraHostVision` to both
+commands. Do not add those flags to a profile that compiled camera/host vision out, and do not omit
+them to relabel focused evidence as full P1. A non-software reset reason, source drift, missing
+socket/readiness sample, active motion authority, nonzero motion counter, voltage/temperature/frame
+breach, absent turn, or absent camera activity must remain a failed check.
+
+The physical four-second diagnostic at
+`output/pc-brain/passive-no-motion-diagnostic-a0f56b76-20260805-202408` is the recorder-mechanics
+reference: 6/6 successful polls, no motion breach or stop call, all motion/rail/write counters still
+zero, and a deliberate fail for dirty runner source plus panic reset. Do not promote or reuse it as
+P1 evidence.
+
+Qualification checkout authority (2026-08-05): run current M0/P0 commands only from
 `D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
-`codex/aliveness-repository-truth`, after verifying its exact head and clean state. The repository's
+`codex/aliveness-repository-truth`. Require `git status --short` to be empty and require
+`git rev-parse HEAD` to equal `git rev-parse origin/codex/aliveness-repository-truth` immediately
+before the command. Do not hard-code the tooling head: the installed firmware/host source remains
+bound separately in the candidate and runtime manifests. The repository's
 primary checkout is now clean `main` at `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`; it is not the
 qualification branch. The preserved `agent/away-cloudflare-bridge` branch at
 `269b11beeac788f76fff5d566446a91b8688bf8f` is remote-access infrastructure that predates the current
@@ -26,7 +86,7 @@ reachable, terminate the motion-refresh runner, capture post-stop `/debug` when 
 preserve the power-forensics state. Do not count loss of power itself as proof that an emergency
 stop worked, and do not call it a firmware containment failure without matching telemetry.
 
-Repository-truth warning (2026-08-03): live firmware now self-reports confirmed `app0` and expected
+Historical repository-truth warning (2026-08-03): live firmware then self-reported confirmed `app0` and expected
 SHA-256 `69d3db27...8ebfa8`, matching the historical accepted lead, but current flash bytes have not
 been independently read back. Dated “installed,” “current,” and “live” notes below remain historical
 evidence and cannot replace exact source/binary identity or qualification of the image under test.
