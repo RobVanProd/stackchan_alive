@@ -6,6 +6,69 @@ $text = Get-Content -LiteralPath $launcherPath -Raw
 $baseLauncherPath = Join-Path $PSScriptRoot "start_pc_brain.ps1"
 $baseText = Get-Content -LiteralPath $baseLauncherPath -Raw
 
+$robotWrappers = @(
+  @{
+    Name = "DirectML production launcher"
+    Path = $launcherPath
+    HostToken = '-HostName ''0.0.0.0'''
+    PeerToken = '-RobotHost ''$escapedDeviceHost'''
+  },
+  @{
+    Name = "production voice restore"
+    Path = Join-Path $PSScriptRoot "restore_voice_v2_production.ps1"
+    HostToken = '-HostName "0.0.0.0"'
+    PeerToken = '-RobotHost $DeviceHost'
+  },
+  @{
+    Name = "selected voice one-shot"
+    Path = Join-Path $PSScriptRoot "run_selected_voice_once.ps1"
+    HostToken = '-HostName "0.0.0.0"'
+    PeerToken = '-RobotHost $DeviceHost'
+  },
+  @{
+    Name = "supervised Voice V2 validation"
+    Path = Join-Path $PSScriptRoot "start_voice_v2_supervised_validation.ps1"
+    HostToken = '-HostName "0.0.0.0"'
+    PeerToken = '-RobotHost $DeviceHost'
+  },
+  @{
+    Name = "warm ROCm soak"
+    Path = Join-Path $PSScriptRoot "start_warm_rocm_full_system_soak.ps1"
+    HostToken = '-HostName "0.0.0.0"'
+    PeerToken = '-RobotHost $DeviceHost'
+  }
+)
+
+foreach ($wrapper in $robotWrappers) {
+  $wrapperText = Get-Content -LiteralPath $wrapper.Path -Raw
+  $wrapperTokens = $null
+  $wrapperParseErrors = $null
+  [System.Management.Automation.Language.Parser]::ParseFile(
+    $wrapper.Path,
+    [ref]$wrapperTokens,
+    [ref]$wrapperParseErrors
+  ) | Out-Null
+  if ($wrapperParseErrors.Count -ne 0) {
+    throw "$($wrapper.Name) has PowerShell parse errors: $($wrapperParseErrors -join '; ')"
+  }
+  $guardIndex = $wrapperText.IndexOf('IsNullOrWhiteSpace($DeviceHost)')
+  $repoResolveIndex = $wrapperText.IndexOf('$RepoRoot = Resolve-Path')
+  if ($guardIndex -lt 0 -or $repoResolveIndex -lt 0 -or $guardIndex -gt $repoResolveIndex) {
+    throw "$($wrapper.Name) must reject blank DeviceHost before its first operational step."
+  }
+  if (-not $wrapperText.Contains($wrapper.HostToken) -or
+      -not $wrapperText.Contains($wrapper.PeerToken)) {
+    throw "$($wrapper.Name) must explicitly bind on all IPv4 interfaces and restrict the robot peer."
+  }
+  if ($wrapper.Name -eq "selected voice one-shot") {
+    $textParameterIndex = $wrapperText.IndexOf('[string]$Text =')
+    $deviceHostParameterIndex = $wrapperText.IndexOf('[string]$DeviceHost =')
+    if ($textParameterIndex -lt 0 -or $deviceHostParameterIndex -lt $textParameterIndex) {
+      throw "Selected voice one-shot must preserve Text as positional parameter zero."
+    }
+  }
+}
+
 $tokens = $null
 $parseErrors = $null
 [System.Management.Automation.Language.Parser]::ParseFile(
@@ -51,6 +114,11 @@ foreach ($required in @(
   "-SttServerUrl '`$SttServerUrl'",
   "-SttRestartCommand '`$escapedSttRestartCommand'",
   "-SttHealthIntervalSeconds 2",
+  "[string]`$SttDiagnosticExpectedFile",
+  "[string[]]`$SttDiagnosticCriticalToken",
+  "-SttDiagnosticExpectedFile '`$escapedDiagnosticExpectedFile'",
+  '($quotedCriticalTokens -join ",")',
+  '" -SttDiagnosticCriticalToken @("',
   "STACKCHAN_WHISPER_CPP_EXE",
   "STACKCHAN_WHISPER_MODEL",
   "STACKCHAN_WHISPER_THREADS",
@@ -80,6 +148,7 @@ foreach ($required in @(
   "[string]`$SearxngUrl",
   "-EnableResearch -SearxngUrl",
   "-EnableDashboard",
+  "-HostName '0.0.0.0'",
   "-DashboardPort `$DashboardPort",
   "dashboardUrl =",
   "stackchan.pc-brain-motion-default-off.v1",
@@ -163,6 +232,8 @@ if ($startupGuardIndex -lt 0 -or $bridgeStartIndex -lt $startupGuardIndex -or
 }
 
 foreach ($required in @(
+  '[string]$HostName = "127.0.0.1"',
+  "RobotHost is required when HostName is not loopback.",
   "[switch]`$EnableResearch",
   "[switch]`$EnableEpisodeDistillation",
   "[string]`$SearxngUrl",
@@ -176,12 +247,17 @@ foreach ($required in @(
   "[string]`$SttRestartCommand",
   '"--stt-restart-command", $SttRestartCommand',
   '"--stt-health-interval-s", "$SttHealthIntervalSeconds"',
+  "[string]`$SttDiagnosticExpectedFile",
+  "[string[]]`$SttDiagnosticCriticalToken",
+  '"--stt-diagnostic-expected-file", $SttDiagnosticExpectedFile',
+  '"--stt-diagnostic-critical-token", $CriticalToken',
   "[switch]`$InProcessOllamaRunner",
   "[switch]`$InProcessDirectMlTts",
   '"--in-process-ollama-runner"',
   '"--in-process-directml-tts"',
   '"--room-vision-command", $RoomVisionCommand'
   '"--camera-pairing-code-file", $CameraPairingCodeFile'
+  '"--robot-host", $RobotHost'
   "stackchan.pc-brain-runtime.v1",
   "runtime_manifest.json",
   "sourceWorktreeClean",

@@ -4,6 +4,177 @@ Use this when bringing up a physical Stackchan device from the public `v0.2.0` r
 locally rebuilt or post-release firmware as a new candidate until its applicable evidence gates
 below are complete.
 
+Current exact-image checkpoint (2026-08-05): the installed firmware and running host source is
+`a0f56b76f0bece2f4f732f70d3115bc6800c843d`. Private `stackchan_release_forensics` candidate
+SHA-256 `2e9924e621e305b10642c2a0db395ed6aee7bdbd9766ea90faca7760a971fb62` is confirmed on `app0` with
+motion request, autonomous motion, servo rail, and torque off. Its first candidate boot reports ESP
+panic code `4`; PMIC boot event is `none`. Assign no cause, preserve the boot, and keep P1/P2 on hold.
+The image has camera and host vision compiled out and cannot earn full P1. Its deployed two-second
+speech tail and 12-second cap failed the 2026-08-05 23:55Z armed physical attempt: 81 chunks / 129,600
+bytes reached the host, but no completed `utterance_end`, STT invocation, or reply followed, and the
+operator had not finished speaking. Do not assign a WER when the expected diagnostic was never
+consumed; preserve this as an endpoint/turn-delivery failure. Older dated statements that no
+replacement image or bridge exists are historical and are superseded by this checkpoint; their
+physical qualification evidence does not transfer to the current SHA.
+
+Passive P1 recorder rule: do not use `run_full_system_soak_http_motion.ps1` as a no-motion
+workaround under `emergency_stop_only`. Use the dedicated read-only recorder, which performs only
+`GET /debug` during an eligible run. Its sole robot-write path is the mandatory safety exception
+`GET /motion-stop` after an observed motion/rail/torque authority breach; that event fails the run
+and is preserved. The recorder never refreshes motion, changes a network adapter, starts/stops the
+bridge, reboots, or reflashes the device. Run it only from a committed, clean qualification head:
+
+```powershell
+$firmwareSource = "<exact 40-character firmware source commit>"
+$firmwareSha = "<exact 64-character installed firmware SHA-256>"
+$candidateManifest = "<absolute path to the archived exact candidate manifest.json>"
+$runnerSource = (& git rev-parse HEAD).Trim()
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$evidence = "output\pc-brain\passive-no-motion-$stamp"
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  tools\run_passive_no_motion_evidence.ps1 `
+  -EvidenceRoot $evidence `
+  -FirmwareSourceCommit $firmwareSource `
+  -ExpectedFirmwareSha256 $firmwareSha `
+  -CandidateManifestPath $candidateManifest `
+  -DurationSeconds 600
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  tools\check_passive_no_motion_evidence.ps1 `
+  -SummaryJsonPath "$evidence\summary.json" `
+  -FirmwareSourceCommit $firmwareSource `
+  -ExpectedFirmwareSha256 $firmwareSha `
+  -RunnerSourceCommit $runnerSource `
+  -MinDurationSeconds 600 -Json
+```
+
+For a complete P1 candidate, add `-RequireObservedTurn` and `-RequireCameraHostVision` to both
+commands. Do not add those flags to a profile that compiled camera/host vision out, and do not omit
+them to relabel focused evidence as full P1. A non-software reset reason, source drift, missing
+socket/readiness sample, active motion authority, nonzero motion counter, voltage/temperature/frame
+breach, absent turn, or absent camera activity must remain a failed check.
+
+The physical four-second diagnostic at
+`output/pc-brain/passive-no-motion-diagnostic-a0f56b76-20260805-202408` is the recorder-mechanics
+reference: 6/6 successful polls, no motion breach or stop call, all motion/rail/write counters still
+zero, and a deliberate fail for dirty runner source plus panic reset. Do not promote or reuse it as
+P1 evidence.
+
+The exact-source follow-up at
+`output/pc-brain/passive-no-motion-diagnostic-edd519f9-20260805-203820` is the committed scheduler/
+provenance reference: 10/10 real polls, 5.172 seconds monotonic coverage in 6.058 seconds, maximum
+gap 1.157 seconds, zero motion breach, unchanged counters, and only the preserved panic reset plus
+its summary propagation failed. It is still a short expected-fail diagnostic, not P1 evidence.
+
+The 600-second focused reference at
+`output/pc-brain/passive-no-motion-600s-6de75980-20260805-204103` ran from clean, pushed source
+`6de75980a6fc8ad443ec2bc0e1fe973fd707d821`: 300/300 physical polls, 598.767 seconds monotonic
+coverage in 601.219 seconds, maximum 2.773-second gap, zero motion breaches or stop calls, unchanged
+motion/power counters, and host/bridge/socket ready in every sample. Sampled VBUS stayed at or above
+4,950 mV, chip temperature reached 60.5 C, and display frame time reached 34,820 us. Its only checker
+failures were the preserved panic reset and the summary fields that carry that failure. Treat it as
+valid focused expected-fail evidence, not full P1: reset provenance is not clean and this installed
+image has camera/host vision compiled out.
+
+Qualification checkout authority (2026-08-05): run current M0/P0 commands only from
+`D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
+`codex/aliveness-repository-truth`. Require `git status --short` to be empty and require
+`git rev-parse HEAD` to equal `git rev-parse origin/codex/aliveness-repository-truth` immediately
+before the command. Do not hard-code the tooling head: the installed firmware/host source remains
+bound separately in the candidate and runtime manifests. The repository's
+primary checkout is now clean `main` at `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`; it is not the
+qualification branch. The preserved `agent/away-cloudflare-bridge` branch at
+`269b11beeac788f76fff5d566446a91b8688bf8f` is remote-access infrastructure that predates the current
+containment lane and is explicitly excluded from packaging, flashing, and physical qualification
+without exception. Do not merge, rebase, or cherry-pick that exact branch. Any explicitly approved
+future remote-access work must be implemented afresh from the then-current qualification head and
+receive a separate security and containment review.
+
+P1/P2 bench-power rule (operator-supplied 2026-08-04): P1 exact-image no-motion qualification may
+use the PC USB connection while motion request, servo rail, and torque are proved off. P2 and every
+other test that can enable the servo rail, torque, or an actuator must instead use the validated
+dedicated 5 V / 3 A BASE supply. Keep the PC connection data-only when the bench wiring can safely
+separate USB power; document the exact power/data topology and do not create a backfeed path. Begin
+power and reset telemetry capture before arming motion. A blackout, USB disappearance, or telemetry
+cut during a stop test is an inconclusive combined power/containment event: issue `/motion-stop` if
+reachable, terminate the motion-refresh runner, capture post-stop `/debug` when it returns, and
+preserve the power-forensics state. Do not count loss of power itself as proof that an emergency
+stop worked, and do not call it a firmware containment failure without matching telemetry.
+
+Historical repository-truth warning (2026-08-03): live firmware then self-reported confirmed `app0` and expected
+SHA-256 `69d3db27...8ebfa8`, matching the historical accepted lead, but current flash bytes have not
+been independently read back. Dated “installed,” “current,” and “live” notes below remain historical
+evidence and cannot replace exact source/binary identity or qualification of the image under test.
+
+Current control-containment warning (2026-08-03): the committed SEC-002 source policy is
+`emergency_stop_only`. Its dashboard and legacy motion/wake runners refuse Resume, wake-reset, and
+tone before starting processes or evidence runs. Historical `/motion-resume`, `/recover`,
+`/reboot`, `/wake-reset`, tone, and wake-WAV commands below describe older evidence only and are
+not authorized current procedures. Do not work around the refusal or substitute camera pairing as
+control authority. Query-free emergency Stop remains available, but source tests do not prove the
+installed image; exact-image no-motion and supervised emergency-stop qualification are still
+required before any physical promotion.
+
+SEC-002 package correction (2026-08-03): do not flash the preserved `4d31de41` public full image
+SHA-256 `4256F2E5...B31055` for a no-motion gate. That exact image was built with motion request and
+autonomous refresh enabled at boot. The source correction now makes the public full profile inherit
+motion-off, explicitly disables autonomous boot refresh, and is committed as
+`b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. The reviewed toolchain integration is committed as
+`616424e4b87bc8cc7c737a849d543eda7bf51dfd`, but it is still not an install candidate until the
+retained exact-host guard, governed two-cycle package build, and
+independent rebuild match for all three packaged environments, and the exact package is verified
+and reviewed. The 24-component exact-host allowlist has passed independent recomputation, but no
+clean governed package has been produced from that commit yet; diagnostic packages are never
+flash or qualification inputs. The release package/flasher source requires an OTA
+selector bound to the exact legacy/release framework identities, 8,192-byte size, and reviewed
+SHA-256, and deterministically writes it at `0xE000` between the partition table and application.
+The operational flasher accepts only an explicit release ZIP, second-verifies a locked private
+snapshot, derives checksums from that snapshot, and holds the four payloads read-locked through
+esptool. Diagnostic v13 proved packaging, non-authorizing verification, selector authority, and
+address ordering only; its release/flash/hardware/distribution flags remain false and the flasher
+rejects it. A fresh `/debug` sample shows the current runtime request,
+autonomous state, motion, rail, torque, and power authorities off, but also reports the installed
+image was built with motion and autonomous motion enabled at boot. Until the toolchain, rollback,
+exact eligible package, and P1 gates close, the physical step is `HOLD`, not a reason to reuse an
+older package or infer state from USB or ping.
+
+Exact-host update (2026-08-04): the cache-free release-platform identity is committed through
+`4590528941eefd919edcb62ecc9aa5bbd4657d51`, and all 11 exact-head Firmware jobs passed in GitHub
+run `30925806783`. This still is not an install candidate. Two retained local guarded builds failed
+closed during build A because the host WPR evidence recorder lost events; neither produced a
+governed package. In the final retry, sample 132 reported zero loss and sample 133 reported 990,278
+lost/dropped events. The runner was terminated, the diagnostic ETL was sealed with 1,265,270 lost
+events, storage/journal containment passed, WPR returned idle, and conventional authorities were
+restored to `B/B/B`. The failed-run task and active pair were subsequently archived and removed by
+an exact state-D cleanup. This is a host recorder failure, not evidence about robot stability or a
+hardware root cause. Do not flash, open a robot port, start the bridge for qualification, or move a
+motor from this result.
+
+After those two parameter variations, stop tuning WPR. System-wide WPR/ETL is optional
+corroborating forensic evidence and is not a package-promotion predicate. If collected, recorder
+loss must be reported as `diagnostic-failed` and the recorder must be returned to idle, but the
+authorizing reproducibility evidence is the public exact-host guard plus two clean detached
+worktree/cache cycles, matching artifact bytes, source-bound package generation, and independent
+package rebuild/verification. P1 remains `HOLD` until that direct governed proof passes; it no
+longer requires a lossless system-wide WPR trace.
+
+Current read-only packet: ignored `output/private/p0-live-state-20260803`. Its successful debug JSON
+is SHA-256 `070CA1CDEA6B78D7C15589559E204330716CB6CAD1542BE4BE6DE56DA5C594FB`.
+Intermittent timeouts alternated with successful samples and increasing uptime at one boot; do not
+classify them as a freeze. No local bridge or RVC process/listener was present, and the robot was in
+bridge `offline` / network `backoff` with `tcp_connect_failed` at the captured sample.
+
+Private recovery evidence (2026-08-02): a verified three-read 16 MiB SPI-flash backup is preserved
+only under ignored `output/private/firmware-backups/20260802-233346-COM4`, with whole-flash SHA-256
+`036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows
+backup-time `app0` selection and application image-file SHA-256
+`BB8311FFD1DFB059561697242E0C87ED45D38BDBEB0B8CEB32937089314621B1`; source mapping is unknown.
+This is recovery evidence only. It is not current firmware identity, an application release asset,
+a device-cloning package, or automatic restore authorization. Never commit, upload, publish, or
+send the backup. A restore requires a separately reviewed exact-target procedure and fresh
+post-restore identity/no-motion evidence.
+
 ## 0. Bench Setup
 
 - Clear the work area around the body and servos.
@@ -13,9 +184,10 @@ below are complete.
 - Use diffuse room light for face detection. Never aim a bright lamp, phone light, work light, or
   exposed high-output LED into the operator's eyes. Stop immediately for discomfort or afterimages;
   camera validation can wait.
-- Know the serial port, for example `COM3`.
+- Know the exact serial port and verify its PnP identity before use. The preserved CoreS3 backup
+  used `VID_303A&PID_1001&MI_00` on COM4; a port number alone is not device identity.
 
-Current exact-image release note (2026-07-12): the installed private paired firmware is source
+Historical exact-image release record (2026-07-12): the installed-at-that-checkpoint private paired firmware is source
 commit `a7532f61cc7e5161ce5e65d05675c37bd7941e7c`, SHA-256
 `c43e5ac1cf1718f61d5da35a37720a7c3e24ce9cd28dd6586521f50175708ea7`. Its formal one-hour
 actuator acceptance passed `76/76` after `3601 s` with `706/706` good polls, no IMU
@@ -59,8 +231,8 @@ capture `223997 us`, and zero hard-floor, PMIC protective, IMU exhaustion/failur
 response-write, or authentication events. Motion, rail, torque, and motion power authority were
 verified off after completion. The saved formal checker result is
 `output\pc-brain\single-owner-runtime-servo-8hr-20260713-0750\checker.json` and passed `77/77`.
-Use this exact SHA and evidence sequence as the current private paired hardware candidate; never
-transfer its evidence to a different binary.
+This is the latest documented owner-accepted private paired candidate as of 2026-07-13. Never
+transfer its evidence to a different binary or assume it is currently installed.
 
 External touch, pickup, putdown, tilt, and shake events are intended IMU feature evidence. For an
 interaction-aware soak, pass `-AllowExternalImuEvents` through the warm-soak wrapper and formal
@@ -86,11 +258,12 @@ wake check is required, capture one correctly timed wake phrase,
 and compare the on-device probability with the host-model result before changing cutoff, gain, or
 microphone channel. Keep motion off during this check.
 
-Routine continuation does **not** require another flash: the current camera candidate is already
-installed and OTA-confirmed. The earlier `wake-zero-init-verified` and
-`camera-stereo-speaker-follow` images are historical diagnostic checkpoints, not the current lead.
-If recovery is genuinely required, use the exact current private rollback archive recorded in
-`docs\FIRST_DEPLOY_STATUS.md`; never rebuild a private recovery image from an unreviewed worktree.
+In the 2026-07-11 lab session, routine continuation did **not** require another flash because that
+camera candidate was already installed and OTA-confirmed. The earlier `wake-zero-init-verified` and
+`camera-stereo-speaker-follow` images were diagnostic checkpoints, not that session's lead. For a
+new recovery, first establish the installed image and select the exact matching private rollback
+archive recorded in `docs\FIRST_DEPLOY_STATUS.md`; never rebuild a private recovery image from an
+unreviewed worktree.
 The guarded archived-app flasher verifies its manifest, byte count, and SHA256 while preserving
 NVS/Wi-Fi. Motion remains disabled at boot.
 
@@ -144,13 +317,17 @@ steps are in `docs/HARDWARE_FEATURE_ROADMAP.md` under **Optional 64 GB microSD**
 
 ## 1. Create The Evidence Packet
 
-From the extracted release folder:
+Run this from the exact clean trusted source checkout after defining the six-value
+`$releaseToolchain` splat in `docs/RELEASE_PROCESS.md`. A downloaded or extracted archive does not
+confer release authority; pass its ZIP path to the source-side helper:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\prepare_device_arrival.ps1 -ReleaseTag <version> -PackageZip <absolute-path-to-downloaded-zip> -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
-Before plugging in hardware, open `companion/evidence/c6-evidence/EVIDENCE.md` from the same release folder. It should show the committed C6 desktop companion brain-supervision gate passing, including GUI-driven Python brain start, simulated turns, restart, and diagnostics export.
+Before plugging in hardware, open `companion/evidence/c6-evidence/EVIDENCE.md` from the verified
+package for reference. It should show the committed C6 desktop companion brain-supervision gate
+passing, including GUI-driven Python brain start, simulated turns, restart, and diagnostics export.
 
 Open the newest folder under `output\hardware-evidence\`. Run every command below from that packet folder unless noted otherwise.
 
@@ -302,12 +479,19 @@ Package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
 `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>`, then attach the generated
 `stackchan-python-runtime.json` and checker output to the release evidence.
 
-For PC Brain Mode lab bring-up from the source checkout, start the local bridge with the
-selected voice path:
+For PC Brain Mode lab bring-up from the source checkout, first use the loopback default for the
+synthetic host-only probe with the selected voice path:
 
 ```powershell
 .\tools\start_pc_brain.cmd -Background -StopExisting -EnableAudioDownlink -SelectedVoiceStartBytes 65536 -DownlinkBinaryFrameDelayMs 20
 .\tools\run_pc_brain_probe.cmd --url ws://127.0.0.1:8765/bridge
+```
+
+That loopback process is preflight-only. Before expecting the robot to connect, deliberately
+restart the bridge with a frozen robot peer:
+
+```powershell
+.\tools\start_pc_brain.cmd -HostName 0.0.0.0 -RobotHost <robot-lan-ip> -Background -StopExisting -EnableAudioDownlink -SelectedVoiceStartBytes 65536 -DownlinkBinaryFrameDelayMs 20
 ```
 
 On Windows, `tools\start_pc_brain.cmd` now defaults to the repo-local
@@ -585,6 +769,13 @@ $env:STACKCHAN_RVC_WORKER_URL = "http://127.0.0.1:5055"
 $env:STACKCHAN_RVC_WORKER_TIMEOUT_SECONDS = "90"
 $env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "65536"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts_client.py" -TtsVoice "stackchan-rvc-warm-rocm" -DownlinkBinaryFrameDelayMs 80
+```
+
+The command above is a preserved historical record, not a current instruction. Its current
+SEC-001 equivalent is the following explicit peer-restricted launch:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -HostName 0.0.0.0 -RobotHost <robot-lan-ip> -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts_client.py" -TtsVoice "stackchan-rvc-warm-rocm" -DownlinkBinaryFrameDelayMs 80
 ```
 
 Voice V2 DirectML has passed lab, wire, and supervised physical validation. The physical warm
@@ -986,6 +1177,13 @@ $env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "65536"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts.py" -TtsVoice "stackchan-rvc-live" -DownlinkBinaryFrameDelayMs 80
 ```
 
+The command above is preserved historical evidence and must not be rerun as a current launch. The
+current peer-restricted equivalent is:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -HostName 0.0.0.0 -RobotHost <robot-lan-ip> -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts.py" -TtsVoice "stackchan-rvc-live" -DownlinkBinaryFrameDelayMs 80
+```
+
 One-shot ROCm was slower for short responses because the process paid GPU/runtime startup
 every turn. The warm worker keeps the model loaded: the first `pm` conversion warmed in about
 29 s and the next local conversion completed in about 3 s.
@@ -1324,13 +1522,15 @@ the 30-second runtime-health window with motion, servo rail, and torque off. Use
 `docs\LAN_OTA.md` and the private build token; never expose port 8790 outside the trusted LAN.
 
 Later final-integration testing intentionally placed the oriented camera diagnostic on `app0` and
-restored the archived production image on `app1`. The current production SHA256 is
+restored the archived production image on `app1`. At that 2026-07-11 checkpoint, the restored
+production SHA256 was
 `875FE2DE5FB93BECEF6C72C08C1951326439CDCAE299528970C28D43CF115CFB`; restore evidence is
 `output\hardware-evidence\final-integration\production-voice-restore-20260711-141611`. Do not
-assume both slots contain production during this supervised camera phase. The camera slot is
-diagnostic-only and must be replaced before release promotion.
+assume that hash is current or that both slots still contain those images. The camera slot was
+diagnostic-only and required replacement before that release promotion.
 
-The live host memory store was also migrated from `stackchan.bridge-memory.v2` to v3 with an atomic
+At that historical checkpoint, the live host memory store was also migrated from
+`stackchan.bridge-memory.v2` to v3 with an atomic
 backup. v3 drops legacy model-authored robot-state residue, permits character memory only in
 approved `user.*` and `project.*` namespaces, and reserves expiring `robot.*` context for typed
 runtime telemetry. This prevents stale remembered state from contradicting the current heartbeat.

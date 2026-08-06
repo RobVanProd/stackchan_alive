@@ -5,6 +5,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $checkScript = Join-Path $PSScriptRoot "check_voice_source_readiness.ps1"
 $exportScript = Join-Path $PSScriptRoot "export_voice_source_status.ps1"
+$rvcBaseExportScript = Join-Path $PSScriptRoot "export_rvc_voice_base_status.ps1"
 $createdRoots = New-Object System.Collections.Generic.List[string]
 
 function New-TempEvidenceRoot {
@@ -165,6 +166,7 @@ Run ``tools/verify_tracked_rvc_assets.ps1`` before packaging.
 try {
   Set-Location $repoRoot
   $sourceCommit = "b" * 40
+  $productionVoiceRoot = Join-Path $repoRoot "media/voice/rvc"
 
   $pendingRoot = New-TempEvidenceRoot
   Write-PendingVoiceSourceFiles -Root $pendingRoot
@@ -186,7 +188,8 @@ try {
     -VoiceSourceProvenanceDisplayPath "data/voice_source_provenance.yaml" `
     -TemplatePath (Join-Path $pendingRoot "VOICE_TEMPLATE.md") `
     -TemplateDisplayPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" `
-    -OutputDir $portableExportRoot *> $null
+    -OutputDir $portableExportRoot `
+    -VoiceRoot $productionVoiceRoot *> $null
   if ($LASTEXITCODE -ne 0) {
     throw "Expected portable voice-source status export to succeed."
   }
@@ -198,6 +201,86 @@ try {
     throw "Voice-source status export leaked non-portable package paths."
   }
   Write-Host "[ok] packaged voice-source status paths remain portable"
+
+  $portableRvcExportRoot = New-TempEvidenceRoot
+  & $powerShellExe -NoProfile -ExecutionPolicy Bypass -File $rvcBaseExportScript `
+    -ManifestPath (Join-Path $repoRoot "data/voice_rvc_base.yaml") `
+    -MetadataPath (Join-Path $repoRoot "data/voice_rvc_base_metadata.json") `
+    -OutputDir $portableRvcExportRoot `
+    -VoiceRoot $productionVoiceRoot *> $null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Expected portable RVC base status export to succeed."
+  }
+  $portableRvcStatus = Get-Content -LiteralPath (Join-Path $portableRvcExportRoot "rvc_voice_base_status.json") -Raw | ConvertFrom-Json
+  if ($portableRvcStatus.schema -ne "stackchan.rvc-voice-base-status.v1" -or
+      $portableRvcStatus.status -ne "production-release-verified" -or
+      $portableRvcStatus.model.path -ne "media/voice/rvc/model.pth" -or
+      $portableRvcStatus.index.path -ne "media/voice/rvc/model.index" -or
+      -not (Test-Path -LiteralPath (Join-Path $portableRvcExportRoot "RVC_VOICE_BASE_STATUS.md"))) {
+    throw "RVC base status export did not produce the expected portable production report."
+  }
+  Write-Host "[ok] packaged RVC base status paths remain portable"
+
+  $pointerVoiceRoot = New-TempEvidenceRoot
+  $pointerExportRoot = New-TempEvidenceRoot
+  @"
+# Included Stackchan RVC Voice
+
+- model.pth
+- model.index
+- install_bundled_rvc_voice.ps1
+"@ | Set-Content -LiteralPath (Join-Path $pointerVoiceRoot "README.md") -Encoding UTF8
+  $pointerText = @"
+version https://git-lfs.github.com/spec/v1
+oid sha256:1a8addfd670cd811d1ad1eeb9e9b4ff72c5d795b1123a23e86a0c41c1dd9bf1a
+size 57577722
+"@
+  [System.IO.File]::WriteAllText(
+    (Join-Path $pointerVoiceRoot "model.pth"), $pointerText,
+    [System.Text.UTF8Encoding]::new($false))
+  [System.IO.File]::WriteAllText(
+    (Join-Path $pointerVoiceRoot "model.index"), $pointerText,
+    [System.Text.UTF8Encoding]::new($false))
+  $oldErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $powerShellExe -NoProfile -ExecutionPolicy Bypass -File $exportScript `
+      -VoiceSourceProvenancePath (Join-Path $pendingRoot "voice_source.yaml") `
+      -VoiceSourceProvenanceDisplayPath "data/voice_source_provenance.yaml" `
+      -TemplatePath (Join-Path $pendingRoot "VOICE_TEMPLATE.md") `
+      -TemplateDisplayPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" `
+      -OutputDir $pointerExportRoot `
+      -VoiceRoot $pointerVoiceRoot *> $null
+    $pointerExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+  }
+  if ($pointerExitCode -eq 0 -or
+      (Test-Path -LiteralPath (Join-Path $pointerExportRoot "voice_source_status.json")) -or
+      (Test-Path -LiteralPath (Join-Path $pointerExportRoot "VOICE_SOURCE_STATUS.md"))) {
+    throw "Pointer-only voice root was not rejected before status export."
+  }
+  Write-Host "[ok] pointer-only voice root is rejected"
+
+  $pointerRvcExportRoot = New-TempEvidenceRoot
+  $oldErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $powerShellExe -NoProfile -ExecutionPolicy Bypass -File $rvcBaseExportScript `
+      -ManifestPath (Join-Path $repoRoot "data/voice_rvc_base.yaml") `
+      -MetadataPath (Join-Path $repoRoot "data/voice_rvc_base_metadata.json") `
+      -OutputDir $pointerRvcExportRoot `
+      -VoiceRoot $pointerVoiceRoot *> $null
+    $pointerRvcExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+  }
+  if ($pointerRvcExitCode -eq 0 -or
+      (Test-Path -LiteralPath (Join-Path $pointerRvcExportRoot "rvc_voice_base_status.json")) -or
+      (Test-Path -LiteralPath (Join-Path $pointerRvcExportRoot "RVC_VOICE_BASE_STATUS.md"))) {
+    throw "Pointer-only RVC base root was not rejected before status export."
+  }
+  Write-Host "[ok] pointer-only RVC base root is rejected"
 
   $pendingStrictResult = Invoke-VoiceSourceCheck -Root $repoRoot -VoiceSourceProvenancePath (Join-Path $pendingRoot "voice_source.yaml") -TemplatePath (Join-Path $pendingRoot "VOICE_TEMPLATE.md") -SourceCommit $sourceCommit -RequireProductionReady
   if ([int]$pendingStrictResult.exitCode -eq 0) {

@@ -51,6 +51,7 @@ HEARTBEAT_FIELDS = {
 
 DEBUG_FIELDS = {
     "schema",
+    "debug_http_control_policy",
     "network_state",
     "bridge_state",
     "motion_enabled",
@@ -156,6 +157,7 @@ class DashboardRuntime:
         self._heartbeat: dict[str, object] = {}
         self._debug: dict[str, object] = {}
         self._debug_at_utc = ""
+        self._debug_at_monotonic = 0.0
         self._last_action: dict[str, object] = {}
         self._event_id = 0
         self._events: list[dict[str, object]] = []
@@ -318,20 +320,33 @@ class DashboardRuntime:
         url_host = f"[{host}]" if ":" in host else host
         return f"http://{url_host}:{int(self.config.robot_http_port)}{path}"
 
-    def _fetch_robot(self, path: str, timeout: float = 4.0) -> dict[str, object]:
+    def _fetch_robot(
+        self,
+        path: str,
+        timeout: float = 4.0,
+        *,
+        accept_http_error_json: bool = False,
+    ) -> dict[str, object]:
         request = urllib.request.Request(
             self._robot_url(path),
             headers={"Accept": "application/json", "Connection": "close"},
             method="GET",
         )
+        response_status = 0
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                if response.status != HTTPStatus.OK:
-                    raise RuntimeError(f"robot returned HTTP {response.status}")
+                response_status = int(response.status)
                 payload = response.read(512 * 1024)
+        except urllib.error.HTTPError as exc:
+            if not accept_http_error_json:
+                raise RuntimeError(f"robot control request failed: HTTP {exc.code}") from exc
+            response_status = int(exc.code)
+            payload = exc.read(512 * 1024)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             reason = getattr(exc, "reason", exc)
             raise RuntimeError(f"robot control request failed: {reason}") from exc
+        if not HTTPStatus.OK <= response_status < 300 and not accept_http_error_json:
+            raise RuntimeError(f"robot returned HTTP {response_status}")
         try:
             parsed = json.loads(payload.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -345,6 +360,7 @@ class DashboardRuntime:
         with self._lock:
             self._debug = filtered
             self._debug_at_utc = _utc_now()
+            self._debug_at_monotonic = time.monotonic()
             if debug.get("bridge_state") == "ready" and debug.get("network_state") == "connected":
                 self._robot_connected = True
 
@@ -389,31 +405,53 @@ class DashboardRuntime:
                 "status": self.status(),
             }
 
+        if enabled:
+            return {
+                "ok": False,
+                "commandSent": False,
+                "accepted": False,
+                "verified": False,
+                "targetEnabled": True,
+                "error": "firmware permits emergency stop only; motion resume is unavailable",
+                "status": self.status(),
+            }
+
         target = "enabled" if enabled else "stopped"
-        endpoint = "/motion-resume" if enabled else "/motion-stop"
+        endpoint = "/motion-stop"
         command_sent = False
         accepted = False
         debug: dict[str, object] = {}
         error = ""
+        command_error = ""
         try:
-            command = self._fetch_robot(endpoint)
+            command = self._fetch_robot(endpoint, accept_http_error_json=True)
             command_sent = True
-            accepted = command.get("debug_motion_accepted") is True
-            for attempt in range(6):
-                if attempt:
-                    time.sleep(0.2)
+            accepted = (
+                command.get("accepted") is True
+                or command.get("debug_motion_accepted") is True
+            )
+        except RuntimeError as exc:
+            command_error = str(exc)
+
+        debug_error = ""
+        for attempt in range(6):
+            if attempt:
+                time.sleep(0.2)
+            try:
                 debug = self._fetch_robot("/debug")
                 self._record_debug(debug)
                 if self._motion_matches(debug, enabled):
                     break
-            verified = self._motion_matches(debug, enabled)
-            if not accepted:
-                error = "robot did not accept the motion command"
-            elif not verified:
-                error = f"robot did not verify motion {target}"
-        except RuntimeError as exc:
-            verified = False
-            error = str(exc)
+            except RuntimeError as exc:
+                debug_error = str(exc)
+
+        verified = self._motion_matches(debug, enabled)
+        if not command_sent:
+            error = command_error or "robot control request failed"
+        elif not accepted:
+            error = "robot did not accept the motion command"
+        elif not verified:
+            error = debug_error or f"robot did not verify motion {target}"
 
         result = {
             "ok": bool(command_sent and accepted and verified),
@@ -482,6 +520,20 @@ class DashboardRuntime:
                 max(0.0, time.monotonic() - self._last_heartbeat_at)
                 if self._last_heartbeat_at
                 else None
+            )
+            debug_age = (
+                max(0.0, time.monotonic() - self._debug_at_monotonic)
+                if self._debug_at_monotonic
+                else None
+            )
+            raw_motion_policy = debug.get("debug_http_control_policy")
+            motion_resume_policy = (
+                "emergency_stop_only"
+                if debug_age is not None
+                and debug_age <= 15.0
+                and isinstance(raw_motion_policy, str)
+                and raw_motion_policy == "emergency_stop_only"
+                else "unknown"
             )
             motion = debug.get("motion_enabled", heartbeat.get("motion_enabled"))
             robot_mode = heartbeat.get("robot_mode")
@@ -560,6 +612,8 @@ class DashboardRuntime:
                     "mode": mode_name,
                     "motionEnabled": motion if isinstance(motion, bool) else None,
                     "motionVerified": "motion_enabled" in debug,
+                    "motionResumeAvailable": False,
+                    "motionResumePolicy": motion_resume_policy,
                     "servoRailEnabled": debug.get("servo_rail_enabled"),
                     "servoTorqueEnabled": debug.get("servo_torque_enabled"),
                     "batteryPercent": heartbeat.get("battery_percent", debug.get("battery_percent")),

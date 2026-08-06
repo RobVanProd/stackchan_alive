@@ -74,9 +74,10 @@ Working on real hardware:
    - Done in post-release source: authoritative speaker-drain evidence produces a bounded firmware
      reply-window command; parser limits, wrap-safe scheduling, expiry, and bridge-loss cancellation
      are covered by native and host tests.
-   - Done in post-release source: completed turns enter a bounded 24-turn, non-persistent session ring
-     only after authoritative playback completion; reply capture ends after sustained speech and
-     trailing silence, with the old 4.8-second maximum as fallback.
+   - Done in current qualification source: completed turns enter a bounded 24-turn, non-persistent
+     session ring only after authoritative playback completion; reply capture ends after sustained
+     speech and 2.0 seconds of trailing silence, with matching 12-second endpoint and dedicated
+     capture ceilings. Exact-image physical qualification is still pending.
    - Done in post-release source: the LAN reader remains responsive during Gemma/TTS; explicit
      cancel and companion barge-in terminate the process tree, drop unsent audio, and leave
      cancelled model memory/session history uncommitted.

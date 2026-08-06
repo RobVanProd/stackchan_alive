@@ -16,6 +16,12 @@ param(
   [string]$ExpectedFirmwareSourceCommit,
   [string]$Repo = "RobVanProd/stackchan_alive",
   [string]$ActionsStatusPath,
+  [string]$ToolchainAllowlistPath,
+  [string]$GitExecutable,
+  [string]$PythonExecutable,
+  [string]$PlatformioExecutable,
+  [string]$LegacyCoreDir,
+  [string]$ReleaseCoreDir,
   [switch]$AllowExternalAccountCiBlock
 )
 
@@ -31,11 +37,18 @@ foreach ($arg in $args) {
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  $Version = (git describe --tags --always --dirty).Trim()
+  $Version = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    describe --tags --always | Out-String).Trim()
 }
 
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
-  $ExpectedCommit = (git rev-parse HEAD).Trim()
+  $ExpectedCommit = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    rev-parse HEAD | Out-String).Trim()
+}
+if ($ExpectedCommit -notmatch "^[0-9a-fA-F]{40}$") {
+  throw "Pass a 40-hex -ExpectedCommit or run from a trusted Git checkout."
 }
 if ([string]::IsNullOrWhiteSpace($ExpectedFirmwareSourceCommit)) {
   $ExpectedFirmwareSourceCommit = $ExpectedCommit
@@ -400,11 +413,24 @@ if ([string]::IsNullOrWhiteSpace($PackageZip)) {
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   Assert-FilePath $PackageZip 100000
   $promotionPackageZipPath = (Resolve-Path -LiteralPath $PackageZip).Path
+  $verifyPackage = Join-Path $PSScriptRoot "verify_release_package.ps1"
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage `
+    -Version $Version -ZipPath $promotionPackageZipPath `
+    -ExpectedCommit $ExpectedCommit -RequireReleaseEligible `
+    -ToolchainAllowlistPath $ToolchainAllowlistPath `
+    -GitExecutable $GitExecutable -PythonExecutable $PythonExecutable `
+    -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir
+  if ($LASTEXITCODE -ne 0) {
+    throw "Operational release ZIP verification failed before consumer-promotion extraction."
+  }
+  . (Join-Path $PSScriptRoot "release_zip_safety.ps1")
   $promotionPackageZipSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $promotionPackageZipPath).Hash.ToLowerInvariant()
   $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-consumer-promotion"
   $cleanupDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $cleanupDir | Out-Null
-  Expand-Archive -LiteralPath $promotionPackageZipPath -DestinationPath $cleanupDir
+  Expand-StackchanReleaseZipSafely `
+    -ZipPath $promotionPackageZipPath -DestinationPath $cleanupDir
   $PackageRoot = $cleanupDir
 }
 
@@ -419,7 +445,12 @@ $packageRootPath = (Resolve-Path $PackageRoot).Path
 
 try {
   $verifyPackage = Join-Path $PSScriptRoot "verify_release_package.ps1"
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage -Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage `
+    -Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit `
+    -RequireReleaseEligible -ToolchainAllowlistPath $ToolchainAllowlistPath `
+    -GitExecutable $GitExecutable -PythonExecutable $PythonExecutable `
+    -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir
   if ($LASTEXITCODE -ne 0) {
     throw "Release package verification failed."
   }

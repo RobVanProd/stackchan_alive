@@ -156,16 +156,17 @@ The desktop app has two jobs, cleanly separated:
 1. **Observer endpoint** (shared code): its own `endpoint_id` (`endpoint_kind: "pc"`),
    paired like any endpoint, used for settings, diagnostics, persona/voice audition, forget,
    and handoff UI.
-2. **PC Brain supervisor** (desktop-only): start/stop/health-check `python3
-   bridge/lan_service.py ...` as a child process, stream its stdout into the Diagnostics
+2. **PC Brain supervisor** (desktop-only): start/stop/health-check the managed Python runtime's
+   `bridge/lan_service.py ...` as a child process, stream its stdout into the Diagnostics
    screen, and surface its configured runner/STT/TTS commands. The Python service keeps its
    own endpoint identity as today; the GUI never proxies brain traffic. This costs one extra
    trust slot per PC (bridge + GUI) out of the 8 — acceptable, and it keeps the brain path
    byte-identical to what `run_lan_smoke` already certifies.
 
-Python dependency policy for v1: require `python3` ≥ 3.10 on PATH (the bridge is
-stdlib-only, so there is no pip step). Packaging a frozen bridge binary inside the app is a
-later optimization, not a blocker — track it as C8 optional work.
+Python dependency policy: source/development runs may use a compatible system interpreter. Native
+desktop package candidates embed and validate a managed Python 3.12 runtime payload, so packaged
+users are not required to provide Python on `PATH`. A fully frozen bridge executable remains an
+optional later optimization.
 
 Tray behavior: close-to-tray with the endpoint server still listening, matching the
 Android foreground-service semantics so "the robot can always reach a trusted endpoint"
@@ -204,7 +205,7 @@ evidence. Suggested opening set (verify latest stable at C0 and freeze):
 | jmDNS (desktop) | 3.5.x |
 | Android Gradle Plugin / SDK | AGP stable, compileSdk latest, minSdk 26 |
 | Conveyor | pinned major (18+), invoked via its GitHub Action |
-| Python (PC brain) | ≥ 3.10 system interpreter, stdlib only |
+| Python (PC brain) | System interpreter for development; validated managed Python 3.12 payload in native packages |
 
 ## Build & CI
 

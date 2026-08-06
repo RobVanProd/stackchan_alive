@@ -31,6 +31,13 @@ function Get-IntValue($Object, [string]$Name, [int]$DefaultValue) {
   return [int]$Property.Value
 }
 
+function Test-HasProperty($Object, [string]$Name) {
+  if ($null -eq $Object) {
+    return $false
+  }
+  return $null -ne $Object.PSObject.Properties[$Name]
+}
+
 function Resolve-SourceCommit {
   param([string]$Value)
 
@@ -105,8 +112,8 @@ foreach ($Name in @("lan_service.out.log", "lan_service.err.log", "lan_service.p
   }
 }
 
+$DebugUri = "http://$DeviceHost`:$DebugPort/debug"
 try {
-  $DebugUri = "http://$DeviceHost`:$DebugPort/"
   $DebugResponse = Invoke-WebRequest -Uri $DebugUri -UseBasicParsing -TimeoutSec 8
   $DebugBody = [string]$DebugResponse.Content
   $DebugPath = Join-Path $OutDir "stackchan_debug.json"
@@ -147,43 +154,66 @@ if ($RunTests) {
 
 if ($summary.device_debug) {
   $Debug = $summary.device_debug
+  if ($Debug.schema -ne "stackchan.bridge-debug.v1") { $summary.issues += "device_debug_schema_invalid" }
+  if ($Debug.debug_request_route -ne "debug") { $summary.issues += "device_debug_route_invalid" }
+  if ($Debug.debug_request_result -ne "debug") { $summary.issues += "device_debug_result_invalid" }
   if ($Debug.network_state -ne "connected") { $summary.issues += "device_network_not_connected" }
   if ($Debug.bridge_state -ne "ready") { $summary.issues += "bridge_not_ready" }
-  if ((Get-IntValue $Debug "bridge_outputs_dropped" 0) -ne 0) { $summary.issues += "bridge_outputs_dropped" }
-  if ((Get-IntValue $Debug "bridge_parse_errors" 0) -ne 0) { $summary.issues += "bridge_parse_errors" }
-  if ((Get-IntValue $Debug "bridge_timeouts" 0) -ne 0) { $summary.issues += "bridge_timeouts" }
-  if ((Get-IntValue $Debug "audio_stream_errors" 0) -ne 0) { $summary.issues += "audio_stream_errors" }
-  if ((Get-IntValue $Debug "bridge_downlink_errors" 0) -ne 0) { $summary.issues += "bridge_downlink_errors" }
-  if ((Get-IntValue $Debug "bridge_downlink_playback_errors" 0) -ne 0) { $summary.issues += "bridge_downlink_playback_errors" }
-  if ((Get-IntValue $Debug "bridge_downlink_playback_unsupported" 0) -ne 0) { $summary.issues += "bridge_downlink_playback_unsupported" }
-  if ((Get-IntValue $Debug "speaker_stream_play_raw_failed" 0) -ne 0) { $summary.issues += "speaker_stream_play_raw_failed" }
-  if ((Get-IntValue $Debug "audio_streams_started" 0) -lt 1) { $summary.issues += "audio_stream_not_started" }
-  if ((Get-IntValue $Debug "audio_streams_ended" 0) -lt 1) { $summary.issues += "audio_stream_not_ended" }
-  if ((Get-IntValue $Debug "bridge_downlink_streams" 0) -lt 1) { $summary.issues += "bridge_downlink_stream_missing" }
-  if ((Get-IntValue $Debug "bridge_downlink_completed" 0) -lt 1) { $summary.issues += "bridge_downlink_not_completed" }
-  if ((Get-IntValue $Debug "bridge_downlink_playback_starts" 0) -lt 1) { $summary.issues += "bridge_downlink_playback_not_started" }
-  if ((Get-IntValue $Debug "audio_stream_bytes_expected" 0) -le 0) { $summary.issues += "audio_stream_bytes_missing" }
-  if ((Get-IntValue $Debug "audio_stream_chunks_expected" 0) -le 0) { $summary.issues += "audio_stream_chunks_missing" }
-  if ((Get-IntValue $Debug "bridge_downlink_bytes" 0) -ne (Get-IntValue $Debug "audio_stream_bytes_expected" -1)) {
-    $summary.issues += "bridge_downlink_byte_mismatch"
+
+  $RequiredPlaybackFields = @(
+    "audio_stream_active",
+    "bridge_downlink_playback_starts",
+    "bridge_downlink_playback_chunks",
+    "bridge_downlink_playback_bytes",
+    "bridge_downlink_playback_stops",
+    "bridge_downlink_playback_awaiting_drain",
+    "bridge_downlink_playback_completion_pending",
+    "bridge_downlink_playback_completions",
+    "bridge_downlink_playback_completion_signals",
+    "bridge_downlink_playback_errors",
+    "speaker_stream_play_raw_ok",
+    "speaker_stream_play_raw_failed",
+    "speaker_stream_forced_stops",
+    "speaker_stream_orphan_stops",
+    "speaker_running",
+    "speaker_channel_state"
+  )
+  $MissingPlaybackFields = @($RequiredPlaybackFields | Where-Object { -not (Test-HasProperty $Debug $_) })
+  foreach ($Field in $MissingPlaybackFields) {
+    $summary.issues += "device_debug_field_missing:$Field"
   }
-  if ((Get-IntValue $Debug "bridge_downlink_chunks" 0) -ne (Get-IntValue $Debug "audio_stream_chunks_expected" -1)) {
-    $summary.issues += "bridge_downlink_chunk_mismatch"
-  }
-  if ((Get-IntValue $Debug "bridge_downlink_playback_bytes" 0) -ne (Get-IntValue $Debug "audio_stream_bytes_expected" -1)) {
-    $summary.issues += "playback_byte_mismatch"
-  }
-  if ((Get-IntValue $Debug "audio_stream_chunks_expected" 0) -ne (Get-IntValue $Debug "audio_stream_chunks_received" -1)) {
-    $summary.issues += "audio_stream_chunk_mismatch"
-  }
-  if ((Get-IntValue $Debug "bridge_downlink_playback_chunks" 0) -ne (Get-IntValue $Debug "audio_stream_chunks_expected" -1)) {
-    $summary.issues += "playback_chunk_mismatch"
-  }
-  if ((Get-IntValue $Debug "speaker_stream_task_bytes" 0) -ne (Get-IntValue $Debug "audio_stream_bytes_expected" -1)) {
-    $summary.issues += "speaker_task_byte_mismatch"
-  }
-  if ((Get-IntValue $Debug "speaker_stream_task_chunks" 0) -ne (Get-IntValue $Debug "audio_stream_chunks_expected" -1)) {
-    $summary.issues += "speaker_task_chunk_mismatch"
+
+  if ($MissingPlaybackFields.Count -eq 0) {
+    $PlaybackStarts = Get-IntValue $Debug "bridge_downlink_playback_starts" -1
+    $PlaybackChunks = Get-IntValue $Debug "bridge_downlink_playback_chunks" -1
+    $PlaybackBytes = Get-IntValue $Debug "bridge_downlink_playback_bytes" -1
+    $PlaybackStops = Get-IntValue $Debug "bridge_downlink_playback_stops" -1
+    $PlaybackCompletions = Get-IntValue $Debug "bridge_downlink_playback_completions" -1
+    $PlaybackSignals = Get-IntValue $Debug "bridge_downlink_playback_completion_signals" -1
+    $SpeakerRawOk = Get-IntValue $Debug "speaker_stream_play_raw_ok" -1
+
+    if ($PlaybackStarts -lt 1) { $summary.issues += "bridge_downlink_playback_not_started" }
+    if ($PlaybackChunks -lt 1) { $summary.issues += "bridge_downlink_playback_chunks_missing" }
+    if ($PlaybackBytes -lt 1) { $summary.issues += "bridge_downlink_playback_bytes_missing" }
+    if ($PlaybackStops -ne $PlaybackStarts -or $PlaybackCompletions -ne $PlaybackStarts) {
+      $summary.issues += "bridge_downlink_playback_not_completed"
+    }
+    if ($PlaybackSignals -ne $PlaybackCompletions) {
+      $summary.issues += "bridge_downlink_playback_completion_not_signaled"
+    }
+    if ([bool]$Debug.bridge_downlink_playback_awaiting_drain -or
+        [bool]$Debug.bridge_downlink_playback_completion_pending) {
+      $summary.issues += "bridge_downlink_playback_not_drained"
+    }
+    if ([bool]$Debug.audio_stream_active) { $summary.issues += "audio_stream_active" }
+    if ((Get-IntValue $Debug "bridge_downlink_playback_errors" -1) -ne 0) { $summary.issues += "bridge_downlink_playback_errors" }
+    if ((Get-IntValue $Debug "speaker_stream_play_raw_failed" -1) -ne 0) { $summary.issues += "speaker_stream_play_raw_failed" }
+    if ((Get-IntValue $Debug "speaker_stream_forced_stops" -1) -ne 0) { $summary.issues += "speaker_stream_forced_stops" }
+    if ((Get-IntValue $Debug "speaker_stream_orphan_stops" -1) -ne 0) { $summary.issues += "speaker_stream_orphan_stops" }
+    if ($SpeakerRawOk -ne $PlaybackChunks) { $summary.issues += "speaker_playback_chunk_mismatch" }
+    if ([bool]$Debug.speaker_running -or (Get-IntValue $Debug "speaker_channel_state" -1) -ne 0) {
+      $summary.issues += "speaker_playback_not_idle"
+    }
   }
 }
 
@@ -201,7 +231,7 @@ $lines = @(
   "- Status: ``$($summary.status)``",
   "- Generated: ``$($summary.generated_at)``",
   "- Source commit: ``$($summary.sourceCommit)``",
-  "- Device debug: ``http://$DeviceHost`:$DebugPort/``",
+  "- Device debug: ``$DebugUri``",
   "- PC brain PID: ``$(if ($summary.pc_brain_process) { $summary.pc_brain_process.pid } else { 'missing' })``",
   "- Copied logs: ``$($summary.copied_logs -join ', ')``"
 )
@@ -210,9 +240,10 @@ if ($summary.device_debug) {
   $lines += @(
     "- Network state: ``$($Debug.network_state)``",
     "- Bridge state: ``$($Debug.bridge_state)``",
-    "- Bridge errors: dropped=``$($Debug.bridge_outputs_dropped)`` parse=``$($Debug.bridge_parse_errors)`` timeouts=``$($Debug.bridge_timeouts)``",
-    "- Audio streams: started=``$($Debug.audio_streams_started)`` ended=``$($Debug.audio_streams_ended)`` chunks=``$($Debug.audio_stream_chunks_received)/$($Debug.audio_stream_chunks_expected)``",
-    "- Playback: chunks=``$($Debug.bridge_downlink_playback_chunks)`` bytes=``$($Debug.bridge_downlink_playback_bytes)`` errors=``$($Debug.bridge_downlink_playback_errors)``"
+    "- Debug route: ``$($Debug.debug_request_route)`` result=``$($Debug.debug_request_result)``",
+    "- Playback: starts=``$($Debug.bridge_downlink_playback_starts)`` stops=``$($Debug.bridge_downlink_playback_stops)`` completions=``$($Debug.bridge_downlink_playback_completions)`` signals=``$($Debug.bridge_downlink_playback_completion_signals)``",
+    "- Playback payload: chunks=``$($Debug.bridge_downlink_playback_chunks)`` bytes=``$($Debug.bridge_downlink_playback_bytes)`` errors=``$($Debug.bridge_downlink_playback_errors)``",
+    "- Speaker sink: raw_ok=``$($Debug.speaker_stream_play_raw_ok)`` raw_failed=``$($Debug.speaker_stream_play_raw_failed)`` running=``$($Debug.speaker_running)``"
   )
 }
 if ($summary.tests.Count -gt 0) {

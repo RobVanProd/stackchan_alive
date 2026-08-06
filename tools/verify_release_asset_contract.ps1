@@ -13,6 +13,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 . (Join-Path $PSScriptRoot "release_asset_contract.ps1")
+. (Join-Path $PSScriptRoot "release_ota_selector_policy.ps1")
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (git -C $repoRoot describe --tags --always --dirty).Trim()
@@ -99,6 +100,7 @@ function Get-PackageFirmwareSourcePath {
     "firmware-servo-calibration.bin" { return (Join-Path $packageRootPath "firmware/servo_calibration/firmware.bin") }
     "bootloader.bin" { return (Join-Path $packageRootPath "firmware/display_only/bootloader.bin") }
     "partitions.bin" { return (Join-Path $packageRootPath "firmware/display_only/partitions.bin") }
+    "boot-app0.bin" { return (Join-Path $packageRootPath "firmware/display_only/boot_app0.bin") }
     default { return "" }
   }
 }
@@ -119,13 +121,23 @@ function Assert-StagedFirmwareMatchesPackage {
   if ($sourceHash -ne $stagedHash) {
     throw "Staged firmware asset does not match package source for $($Entry.Name)"
   }
+  if ([string]$Entry.Name -ceq 'boot-app0.bin') {
+    Assert-StackchanReleaseOtaSelectorBytes `
+      -Environment 'stackchan' -LiteralPath $sourcePath | Out-Null
+    Assert-StackchanReleaseOtaSelectorBytes `
+      -Environment 'stackchan' -LiteralPath ([string]$Entry.Path) | Out-Null
+  }
 }
 
 $baseEntries = Get-ReleaseBaseAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath -FirmwareAssetRoot $firmwareAssetRootPath -FirmwareAssetPathMode $FirmwareAssetPathMode
 $finalEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath -FirmwareAssetRoot $firmwareAssetRootPath -FirmwareAssetPathMode $FirmwareAssetPathMode
 
-Assert-AssetEntrySet -Entries $baseEntries -ExpectedCount 17 -Label "Base"
-Assert-AssetEntrySet -Entries $finalEntries -ExpectedCount 20 -Label "Final"
+Assert-StackchanReleaseOtaSelectorBytes `
+  -Environment 'stackchan' `
+  -LiteralPath (Join-Path $packageRootPath 'firmware/display_only/boot_app0.bin') | Out-Null
+
+Assert-AssetEntrySet -Entries $baseEntries -ExpectedCount 18 -Label "Base"
+Assert-AssetEntrySet -Entries $finalEntries -ExpectedCount 21 -Label "Final"
 
 $manifestPath = Join-Path $packageRootPath "release_manifest.json"
 if (-not (Test-Path -LiteralPath $manifestPath)) {
@@ -211,6 +223,7 @@ foreach ($requiredAssetName in @(
   "firmware-servo-calibration.bin",
   "bootloader.bin",
   "partitions.bin",
+  "boot-app0.bin",
   "stackchan_spark_audition_bright_robot_greeting.mp3",
   "stackchan_spark_thinking.mp3"
 )) {

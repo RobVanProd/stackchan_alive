@@ -1,5 +1,5 @@
 param(
-  [string]$HostName = "0.0.0.0",
+  [string]$HostName = "127.0.0.1",
   [int]$Port = 8765,
   [string]$Model = "gemma4:e2b-it-qat",
   [string]$RunnerCommand = "python bridge\ollama_stackchan_runner.py",
@@ -8,6 +8,8 @@ param(
   [string]$SttServerUrl = "",
   [string]$SttRestartCommand = "",
   [double]$SttHealthIntervalSeconds = 2.0,
+  [string]$SttDiagnosticExpectedFile = "",
+  [string[]]$SttDiagnosticCriticalToken = @(),
   [string]$TtsCommand = "python bridge\selected_voice_tts.py",
   [switch]$InProcessDirectMlTts,
   [string]$TtsVoice = "stackchan-rvc-bright-robot",
@@ -68,6 +70,15 @@ if ($LASTEXITCODE -ne 0 -or $SourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
 }
 $SourceDirty = @(& git status --porcelain).Count -gt 0
 
+$ParsedBindAddress = $null
+$BindIsLoopback = $HostName -eq "localhost"
+if ([System.Net.IPAddress]::TryParse($HostName, [ref]$ParsedBindAddress)) {
+  $BindIsLoopback = [System.Net.IPAddress]::IsLoopback($ParsedBindAddress)
+}
+if (-not $BindIsLoopback -and [string]::IsNullOrWhiteSpace($RobotHost)) {
+  throw "RobotHost is required when HostName is not loopback."
+}
+
 $OllamaExe = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"
 if (-not (Test-Path -LiteralPath $OllamaExe)) {
   $OllamaExe = "ollama"
@@ -97,6 +108,15 @@ if ($EnablePrivateTurnEvidence -and [string]::IsNullOrWhiteSpace($AudioEvidenceD
 }
 if (-not [string]::IsNullOrWhiteSpace($AudioEvidenceDir)) {
   New-Item -ItemType Directory -Force -Path $AudioEvidenceDir | Out-Null
+}
+if (-not [string]::IsNullOrWhiteSpace($SttDiagnosticExpectedFile)) {
+  if ($EnablePrivateTurnEvidence) {
+    throw "STT expected-utterance diagnostics require redacted logs and forbid private PCM evidence."
+  }
+  if (-not (Test-Path -LiteralPath $SttDiagnosticExpectedFile -PathType Leaf)) {
+    throw "SttDiagnosticExpectedFile does not exist: $SttDiagnosticExpectedFile"
+  }
+  $SttDiagnosticExpectedFile = (Resolve-Path -LiteralPath $SttDiagnosticExpectedFile).Path
 }
 
 if ($StopExisting) {
@@ -257,9 +277,19 @@ if ($EnableDashboard) {
     "--dashboard-port", "$DashboardPort",
     "--robot-http-port", "$RobotHttpPort"
   )
-  if (-not [string]::IsNullOrWhiteSpace($RobotHost)) {
-    $ArgsList += @("--robot-host", $RobotHost)
+}
+
+if (-not [string]::IsNullOrWhiteSpace($SttDiagnosticExpectedFile)) {
+  $ArgsList += @("--stt-diagnostic-expected-file", $SttDiagnosticExpectedFile)
+  foreach ($CriticalToken in $SttDiagnosticCriticalToken) {
+    if (-not [string]::IsNullOrWhiteSpace($CriticalToken)) {
+      $ArgsList += @("--stt-diagnostic-critical-token", $CriticalToken)
+    }
   }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($RobotHost)) {
+  $ArgsList += @("--robot-host", $RobotHost)
 }
 
 if ($AutoTurnText) {

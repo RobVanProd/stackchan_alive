@@ -8,10 +8,42 @@ param(
   [switch]$SkipReset,
   [switch]$PlayTone,
   [switch]$RequireWake,
-  [switch]$Json
+  [switch]$Json,
+  [switch]$ControlPolicyContractProbe
 )
 
 $ErrorActionPreference = "Stop"
+
+function Assert-EmergencyStopOnlyWakePolicy {
+  param([string]$Policy)
+  throw "wake_control_unavailable: emergency_stop_only permits observation and emergency stops only; wake reset and tone playback are disabled."
+}
+
+if ($ControlPolicyContractProbe) {
+  Assert-EmergencyStopOnlyWakePolicy -Policy "emergency_stop_only"
+}
+
+function Get-FirmwareHttpControlPolicy {
+  $policyBaseUrl = $BaseUrl
+  if ($policyBaseUrl -eq "") {
+    $policyBaseUrl = "http://$DeviceHost`:8789"
+  }
+  try {
+    $probe = Invoke-RestMethod -Uri "$policyBaseUrl/debug" -TimeoutSec 5
+  } catch {
+    return "unknown"
+  }
+  $policy = $probe.debug_http_control_policy
+  if ($policy -is [string] -and $policy -ceq "emergency_stop_only") {
+    return $policy
+  }
+  return "unknown"
+}
+
+$controlPolicyPreflight = Get-FirmwareHttpControlPolicy
+if (-not $SkipReset -or $PlayTone) {
+  Assert-EmergencyStopOnlyWakePolicy -Policy $controlPolicyPreflight
+}
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
@@ -37,7 +69,7 @@ function Get-DoubleValue {
 }
 
 function Read-Status {
-  Invoke-RestMethod -Uri "$BaseUrl/status" -TimeoutSec 5
+  Invoke-RestMethod -Uri "$BaseUrl/debug" -TimeoutSec 5
 }
 
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null

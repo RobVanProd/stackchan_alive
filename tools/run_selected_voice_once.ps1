@@ -6,16 +6,22 @@ param(
   [int]$DownlinkBinaryFrameDelayMs = 20,
   [int]$DownlinkTextFrameDelayMs = 40,
   [int]$WaitSeconds = 60,
-  [switch]$LeaveBrainRunning
+  [switch]$LeaveBrainRunning,
+  [string]$DeviceHost = "192.168.1.238"
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($DeviceHost)) {
+  throw "DeviceHost is required before starting the robot-facing voice check."
+}
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
 
 Write-Host "[selected-voice-once] starting one-shot PC brain voice check"
 & (Join-Path $PSScriptRoot "start_pc_brain.ps1") `
+  -HostName "0.0.0.0" `
+  -RobotHost $DeviceHost `
   -Background `
   -StopExisting `
   -Once `

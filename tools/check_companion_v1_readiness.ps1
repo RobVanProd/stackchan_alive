@@ -81,7 +81,7 @@ $pendingGates = @(
   [ordered]@{
     name = "c8-tagged-release-distribution"
     evidence = "GitHub prerelease assets plus COMPANION_RELEASE_EVIDENCE.json and output/companion-v1-evidence/<candidate>"
-    detail = "Create the exact upload-signed prerelease tag, run tools\verify_published_release.cmd -Version <tag>, assemble Android/Desktop/rollout evidence, and pass tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot <packet> -RequireReady -Json."
+    detail = "Create the exact upload-signed prerelease tag; from the exact clean trusted source checkout, define releaseToolchain as documented and run tools\verify_published_release.ps1 -Version <tag> @releaseToolchain; then assemble Android/Desktop/rollout evidence and pass tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot <packet> -RequireReady -Json. The downloaded archive does not confer release authority."
   }
 )
 
@@ -354,7 +354,7 @@ Test-TextEvidence `
   -Id "readme-current-eight-hour-evidence" `
   -Name "Public README carries corrected exact-image soak evidence" `
   -RelativePaths @("README.md") `
-  -Patterns @("Status as of July 13, 2026", "corrected exact paired candidate", "28807 s", "5643/5643", "77/77", "bounded final stop")
+  -Patterns @("Status as of August 2, 2026", "corrected exact paired candidate", "28807 s", "5643/5643", "77/77", "bounded final stop")
 
 Test-TextEvidence `
   -Id "production-readiness-current-eight-hour-evidence" `
@@ -816,13 +816,13 @@ Test-TextEvidence `
   -Id "pc-brain-deploy-evidence-helper" `
   -Name "PC Brain deploy evidence collector" `
   -RelativePaths @("tools/collect_pc_brain_deploy_evidence.ps1") `
-  -Patterns @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch")
+  -Patterns @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "device_debug_schema_invalid", "device_debug_route_invalid", "bridge_downlink_playback_not_started", "bridge_downlink_playback_not_completed", "bridge_downlink_playback_not_drained", "speaker_playback_chunk_mismatch")
 
 Test-TextEvidence `
   -Id "pc-brain-deploy-evidence-check" `
   -Name "PC Brain deploy evidence checker" `
   -RelativePaths @("tools/check_pc_brain_deploy_evidence.ps1") `
-  -Patterns @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")
+  -Patterns @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "playback-started", "playback-completed", "playback-drained", "speaker-playback-chunks-match", "RequireTests", "RequireReady")
 
 Test-TextEvidence `
   -Id "pc-brain-quiet-soak-runner" `
@@ -1128,7 +1128,7 @@ Test-TextEvidence `
   -Id "ci-companion-tests" `
   -Name "Companion CI pre-arrival checks" `
   -RelativePaths @(".github/workflows/firmware.yml", "provenance/firmware.yml") `
-  -Patterns @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "STACKCHAN_CI_SOURCE_SHA", "github.event.pull_request.head.sha", "companion-tests", "companion-android-emulator-smoke", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "python-version: `"3.12`"", "android-actions/setup-android", "gradle/actions/setup-gradle@v6", "platforms;android-36", "build-tools;36.0.0", "system-images;android-35;aosp_atd;x86_64", "ANDROID_AVD_HOME", "timeout 180 adb wait-for-device", "./gradlew check :app-desktop:c0Spike", ":app-android:bundleRelease", "stackchan.allowLabDebugReleaseSigning=true", "check_companion_release_version.ps1", "test_companion_release_version_contract.ps1", "check_android_play_release_readiness.ps1", "test_android_upload_signing_contract.ps1", "test_android_emulator_launch.ps1", "test_android_emulator_release_evidence_contract.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "test_desktop_package_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDesktopPackageEvidence")
+  -Patterns @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "STACKCHAN_CI_SOURCE_SHA", "github.event.pull_request.head.sha", "companion-tests", "companion-android-emulator-smoke", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "python-version: `"3.12.10`"", "android-actions/setup-android", "gradle/actions/setup-gradle@v6", "platforms;android-36", "build-tools;36.0.0", "system-images;android-35;aosp_atd;x86_64", "ANDROID_AVD_HOME", "timeout 180 adb wait-for-device", "./gradlew check :app-desktop:c0Spike", ":app-android:bundleRelease", "stackchan.allowLabDebugReleaseSigning=true", "check_companion_release_version.ps1", "test_companion_release_version_contract.ps1", "check_android_play_release_readiness.ps1", "test_android_upload_signing_contract.ps1", "test_android_emulator_launch.ps1", "test_android_emulator_release_evidence_contract.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "test_desktop_package_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDesktopPackageEvidence")
 
 Test-AggregateTextEvidence `
   -Id "companion-ci-candidate-handoff" `

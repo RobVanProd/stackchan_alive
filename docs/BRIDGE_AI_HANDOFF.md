@@ -19,9 +19,10 @@ actuator, power, pairing, or OTA authority**, and nothing below changes that.
 Most of what follows needs **no firmware change**. Where firmware work is genuinely required it is
 called out.
 
-This bridge candidate does not modify firmware. The working image from `main` is an immutable
-qualification dependency; firmware findings are reported to its owner instead of being patched in
-this branch.
+Historical branch constraint: the original bridge candidate did not modify firmware and treated
+its then-current image as an immutable qualification dependency. That statement describes that
+workstream, not current `main`; present work follows `AGENTS.md` and the exact-image gate for any
+firmware change.
 
 ## How To Read The Robot's State
 
@@ -61,11 +62,15 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
 - Conversation v2 now emits a constant 10-second reply lease and allows 24 user turns by default.
   Completed turns no longer make the listener progressively less patient. The unchanged main
   firmware rejects out-of-range values rather than silently clamping them. The feature remains
-  explicit and still needs exact-image hardware qualification before promotion.
-- `bridge/initiative_policy.py` implements the ten-minute hard floor, fresh-person requirement,
+  explicit and still needs exact-image hardware qualification before promotion. The host's
+  10-second capture commitment is currently shorter than the firmware's 12-second endpoint ceiling
+  and can reject a valid long utterance; this is an open source-level blocker.
+- `bridge/initiative_policy.py` implements the ten-minute hard floor, intended fresh-person requirement,
   circadian suppression, busy/safety gates, curiosity decay, and two-ignored-opener backoff.
   Initiative generation uses the normal Character Lock and TTS path but never opens a microphone
-  or motion lease.
+  or motion lease. Current camera FaceLost/heartbeat freshness can nevertheless produce a false-
+  current presence bit, and stale room state can remain available to relationship projection; do
+  not treat the fresh-person gate as qualified until those source defects are fixed.
 - `bridge/room_context.py` implements low-rate in-memory capture, typed privacy filtering, scene
   diffs, prompt-safe ambient context, and clean degradation. `bridge/ollama_room_vision.py`
   converts PGM to PNG in memory and permits only a loopback Ollama vision endpoint.
@@ -82,10 +87,11 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   top result; gzip is decoded under the existing response-size cap, citations remain bounded, and
   fetched text cannot write memory or gain robot authority. A live 2026-07-26 query returned the
   Python 3.13.0 release date with Python.org citations in 3.9 seconds.
-- A visual question now requests one fresh privacy-filtered room observation before generation.
+- In the dated 2026-07-26 bridge probe, a visual question requested one fresh privacy-filtered room observation before generation.
   The final Character Lock pass retains only claims backed by the trusted `ambient_room` block.
   A live 2026-07-26 robot-camera probe observed one person and produced a grounded door, shelf,
-  and bright-lighting answer in 2.6 seconds. The authenticated endpoint is grayscale, so deictic
+  and bright-lighting answer in 2.6 seconds. This is historical probe evidence, not current-main or
+  current-installation qualification. The authenticated endpoint is grayscale, so deictic
   colour questions receive an explicit grayscale limitation instead of a guess. Colour sensing
   requires a separate firmware/camera endpoint candidate and is not part of this bridge PR.
 - The host freezes PCM on the socket thread at `utterance_end`, verifies declared byte/chunk
@@ -99,8 +105,40 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   an explicit visual question can still request one foreground observation.
 - `bridge/bridge_ai_qualification.py` and the passive start/complete wrappers enforce the exact
   physical gates in [BRIDGE_AI_QUALIFICATION.md](BRIDGE_AI_QUALIFICATION.md).
-- All new behavior is default-off at the command line. Use the explicit launch switches during
-  supervised qualification; do not infer hardware readiness from source tests.
+- All new behavior is default-off in raw command-line defaults, but
+  `tools/start_stackchan_dashboard.ps1` enables Conversation v2 and initiative. That launcher choice
+  is not promotion evidence. Use explicit supervised qualification and do not infer hardware
+  readiness from source tests.
+
+## Physical Endpoint Failure and Candidate Correction (2026-08-05)
+
+- The installed `6e9096d5` image with a 1.2-second trailing-silence tail failed a supervised
+  sentence check: the user was cut off after "wait until I finish". The private diagnostic
+  transcript contained only 4 of 17 expected words, so this is observed premature device
+  endpointing rather than a completed-turn recognition result.
+- The current qualification source raises the tail to 2.0 seconds and makes the dedicated
+  capture ceiling match the endpoint ceiling: 240 50-ms chunks / 12 seconds / 384 KB. The
+  15-second wake-gate privacy guard remains authoritative. Native coverage carries an eight-second
+  turn with a 1.5-second clause pause across the former 6.5-second ceiling.
+- The host has an opt-in, one-shot expected-utterance diagnostic. It records only expected-text
+  hash, word counts, edit distance/WER, and configured critical-token coverage; it requires
+  redacted logs and forbids PCM persistence. This source is not physically qualified until the
+  exact candidate is installed and the user confirms the complete sentence was spoken before the
+  response.
+- The installed corrected image's 2026-08-05 23:55Z physical attempt failed before STT. Firmware
+  emitted 81 x 800-sample chunks (4.05 seconds PCM) across 18.436 seconds of wall capture, one
+  serialized capture-service call took 7.504 seconds, and VAD reported zero endpoints and zero max
+  fallbacks. The host received no `utterance_end`, correctly ran no STT/model/TTS, and later closed
+  the lease as `reply_timeout`; the expected diagnostic remains armed. Do not tune the silence tail
+  from this attempt or assign a WER.
+- The correction order is now: bound and separately time mic wait/socket drain/chunk submit; cancel
+  rather than semantically end any discontinuous or hard-wall-expired capture; retain and retry one
+  explicit end/cancel terminal until writer drain or bounded socket close; and give the host a
+  capture-commit lease longer than the 12-second firmware ceiling while retaining a non-refreshable
+  absolute privacy cap. Binary chunks may refresh only a short inactivity deadline. Timeout/cancel
+  clears partial PCM and permits zero STT/model/TTS. Physical acceptance requires continuous PCM,
+  exactly one terminal marker, the operator finishing first, and only then the expected-vs-Whisper
+  metrics.
 
 ## Fault-Fix Candidate Update (2026-07-25)
 
@@ -266,30 +304,33 @@ Do not shorten the listening lease merely because several turns completed. That 
 progressively less patient during an active exchange. The host default is now a constant ten
 seconds and a 24-turn safety bound.
 
-PR #216 replaced the former 4.8-second endpoint with a 12-second maximum and moved the dedicated
-capture ceiling to 13 seconds. Both initial and follow-up capture now end on 550 ms of trailing
-silence. PR #217 closes the equal-threshold F2 race by renewing from device VAD speech and placing
-the hard privacy guard at 15 seconds. This bridge PR must not alter or flash the accepted firmware;
-promotion still requires exact-image physical evidence with zero new uplink errors.
+The current qualification source keeps the 12-second endpoint maximum, uses a matching 240-chunk
+12-second dedicated capture ceiling, and ends initial and follow-up capture after 2.0 seconds of
+trailing silence. PR #217's device-VAD renewal keeps the hard privacy guard at 15 seconds. This is
+candidate behavior, not accepted firmware behavior; promotion still requires exact-image physical
+evidence with zero new uplink errors and a completed supervised sentence.
 
 ---
 
 # Part 3: Speaking on his own, and curiosity
 
-## Unprompted speech needs no firmware change
+## Unprompted speech source exists but remains unpromoted
 
 Firmware does **not** gate `response_start` on a preceding user turn
 (`src/io/BridgeClient.cpp:135`). It transitions to `Responding` and renders whatever it is given.
 So the bridge can speak at any moment by sending the ordinary response sequence. Mouth sync, RGB,
 gesture, and the `intent` mapping all work already.
 
-What is missing is an **initiative policy** on the host deciding when it is worth speaking. This is
-the part that makes it charming or unbearable, so treat the rate limit as the feature:
+The host now has an **initiative policy**, but it is an event/curiosity threshold rather than the
+reason-ranked agenda specified by the current aliveness mandate. It also has open power/thermal
+heartbeat, in-flight revalidation, presence, persistence, and semantic safety defects. Keep it
+unpromoted and treat the rate limit as only one required restraint:
 
 - A hard floor between unprompted utterances. Start at 10+ minutes and tune down carefully.
 - Never interrupt an active session, `THINKING`, `SPEAKING`, or a safety state.
 - **Never speak while he is asleep.** See Part 4 — `mode=7` and the sleep telemetry tell you.
-- Never speak into an empty room. Require a present person, which needs F3 fixed.
+- Never speak into an empty or unknown room. The current false/stale presence paths must be fixed
+  before presence can authorize initiative.
 - Suppress at night using the persona's circadian hours (`personas/<id>/behavior.yaml`).
 - Back off hard on non-response. Two unprompted openers in a row with no reply should buy a long
   silence. A robot that keeps talking at someone ignoring it reads needy, not curious.

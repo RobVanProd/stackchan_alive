@@ -3,33 +3,510 @@ param(
   [string]$PackageRoot,
   [string]$ZipPath,
   [string]$ExpectedCommit,
-  [switch]$AllowDirtyPackage
+  [string]$ExpectedSourceEpoch,
+  [switch]$AllowDirtyPackage,
+  [switch]$RequireReleaseEligible,
+  [string]$ToolchainAllowlistPath,
+  [string]$GitExecutable,
+  [string]$PythonExecutable,
+  [string]$PlatformioExecutable,
+  [string]$LegacyCoreDir,
+  [string]$ReleaseCoreDir
 )
 
 $ErrorActionPreference = "Stop"
+$script:verificationCleanupReady = $false
+
+$verifierToolchainAllowlistSha256 = '8425BFD814AD4395E70DD86AFF7CFD3D9003F3D5E91FBBC1F2F19BAAF0FF1790' # reviewed allowlist SHA-256
+$verifierToolchainIdentityHelperSha256 = 'D63A93F4E9C3CFE057B59F963FCFF2C7CAF293300FF572E04F4B22608BD368A9' # reviewed identity helper SHA-256
+$verifierToolchainSemanticVerifierSha256 = '649DE0BBF4A966ADF389A4C2F98190B87958E2ECCC1DF15A6E6FE04D86A4BEBA' # reviewed semantic verifier SHA-256
+$verifierToolchainPreBuild = $null
+$script:verifierToolchainIdentityRecords = [System.Collections.Generic.List[object]]::new()
+$script:verifierToolchainReadLeases = [System.Collections.Generic.List[IO.FileStream]]::new()
+$script:verifierToolchainLeaseState = $null
+$script:operationalTrustedCommitMaps = $null
+
+function Add-VerifierToolchainReadLease {
+  param([Parameter(Mandatory = $true)][string]$LiteralPath)
+  $item = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+  if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Release verifier refuses a non-file or redirected lease target: $LiteralPath"
+  }
+  $lease = [IO.File]::Open(
+    $item.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  $script:verifierToolchainReadLeases.Add($lease) | Out-Null
+}
+
+function Get-VerifierBootstrapSha256 {
+  param([Parameter(Mandatory = $true)][string]$LiteralPath)
+  $item = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+  if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Release verifier refuses a non-file or redirected bootstrap input: $LiteralPath"
+  }
+  $stream = [IO.File]::Open($item.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ([BitConverter]::ToString($hasher.ComputeHash($stream)) -replace '-', '').ToUpperInvariant()
+  } finally {
+    $hasher.Dispose()
+    $stream.Dispose()
+  }
+}
+
+function Close-VerifierToolchainResources {
+  if ($null -ne $script:verifierToolchainLeaseState -and
+      -not [bool]$script:verifierToolchainLeaseState.closed) {
+    $closeCommand = Get-Command -Name Close-StackchanToolchainLeaseState `
+      -CommandType Function -ErrorAction SilentlyContinue
+    if ($null -eq $closeCommand) {
+      throw 'Verifier toolchain guard exists but its cleanup function is unavailable.'
+    }
+    Close-StackchanToolchainLeaseState -LeaseState $script:verifierToolchainLeaseState
+  }
+  foreach ($lease in @($script:verifierToolchainReadLeases)) {
+    $lease.Dispose()
+  }
+  $script:verifierToolchainReadLeases.Clear()
+}
+
+trap {
+  $verificationFailure = $_
+  if ($script:verificationCleanupReady -and
+      $null -ne (Get-Command -Name Remove-VerificationExtraction `
+        -CommandType Function -ErrorAction SilentlyContinue)) {
+    try {
+      Remove-VerificationExtraction
+    } catch {
+      Write-Warning 'Could not remove failed verifier ZIP extraction; the input ZIP remains authoritative.'
+    }
+  }
+  try {
+    Close-VerifierToolchainResources
+  } catch {
+    Write-Warning "Could not fully release verifier toolchain resources: $($_.Exception.Message)"
+  }
+  throw $verificationFailure
+}
+
+$ambientGitOverrides = @(Get-ChildItem Env: | Where-Object { $_.Name -like 'GIT_*' })
+if ($ambientGitOverrides.Count -gt 0) {
+  throw "Release verification refuses ambient Git overrides: $(@($ambientGitOverrides.Name | Sort-Object -Unique) -join ', ')"
+}
+$ambientBuildOverrides = @(Get-ChildItem Env: | Where-Object {
+  $_.Name -like 'PLATFORMIO_*' -or
+    $_.Name -in @(
+      'STACKCHAN_BUILD_EPOCH', 'SOURCE_DATE_EPOCH', 'STACKCHAN_BUILD_STAMP',
+      'STACKCHAN_DISABLE_REPRODUCIBLE_BUILD', 'STACKCHAN_EXPECTED_BUILD_COMMIT',
+      'STACKCHAN_EXPECTED_BUILD_EPOCH', 'STACKCHAN_PERSONA', 'STACKCHAN_WIFI_SSID',
+      'STACKCHAN_WIFI_PASSWORD', 'STACKCHAN_BRIDGE_HOST', 'STACKCHAN_BRIDGE_PORT',
+      'STACKCHAN_BRIDGE_PATH', 'STACKCHAN_PAIRING_SHORT_CODE', 'STACKCHAN_OTA_TOKEN',
+      'STACKCHAN_OTA_PORT')
+})
+if ($ambientBuildOverrides.Count -gt 0) {
+  throw "Release verification refuses ambient build overrides: $(@($ambientBuildOverrides.Name | Sort-Object -Unique) -join ', ')"
+}
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+$verifierSystemDirectory = [System.IO.Path]::GetFullPath([Environment]::SystemDirectory).TrimEnd('\', '/')
+if ($env:OS -ne 'Windows_NT' -or -not [System.IO.Path]::IsPathRooted($verifierSystemDirectory)) {
+  throw 'Release verification requires a validated Windows system executable root.'
+}
+$verifierPowerShellExecutable = Join-Path $verifierSystemDirectory 'WindowsPowerShell/v1.0/powershell.exe'
+if (-not (Test-Path -LiteralPath $verifierPowerShellExecutable -PathType Leaf)) {
+  throw "Required Windows PowerShell executable is missing: $verifierPowerShellExecutable"
+}
+$verifierPowerShellItem = Get-Item -LiteralPath $verifierPowerShellExecutable -Force
+if ($verifierPowerShellItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint -or
+    [string]$verifierPowerShellItem.Extension -cne '.exe') {
+  throw "Release verification refuses a redirected or non-EXE PowerShell command: $verifierPowerShellExecutable"
+}
+if ($RequireReleaseEligible) {
+  $requiredToolchainArguments = [ordered]@{
+    GitExecutable = $GitExecutable
+    PythonExecutable = $PythonExecutable
+    PlatformioExecutable = $PlatformioExecutable
+    LegacyCoreDir = $LegacyCoreDir
+    ReleaseCoreDir = $ReleaseCoreDir
+  }
+  foreach ($entry in $requiredToolchainArguments.GetEnumerator()) {
+    if ([string]::IsNullOrWhiteSpace([string]$entry.Value)) {
+      throw "Release-eligible verification requires explicit -$($entry.Key) authority."
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($ToolchainAllowlistPath)) {
+    $ToolchainAllowlistPath = Join-Path $PSScriptRoot 'release_toolchain_identity_allowlist.json'
+  }
+  $ToolchainAllowlistPath = (Get-Item -LiteralPath $ToolchainAllowlistPath -Force -ErrorAction Stop).FullName
+  $identityHelperPath = Join-Path $PSScriptRoot 'release_toolchain_identity.ps1'
+  $semanticVerifierPath = Join-Path $PSScriptRoot 'verify_git_pack_semantics.py'
+  foreach ($input in @(
+      [ordered]@{ path = $ToolchainAllowlistPath; expected = $verifierToolchainAllowlistSha256; label = 'allowlist' },
+      [ordered]@{ path = $identityHelperPath; expected = $verifierToolchainIdentityHelperSha256; label = 'identity helper' },
+      [ordered]@{ path = $semanticVerifierPath; expected = $verifierToolchainSemanticVerifierSha256; label = 'semantic verifier' })) {
+    Add-VerifierToolchainReadLease -LiteralPath ([string]$input.path)
+    if ([string]$input.expected -notmatch '^[0-9A-F]{64}$' -or
+        (Get-VerifierBootstrapSha256 -LiteralPath ([string]$input.path)) -cne [string]$input.expected) {
+      throw "Release verifier pre-Git byte authority mismatch: $([string]$input.label)"
+    }
+  }
+  $requiredPythonEnvironment = [ordered]@{
+    PYTHONNOUSERSITE = '1'; PYTHONSAFEPATH = '1'; PYTHONDONTWRITEBYTECODE = '1'
+    PYTHONHASHSEED = '0'; PYTHONUTF8 = '1'; PYTHONIOENCODING = 'utf-8'
+  }
+  $unexpectedPythonEnvironment = @(Get-ChildItem Env: | Where-Object {
+    $_.Name -like 'PYTHON*' -and -not $requiredPythonEnvironment.Contains($_.Name)
+  })
+  if ($unexpectedPythonEnvironment.Count -ne 0) {
+    throw "Release verifier refuses ambient Python overrides: $(@($unexpectedPythonEnvironment.Name | Sort-Object) -join ', ')"
+  }
+  foreach ($entry in $requiredPythonEnvironment.GetEnumerator()) {
+    $existing = [Environment]::GetEnvironmentVariable([string]$entry.Key, [EnvironmentVariableTarget]::Process)
+    if (-not [string]::IsNullOrWhiteSpace($existing) -and $existing -cne [string]$entry.Value) {
+      throw "Release verifier refuses ambient Python override: $($entry.Key)"
+    }
+    [Environment]::SetEnvironmentVariable(
+      [string]$entry.Key, [string]$entry.Value, [EnvironmentVariableTarget]::Process)
+  }
+  . $identityHelperPath
+  $script:verifierToolchainLeaseState = New-StackchanToolchainLeaseState
+  $resolvedGitExecutable = (Get-Item -LiteralPath $GitExecutable -Force -ErrorAction Stop).FullName
+  $resolvedPythonExecutable = (Get-Item -LiteralPath $PythonExecutable -Force -ErrorAction Stop).FullName
+  $resolvedPlatformioExecutable = (Get-Item -LiteralPath $PlatformioExecutable -Force -ErrorAction Stop).FullName
+  $resolvedLegacyCore = (Get-Item -LiteralPath $LegacyCoreDir -Force -ErrorAction Stop).FullName
+  $resolvedReleaseCore = (Get-Item -LiteralPath $ReleaseCoreDir -Force -ErrorAction Stop).FullName
+  foreach ($executable in @($resolvedGitExecutable, $resolvedPythonExecutable, $resolvedPlatformioExecutable)) {
+    Add-VerifierToolchainReadLease -LiteralPath $executable
+  }
+  $verifierToolchainRootMap = @{
+    pythonHome = Split-Path -Parent $resolvedPythonExecutable
+    gitHome = Split-Path -Parent (Split-Path -Parent $resolvedGitExecutable)
+    legacyCore = $resolvedLegacyCore
+    releaseCore = $resolvedReleaseCore
+    projectRoot = [string]$repoRoot
+    libdepsRoot = Join-Path ([string]$repoRoot) '.pio/libdeps'
+  }
+  $verifierToolchainPreBuild = Assert-StackchanReleaseToolchainIdentity `
+    -AllowlistPath $ToolchainAllowlistPath -RootMap $verifierToolchainRootMap `
+    -PlatformioExecutable $resolvedPlatformioExecutable `
+    -PythonExecutable $resolvedPythonExecutable -GitExecutable $resolvedGitExecutable `
+    -Phase PreBuild -LeaseState $script:verifierToolchainLeaseState -LeaseScope 'pre-build'
+  $trustedGitExecutable = $resolvedGitExecutable
+} else {
+  $trustedGitCommand = Get-Command -Name git -CommandType Application -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -eq $trustedGitCommand) {
+    throw 'Release verification requires a Git application executable; functions, aliases, and scripts are refused.'
+  }
+  $trustedGitExecutable = (Resolve-Path -LiteralPath ([string]$trustedGitCommand.Source)).Path
+}
+$trustedGitDisabledHooksPath = Join-Path $repoRoot (
+  "output/private/disabled-verifier-git-hooks-$PID-" + [guid]::NewGuid().ToString('N'))
+$trustedNullAttributesPath = if ($env:OS -eq 'Windows_NT') { 'NUL' } else { '/dev/null' }
+if (Test-Path -LiteralPath $trustedGitDisabledHooksPath) {
+  throw "Verifier Git disabled-hooks sentinel unexpectedly exists: $trustedGitDisabledHooksPath"
+}
+
+function Invoke-TrustedVerifierGit {
+  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+  if (Test-Path -LiteralPath $script:trustedGitDisabledHooksPath) {
+    throw "Trusted Git disabled-hooks path must not exist: $script:trustedGitDisabledHooksPath"
+  }
+  $gitArguments = @(
+    '-c', "core.hooksPath=$script:trustedGitDisabledHooksPath",
+    '-c', 'core.fsmonitor=false',
+    '-c', 'core.untrackedCache=false',
+    '-c', 'core.useBuiltinFSMonitor=false',
+    '-c', 'maintenance.auto=false',
+    '-c', 'core.autocrlf=true',
+    '-c', "core.attributesFile=$script:trustedNullAttributesPath",
+    '-c', 'filter.lfs.process=',
+    '-c', 'filter.lfs.clean=',
+    '-c', 'filter.lfs.smudge=',
+    '-c', 'filter.lfs.required=false'
+  )
+  $gitArguments += $Arguments
+
+  $previousNoReplaceObjects = $env:GIT_NO_REPLACE_OBJECTS
+  $previousNoSystemAttributes = $env:GIT_ATTR_NOSYSTEM
+  try {
+    $env:GIT_NO_REPLACE_OBJECTS = '1'
+    $env:GIT_ATTR_NOSYSTEM = '1'
+    if ($null -ne $script:verifierToolchainLeaseState) {
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context 'before trusted verifier Git execution'
+    }
+    & $script:trustedGitExecutable @gitArguments
+    if ($null -ne $script:verifierToolchainLeaseState) {
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context 'after trusted verifier Git execution'
+    }
+  } finally {
+    if ($null -eq $previousNoReplaceObjects) {
+      Remove-Item Env:\GIT_NO_REPLACE_OBJECTS -ErrorAction SilentlyContinue
+    } else {
+      $env:GIT_NO_REPLACE_OBJECTS = $previousNoReplaceObjects
+    }
+    if ($null -eq $previousNoSystemAttributes) {
+      Remove-Item Env:\GIT_ATTR_NOSYSTEM -ErrorAction SilentlyContinue
+    } else {
+      $env:GIT_ATTR_NOSYSTEM = $previousNoSystemAttributes
+    }
+  }
+}
+
+function Get-CanonicalGitBlobHash {
+  param(
+    [Parameter(Mandatory = $true)][string]$LiteralPath,
+    [Parameter(Mandatory = $true)][ValidateSet(40, 64)][int]$HashLength
+  )
+
+  # Release packages use one explicit Git-canonical content policy: byte-preserve
+  # files containing NUL and normalize CRLF to LF for text. This matches the
+  # repository's public checkout policy without consulting or executing filters.
+  $bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
+  if (-not ($bytes -contains [byte]0)) {
+    $normalized = New-Object System.Collections.Generic.List[byte]
+    for ($index = 0; $index -lt $bytes.Length; $index++) {
+      if ($bytes[$index] -eq 13 -and $index + 1 -lt $bytes.Length -and
+          $bytes[$index + 1] -eq 10) {
+        $normalized.Add(10)
+        $index++
+      } else {
+        $normalized.Add($bytes[$index])
+      }
+    }
+    $bytes = $normalized.ToArray()
+  }
+  $header = [System.Text.Encoding]::ASCII.GetBytes("blob $($bytes.Length)`0")
+  $objectBytes = New-Object byte[] ($header.Length + $bytes.Length)
+  [System.Array]::Copy($header, 0, $objectBytes, 0, $header.Length)
+  [System.Array]::Copy($bytes, 0, $objectBytes, $header.Length, $bytes.Length)
+  $hasher = if ($HashLength -eq 40) {
+    [System.Security.Cryptography.SHA1]::Create()
+  } else {
+    [System.Security.Cryptography.SHA256]::Create()
+  }
+  try {
+    return (($hasher.ComputeHash($objectBytes) | ForEach-Object { $_.ToString('x2') }) -join '')
+  } finally {
+    $hasher.Dispose()
+  }
+}
+
+function Assert-SafeReleaseVersionLeaf {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  if ($Value.Length -gt 128 -or
+      $Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
+      $Value -in @('.', '..') -or
+      $Value.EndsWith('.', [System.StringComparison]::Ordinal)) {
+    throw "Version must be one safe filename component containing only letters, digits, '.', '_', or '-'."
+  }
+}
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  $Version = (git describe --tags --always --dirty).Trim()
+  $Version = (Invoke-TrustedVerifierGit -Arguments @('describe', '--tags', '--always', '--dirty')).Trim()
 }
+Assert-SafeReleaseVersionLeaf -Value $Version
 
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
-  $ExpectedCommit = (git rev-parse HEAD).Trim()
+  $ExpectedCommit = (Invoke-TrustedVerifierGit -Arguments @('rev-parse', 'HEAD')).Trim()
+}
+if ($ExpectedCommit -notmatch '^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$') {
+  throw "ExpectedCommit must be a full 40- or 64-character hexadecimal commit ID"
+}
+$ExpectedCommit = $ExpectedCommit.ToLowerInvariant()
+if (-not [string]::IsNullOrWhiteSpace($ExpectedSourceEpoch) -and
+    $ExpectedSourceEpoch -notmatch '^[0-9]{1,12}$') {
+    throw "ExpectedSourceEpoch must be an exact unsigned decimal Unix epoch"
+}
+if ($RequireReleaseEligible) {
+  $resolvedVerifierRoot = [System.IO.Path]::GetFullPath([string]$repoRoot).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+  $resolvedVerifierTools = [System.IO.Path]::GetFullPath([string]$PSScriptRoot).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+  $expectedVerifierTools = [System.IO.Path]::GetFullPath(
+    (Join-Path $resolvedVerifierRoot 'tools')).TrimEnd(
+      [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+  if (-not $resolvedVerifierTools.Equals(
+      $expectedVerifierTools, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Operational release verification must run from the trusted checkout tools directory.'
+  }
+  $trustedTopLevel = (Invoke-TrustedVerifierGit -Arguments @(
+    '-C', $resolvedVerifierRoot, 'rev-parse', '--show-toplevel')).Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($trustedTopLevel)) {
+    throw 'Operational release verification could not resolve its exact Git top-level.'
+  }
+  $resolvedTrustedTopLevel = [System.IO.Path]::GetFullPath($trustedTopLevel).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+  if (-not $resolvedTrustedTopLevel.Equals(
+      $resolvedVerifierRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Operational release verification refuses a nested or ignored verifier outside the exact Git top-level.'
+  }
+  $attributeCandidates = New-Object System.Collections.Generic.List[string]
+  $worktreeAttributes = (Invoke-TrustedVerifierGit -Arguments @(
+    '-C', $resolvedVerifierRoot, 'rev-parse', '--git-path', 'info/attributes')).Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($worktreeAttributes)) {
+    throw 'Operational release verification could not resolve worktree Git attributes state.'
+  }
+  $resolvedWorktreeAttributes = if ([System.IO.Path]::IsPathRooted($worktreeAttributes)) {
+    $worktreeAttributes
+  } else {
+    Join-Path $resolvedVerifierRoot $worktreeAttributes
+  }
+  $attributeCandidates.Add([System.IO.Path]::GetFullPath($resolvedWorktreeAttributes))
+  $commonGitDir = (Invoke-TrustedVerifierGit -Arguments @(
+    '-C', $resolvedVerifierRoot, 'rev-parse', '--git-common-dir')).Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commonGitDir)) {
+    throw 'Operational release verification could not resolve common Git attributes state.'
+  }
+  $commonAttributes = Join-Path $commonGitDir 'info/attributes'
+  $resolvedCommonAttributes = if ([System.IO.Path]::IsPathRooted($commonAttributes)) {
+    $commonAttributes
+  } else {
+    Join-Path $resolvedVerifierRoot $commonAttributes
+  }
+  $attributeCandidates.Add([System.IO.Path]::GetFullPath($resolvedCommonAttributes))
+  foreach ($attributePath in @($attributeCandidates | Sort-Object -Unique)) {
+    if (Test-Path -LiteralPath $attributePath -PathType Leaf) {
+      throw "Operational release verification refuses repository-local Git attributes: $attributePath"
+    }
+  }
+  $trustedAttributesBlob = (Invoke-TrustedVerifierGit -Arguments @(
+    '-C', $resolvedVerifierRoot, 'rev-parse', '--verify',
+    "${ExpectedCommit}:.gitattributes")).Trim().ToLowerInvariant()
+  $workingAttributesPath = Join-Path $resolvedVerifierRoot '.gitattributes'
+  if ($LASTEXITCODE -ne 0 -or $trustedAttributesBlob -notmatch '^[0-9a-f]{40,64}$' -or
+      -not (Test-Path -LiteralPath $workingAttributesPath -PathType Leaf)) {
+    throw 'Operational release verification requires the trusted .gitattributes policy.'
+  }
+  $workingAttributesBlob = Get-CanonicalGitBlobHash `
+    -LiteralPath $workingAttributesPath -HashLength $trustedAttributesBlob.Length
+  if ($workingAttributesBlob -cne $trustedAttributesBlob) {
+    throw 'Operational release verification refuses modified .gitattributes content.'
+  }
+  $trustedVerifierCommit = (Invoke-TrustedVerifierGit -Arguments @('-C', [string]$repoRoot, 'rev-parse', '--verify', 'HEAD')).Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0 -or $trustedVerifierCommit -cne $ExpectedCommit) {
+    throw "Operational release verification requires a trusted checkout at ExpectedCommit."
+  }
+  $trustedVerifierDirty = @(Invoke-TrustedVerifierGit -Arguments @('-C', [string]$repoRoot, 'status', '--porcelain=v1', '--untracked-files=all'))
+  if ($LASTEXITCODE -ne 0 -or $trustedVerifierDirty.Count -gt 0) {
+    throw "Operational release verification requires a clean trusted checkout."
+  }
+  foreach ($trustedBootstrapRelative in @(
+    'tools/verify_release_package.ps1',
+    'tools/firmware_reproducibility_proof.ps1',
+    'tools/release_zip_safety.ps1',
+    'tools/release_dependency_evidence.ps1',
+    'tools/release_source_binding.ps1',
+    'tools/release_git_trust.ps1',
+    'tools/release_ota_selector_policy.ps1',
+    'tools/platformio_resolver.ps1',
+    'tools/preview_python_resolver.ps1'
+  )) {
+    $indexRecord = @(Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $resolvedVerifierRoot, 'ls-files', '-v', '--', $trustedBootstrapRelative))
+    if ($LASTEXITCODE -ne 0 -or $indexRecord.Count -ne 1 -or
+        [string]$indexRecord[0] -cne "H $trustedBootstrapRelative") {
+      throw "Operational release verification refuses hidden index state for $trustedBootstrapRelative."
+    }
+    $trustedBlob = (Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $resolvedVerifierRoot, 'rev-parse', '--verify',
+      "${ExpectedCommit}:$trustedBootstrapRelative")).Trim().ToLowerInvariant()
+    $workingBlob = if ($trustedBlob -match '^[0-9a-f]{40}$') {
+      Get-CanonicalGitBlobHash -LiteralPath (Join-Path $resolvedVerifierRoot $trustedBootstrapRelative) -HashLength 40
+    } elseif ($trustedBlob -match '^[0-9a-f]{64}$') {
+      Get-CanonicalGitBlobHash -LiteralPath (Join-Path $resolvedVerifierRoot $trustedBootstrapRelative) -HashLength 64
+    } else { '' }
+    if ($trustedBlob -notmatch '^[0-9a-f]{40,64}$' -or
+        $workingBlob -cne $trustedBlob) {
+      throw "Operational release verification requires canonical HEAD content for $trustedBootstrapRelative."
+    }
+  }
+  $trustedSourceEpoch = (Invoke-TrustedVerifierGit -Arguments @(
+    '-C', [string]$repoRoot, 'show', '-s', '--format=%ct', $ExpectedCommit)).Trim()
+  if ($LASTEXITCODE -ne 0 -or $trustedSourceEpoch -notmatch '^[0-9]{1,12}$') {
+    throw "Operational release verification could not resolve the trusted commit epoch."
+  }
+  if (-not [string]::IsNullOrWhiteSpace($ExpectedSourceEpoch) -and
+      $ExpectedSourceEpoch -cne $trustedSourceEpoch) {
+    throw "ExpectedSourceEpoch does not match the trusted checkout commit epoch."
+  }
+  $ExpectedSourceEpoch = $trustedSourceEpoch
 }
 
+# In operational mode, no local helper is loaded until the trusted checkout has
+# proven that this verifier and every helper are the exact clean commit inputs.
+. (Join-Path $PSScriptRoot "firmware_reproducibility_proof.ps1")
+. (Join-Path $PSScriptRoot "release_zip_safety.ps1")
+. (Join-Path $PSScriptRoot "release_dependency_evidence.ps1")
+. (Join-Path $PSScriptRoot "release_source_binding.ps1")
+. (Join-Path $PSScriptRoot "release_git_trust.ps1")
+. (Join-Path $PSScriptRoot "release_ota_selector_policy.ps1")
+. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
+
 $cleanupDir = $null
+$tempRoot = $null
+
+function Remove-VerificationExtraction {
+  if (-not $script:cleanupDir -or -not (Test-Path -LiteralPath $script:cleanupDir)) { return }
+  $resolvedCleanup = (Resolve-Path -LiteralPath $script:cleanupDir).Path
+  $resolvedTempRoot = (Resolve-Path -LiteralPath $script:tempRoot).Path.TrimEnd('\') + '\'
+  if (-not $resolvedCleanup.StartsWith($resolvedTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to clean unexpected verification directory: $resolvedCleanup"
+  }
+  $cleanupFileSystemPath = if ($env:OS -eq "Windows_NT" -and -not $resolvedCleanup.StartsWith("\\?\")) {
+    "\\?\$resolvedCleanup"
+  } else {
+    $resolvedCleanup
+  }
+  [System.IO.Directory]::Delete($cleanupFileSystemPath, $true)
+  $script:cleanupDir = $null
+}
+
+function Assert-ReleaseZipSidecar {
+  param([Parameter(Mandatory = $true)][string]$LiteralZipPath)
+
+  $sidecarPath = "$LiteralZipPath.sha256"
+  if (-not (Test-Path -LiteralPath $sidecarPath -PathType Leaf)) {
+    throw "Missing release ZIP SHA-256 sidecar: $sidecarPath"
+  }
+  $sidecarBytes = [IO.File]::ReadAllBytes($sidecarPath)
+  if ($sidecarBytes.Length -lt 69 -or $sidecarBytes.Length -gt 512 -or
+      @($sidecarBytes | Where-Object { $_ -gt 127 }).Count -ne 0) {
+    throw 'Release ZIP SHA-256 sidecar is not bounded canonical ASCII.'
+  }
+  $sidecarText = [Text.Encoding]::ASCII.GetString($sidecarBytes)
+  if ($sidecarText -notmatch '\A([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*\.zip)(?:\r?\n)?\z') {
+    throw 'Release ZIP SHA-256 sidecar must contain one canonical lowercase hash and ZIP filename.'
+  }
+  $expectedHash = [string]$Matches[1]
+  $expectedName = [string]$Matches[2]
+  $actualName = Split-Path -Leaf $LiteralZipPath
+  if ($expectedName -cne $actualName) {
+    throw "Release ZIP SHA-256 sidecar names '$expectedName', not '$actualName'."
+  }
+  $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralZipPath).Hash.ToLowerInvariant()
+  if ($actualHash -cne $expectedHash) {
+    throw "Release ZIP SHA-256 sidecar mismatch: expected $expectedHash, got $actualHash."
+  }
+}
+
+$script:verificationCleanupReady = $true
 
 if (-not [string]::IsNullOrWhiteSpace($ZipPath)) {
   if (-not (Test-Path -LiteralPath $ZipPath)) {
     throw "Missing release ZIP: $ZipPath"
   }
+  $ZipPath = (Resolve-Path -LiteralPath $ZipPath).Path
+  Assert-ReleaseZipSidecar -LiteralZipPath $ZipPath
 
   $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-release-verify"
   $cleanupDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $cleanupDir | Out-Null
-  Expand-Archive -LiteralPath $ZipPath -DestinationPath $cleanupDir
+  Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $cleanupDir
   $PackageRoot = $cleanupDir
 }
 
@@ -43,12 +520,52 @@ if (-not (Test-Path -LiteralPath $PackageRoot)) {
 
 $packageRootPath = (Resolve-Path $PackageRoot).Path
 $packageRootPrefix = $packageRootPath.TrimEnd('\') + '\'
+$packageEnumerationRoot = if ($env:OS -eq 'Windows_NT' -and
+    -not $packageRootPath.StartsWith('\\?\')) {
+  '\\?\' + $packageRootPath
+} else {
+  $packageRootPath
+}
+function Get-PackageItemFullName {
+  param([Parameter(Mandatory = $true)][object]$Item)
+  $fullName = [string]$Item.FullName
+  if ($fullName.StartsWith('\\?\', [System.StringComparison]::Ordinal)) {
+    return $fullName.Substring(4)
+  }
+  return $fullName
+}
+$eligibilityManifestPath = Join-Path $packageRootPath "release_manifest.json"
+if (Test-Path -LiteralPath $eligibilityManifestPath -PathType Leaf) {
+  $eligibilityManifest = Get-Content -LiteralPath $eligibilityManifestPath -Raw | ConvertFrom-Json
+  $diagnosticPackageProperties = @(
+    if ($null -ne $eligibilityManifest) {
+      $eligibilityManifest.PSObject.Properties | Where-Object {
+        $_.Name -ceq 'diagnosticPackage'
+      }
+    }
+  )
+  if ($diagnosticPackageProperties.Count -ne 1 -or
+      $diagnosticPackageProperties[0].Value -isnot [bool]) {
+    throw "Release manifest diagnosticPackage must be one JSON boolean."
+  }
+  $eligibilityDiagnosticPackage = [bool]$diagnosticPackageProperties[0].Value
+  if ($eligibilityDiagnosticPackage) {
+    if ($RequireReleaseEligible) {
+      throw "Operational release verification refuses diagnostic packages."
+    }
+    if (-not $AllowDirtyPackage) {
+      throw "Diagnostic archive inspection requires -AllowDirtyPackage"
+    }
+  }
+} else {
+  throw "Release package is missing required release_manifest.json."
+}
 $generatedPythonArtifacts = @(
-  Get-ChildItem -LiteralPath $packageRootPath -Recurse -Force | Where-Object {
+  Get-ChildItem -LiteralPath $packageEnumerationRoot -Recurse -Force | Where-Object {
     ($_.PSIsContainer -and $_.Name -eq "__pycache__") -or
     (-not $_.PSIsContainer -and $_.Extension.ToLowerInvariant() -in @(".pyc", ".pyo"))
   } | ForEach-Object {
-    $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
+    (Get-PackageItemFullName $_).Substring($packageRootPrefix.Length).Replace('\', '/')
   }
 )
 if ($generatedPythonArtifacts.Count -gt 0) {
@@ -56,8 +573,8 @@ if ($generatedPythonArtifacts.Count -gt 0) {
 }
 
 $restrictedVoicePayloads = @(
-  Get-ChildItem -LiteralPath $packageRootPath -File -Recurse | Where-Object {
-    $relative = $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
+  Get-ChildItem -LiteralPath $packageEnumerationRoot -File -Recurse | Where-Object {
+    $relative = (Get-PackageItemFullName $_).Substring($packageRootPrefix.Length).Replace('\', '/')
     $extension = $_.Extension.ToLowerInvariant()
     $allowedVisionModel = $relative -match '(?i)^(provenance/)?bridge/models/face_detection_yunet_2023mar\.onnx$'
     $allowedProductionVoice = $relative -match '(?i)^media/voice/rvc/(model\.pth|model\.index)$'
@@ -67,7 +584,7 @@ $restrictedVoicePayloads = @(
     ($relative -match '(?i)(^|/)media/voice/rvc/(?!README\.md$|model\.pth$|model\.index$).+') -or
     ($_.Name -match '(?i)rvc.*\.(wav|mp3|html)$')
   } | ForEach-Object {
-    $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
+    (Get-PackageItemFullName $_).Substring($packageRootPrefix.Length).Replace('\', '/')
   }
 )
 if ($restrictedVoicePayloads.Count -gt 0) {
@@ -76,7 +593,20 @@ if ($restrictedVoicePayloads.Count -gt 0) {
 
 function Join-PackagePath {
   param([string]$RelativePath)
-  $path = Join-Path $packageRootPath ($RelativePath -replace "/", "\")
+  if ([string]::IsNullOrWhiteSpace($RelativePath)) {
+    throw "Package-relative path cannot be empty"
+  }
+  $normalizedRelative = $RelativePath.Replace('\', '/')
+  $segments = @($normalizedRelative.Split('/') | Where-Object { $_ -ne '' })
+  if ([System.IO.Path]::IsPathRooted($normalizedRelative) -or
+      $normalizedRelative.Contains(':') -or
+      $segments -contains '.' -or $segments -contains '..') {
+    throw "Refusing unsafe package-relative path: $RelativePath"
+  }
+  $path = [System.IO.Path]::GetFullPath((Join-Path $packageRootPath ($normalizedRelative -replace "/", "\")))
+  if (-not $path.StartsWith($packageRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing package path outside package root: $RelativePath"
+  }
   if ($env:OS -eq "Windows_NT" -and $path.Length -ge 260 -and -not $path.StartsWith("\\?\")) {
     if ($path.StartsWith("\\")) {
       return "\\?\UNC\$($path.TrimStart('\'))"
@@ -84,6 +614,944 @@ function Join-PackagePath {
     return "\\?\$path"
   }
   return $path
+}
+
+function Assert-PackageFileMatchesTrustedGitBlob {
+  param(
+    [Parameter(Mandatory = $true)][string]$PackageRelativePath,
+    [Parameter(Mandatory = $true)][string]$TrustedSourceRelativePath
+  )
+
+  if (-not $RequireReleaseEligible) { return }
+  $packageRelative = $PackageRelativePath.Replace('\', '/')
+  $sourceRelative = $TrustedSourceRelativePath.Replace('\', '/')
+  foreach ($relative in @($packageRelative, $sourceRelative)) {
+    if ([string]::IsNullOrWhiteSpace($relative) -or
+        $relative.StartsWith('/') -or
+        $relative -match '(^|/)\.\.(/|$)' -or
+        $relative.Contains(':')) {
+      throw "Operational package Git binding refuses unsafe relative path: $relative"
+    }
+  }
+  $packageFile = Join-PackagePath $packageRelative
+  if (-not (Test-Path -LiteralPath $packageFile -PathType Leaf)) {
+    throw "Operational package Git binding is missing packaged file: $packageRelative"
+  }
+  $trustedBlob = (Invoke-TrustedVerifierGit -Arguments @(
+    '-C', $resolvedVerifierRoot, 'rev-parse', '--verify',
+    "${ExpectedCommit}:$sourceRelative")).Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0 -or $trustedBlob -notmatch '^[0-9a-f]{40,64}$') {
+    throw "Operational package Git binding cannot resolve trusted source blob: $sourceRelative"
+  }
+  $packageBlob = if ($trustedBlob.Length -eq 40) {
+    Get-CanonicalGitBlobHash -LiteralPath $packageFile -HashLength 40
+  } else {
+    Get-CanonicalGitBlobHash -LiteralPath $packageFile -HashLength 64
+  }
+  if ($packageBlob -cne $trustedBlob) {
+    throw "Operational package file does not match trusted Git bytes: $packageRelative"
+  }
+}
+
+function Get-TrustedProvenanceSourceRelativePath {
+  param([Parameter(Mandatory = $true)][string]$PackageRelativePath)
+
+  $normalized = $PackageRelativePath.Replace('\', '/')
+  if ($normalized -notmatch '^provenance/(.+)$') {
+    throw "Operational provenance binding requires a provenance path: $normalized"
+  }
+  $tail = $Matches[1]
+  if ($tail -in @(
+    'firmware.yml', 'release.yml', 'pages.yml', 'companion-signing-readiness.yml')) {
+    return ".github/workflows/$tail"
+  }
+  return $tail
+}
+
+function Get-PackagedFileInventory {
+  param([Parameter(Mandatory = $true)][string]$PackagePrefix)
+
+  if ($PackagePrefix -notin @('tools', 'provenance')) {
+    throw "Operational package inventory refuses unsupported prefix: $PackagePrefix"
+  }
+  $inventoryRoot = [System.IO.Path]::Combine($packageEnumerationRoot, $PackagePrefix)
+  if (-not (Test-Path -LiteralPath $inventoryRoot -PathType Container)) {
+    throw "Operational package inventory is missing directory: $PackagePrefix"
+  }
+  return @(
+    Get-ChildItem -LiteralPath $inventoryRoot -Recurse -File -Force -ErrorAction Stop |
+      ForEach-Object {
+        (Get-PackageItemFullName $_).Substring($packageRootPrefix.Length).Replace('\', '/')
+      }
+  )
+}
+
+function Get-OperationalTrustedCommitMaps {
+  if ($null -ne $script:operationalTrustedCommitMaps) {
+    return $script:operationalTrustedCommitMaps
+  }
+  $treeBlobs = [System.Collections.Generic.Dictionary[string,string]]::new(
+    [System.StringComparer]::Ordinal)
+  $treeOutput = @(Invoke-TrustedVerifierGit -Arguments @(
+    '-C', $resolvedVerifierRoot, 'ls-tree', '-r', $ExpectedCommit))
+  if ($LASTEXITCODE -ne 0 -or $treeOutput.Count -eq 0) {
+    throw 'Operational package policy could not read the trusted commit tree.'
+  }
+  foreach ($lineValue in $treeOutput) {
+    $line = [string]$lineValue
+    if ($line -notmatch '^\d{6} blob ([0-9a-f]{40,64})\t(.+)$') {
+      throw "Operational package policy encountered an unsupported trusted tree entry: $line"
+    }
+    if ($treeBlobs.ContainsKey($Matches[2])) {
+      throw "Operational package policy encountered a duplicate trusted tree path: $($Matches[2])"
+    }
+    $treeBlobs.Add($Matches[2], $Matches[1].ToLowerInvariant())
+  }
+
+  $indexStates = [System.Collections.Generic.Dictionary[string,string]]::new(
+    [System.StringComparer]::Ordinal)
+  $indexOutput = @(Invoke-TrustedVerifierGit -Arguments @(
+    '-C', $resolvedVerifierRoot, 'ls-files', '-v'))
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Operational package policy could not read the trusted checkout index.'
+  }
+  foreach ($lineValue in $indexOutput) {
+    $line = [string]$lineValue
+    if ($line -notmatch '^(.?) (.+)$' -or $indexStates.ContainsKey($Matches[2])) {
+      throw "Operational package policy encountered an unsupported or duplicate index entry: $line"
+    }
+    $indexStates.Add($Matches[2], $Matches[1])
+  }
+  $script:operationalTrustedCommitMaps = [pscustomobject]@{
+    treeBlobs = $treeBlobs
+    indexStates = $indexStates
+  }
+  return $script:operationalTrustedCommitMaps
+}
+
+function Get-TrustedReleaseToolPolicy {
+  param([Parameter(Mandatory = $true)][object]$CommitMaps)
+
+  $policySource = 'tools/package_release.ps1'
+  if (-not $CommitMaps.treeBlobs.ContainsKey($policySource)) {
+    throw 'Operational package policy cannot find trusted package_release.ps1.'
+  }
+  $policyLines = @(Invoke-TrustedVerifierGit -Arguments @(
+    '-C', $resolvedVerifierRoot, 'cat-file', 'blob',
+    [string]$CommitMaps.treeBlobs[$policySource]))
+  if ($LASTEXITCODE -ne 0 -or $policyLines.Count -eq 0) {
+    throw 'Operational package policy cannot read trusted package_release.ps1.'
+  }
+  $insidePolicy = $false
+  $closedPolicy = $false
+  $tools = New-Object System.Collections.Generic.List[string]
+  foreach ($lineValue in $policyLines) {
+    $line = [string]$lineValue
+    if (-not $insidePolicy) {
+      if ($line -ceq '$releaseTools = @(') { $insidePolicy = $true }
+      continue
+    }
+    if ($line -ceq ')') { $closedPolicy = $true; break }
+    if ($line -notmatch '^  "(tools/[A-Za-z0-9_.\-/]+)"[,]?$') {
+      throw "Trusted release-tools policy is not a canonical literal inventory: $line"
+    }
+    $tools.Add($Matches[1])
+  }
+  if (-not $insidePolicy -or -not $closedPolicy -or $tools.Count -eq 0) {
+    throw 'Trusted release-tools policy literal inventory is missing or empty.'
+  }
+  $exact = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+  $folded = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($tool in $tools) {
+    if (-not $exact.Add($tool) -or -not $folded.Add($tool)) {
+      throw "Trusted release-tools policy has a duplicate or case collision: $tool"
+    }
+  }
+  $result = [string[]]$tools.ToArray()
+  [Array]::Sort($result, [System.StringComparer]::Ordinal)
+  return @($result)
+}
+
+function Get-TrustedProvenancePolicy {
+  param([Parameter(Mandatory = $true)][object]$CommitMaps)
+
+  $packageToSource = [System.Collections.Generic.Dictionary[string,string]]::new(
+    [System.StringComparer]::Ordinal)
+  foreach ($sourcePath in $CommitMaps.treeBlobs.Keys) {
+    $packagePath = $null
+    if ($sourcePath -in @(
+      'platformio.ini', 'partitions_esp_sr_16.csv', 'requirements-preview.txt',
+      'requirements-firmware-release.txt')) {
+      $packagePath = "provenance/$sourcePath"
+    } elseif ($sourcePath -in @(
+      '.github/workflows/firmware.yml', '.github/workflows/release.yml',
+      '.github/workflows/pages.yml', '.github/workflows/companion-signing-readiness.yml')) {
+      $packagePath = 'provenance/' + [System.IO.Path]::GetFileName($sourcePath)
+    } elseif ($sourcePath -eq 'data/commands.yaml') {
+      $packagePath = 'provenance/data/commands.yaml'
+    } elseif ($sourcePath -match '^(src|bridge|protocol-fixtures|personas|test)/') {
+      $packagePath = "provenance/$sourcePath"
+    } elseif ($sourcePath -match '^companion/(.+)$' -and
+        $sourcePath -notmatch '^companion/(build|\.gradle|\.kotlin)(/|$)' -and
+        $sourcePath -notmatch '/(build|\.gradle|\.kotlin)(/|$)') {
+      $packagePath = "provenance/$sourcePath"
+    }
+    if ($null -ne $packagePath) {
+      if ($packageToSource.ContainsKey($packagePath)) {
+        throw "Trusted provenance policy has a duplicate package mapping: $packagePath"
+      }
+      $packageToSource.Add($packagePath, $sourcePath)
+    }
+  }
+  if ($packageToSource.Count -eq 0) {
+    throw 'Trusted provenance policy resolved no files.'
+  }
+  return $packageToSource
+}
+
+function Assert-OperationalSourceCheckoutBindings {
+  param(
+    [Parameter(Mandatory = $true)][object]$CommitMaps,
+    [Parameter(Mandatory = $true)][string[]]$SourcePaths
+  )
+
+  foreach ($sourcePath in @($SourcePaths | Sort-Object -Unique)) {
+    if (-not $CommitMaps.treeBlobs.ContainsKey($sourcePath) -or
+        -not $CommitMaps.indexStates.ContainsKey($sourcePath) -or
+        [string]$CommitMaps.indexStates[$sourcePath] -cne 'H') {
+      throw "Operational package policy refuses missing or hidden index state for source: $sourcePath"
+    }
+    $workingPath = Join-Path $resolvedVerifierRoot $sourcePath
+    if (-not (Test-Path -LiteralPath $workingPath -PathType Leaf)) {
+      throw "Operational package policy source is missing from the trusted checkout: $sourcePath"
+    }
+    $trustedBlob = [string]$CommitMaps.treeBlobs[$sourcePath]
+    $workingBlob = Get-CanonicalGitBlobHash -LiteralPath $workingPath -HashLength $trustedBlob.Length
+    if ($workingBlob -cne $trustedBlob) {
+      throw "Operational package policy source does not match canonical trusted commit bytes: $sourcePath"
+    }
+  }
+}
+
+function Assert-PackageFileMatchesTrustedBlobMap {
+  param(
+    [Parameter(Mandatory = $true)][string]$PackageRelativePath,
+    [Parameter(Mandatory = $true)][string]$TrustedSourceRelativePath,
+    [Parameter(Mandatory = $true)][object]$CommitMaps
+  )
+  if (-not $CommitMaps.treeBlobs.ContainsKey($TrustedSourceRelativePath)) {
+    throw "Operational package policy cannot resolve trusted source: $TrustedSourceRelativePath"
+  }
+  $packageFile = Join-PackagePath $PackageRelativePath
+  if (-not (Test-Path -LiteralPath $packageFile -PathType Leaf)) {
+    throw "Operational package policy is missing package file: $PackageRelativePath"
+  }
+  $trustedBlob = [string]$CommitMaps.treeBlobs[$TrustedSourceRelativePath]
+  $packageBlob = Get-CanonicalGitBlobHash -LiteralPath $packageFile -HashLength $trustedBlob.Length
+  if ($packageBlob -cne $trustedBlob) {
+    throw "Operational package file does not match trusted Git bytes: $PackageRelativePath"
+  }
+}
+
+function Assert-ExactOperationalInventory {
+  param(
+    [Parameter(Mandatory = $true)][object[]]$ManifestEntries,
+    [Parameter(Mandatory = $true)][string]$PackagePrefix
+  )
+
+  $manifestExact = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+  $manifestFolded = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  $manifestList = New-Object System.Collections.Generic.List[string]
+  foreach ($entryValue in @($ManifestEntries)) {
+    $entry = [string]$entryValue
+    $normalized = $entry.Replace('\', '/')
+    $segments = @($normalized.Split('/') | Where-Object { $_ -ne '' })
+    if ([string]::IsNullOrWhiteSpace($entry) -or $entry -cne $normalized -or
+        [System.IO.Path]::IsPathRooted($normalized) -or $normalized.Contains(':') -or
+        $segments -contains '.' -or $segments -contains '..' -or
+        -not $normalized.StartsWith("$PackagePrefix/", [System.StringComparison]::Ordinal) -or
+        -not $manifestExact.Add($normalized) -or -not $manifestFolded.Add($normalized)) {
+      throw "Operational package manifest contains an unsafe, duplicate, or case-colliding $PackagePrefix inventory entry: $entry"
+    }
+    $manifestList.Add($normalized)
+  }
+  $sortedManifest = @($manifestList)
+  [Array]::Sort($sortedManifest, [StringComparer]::Ordinal)
+  for ($index = 0; $index -lt $sortedManifest.Count; $index++) {
+    if ($manifestList[$index] -cne $sortedManifest[$index]) {
+      throw "Operational package manifest $PackagePrefix inventory is not ordinally sorted."
+    }
+  }
+
+  $actualExact = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+  $actualFolded = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  $actualFiles = @(Get-PackagedFileInventory -PackagePrefix $PackagePrefix)
+  foreach ($actualFile in $actualFiles) {
+    if (-not $actualExact.Add($actualFile) -or -not $actualFolded.Add($actualFile)) {
+      throw "Operational package contains duplicate or case-colliding $PackagePrefix file: $actualFile"
+    }
+  }
+  if ($actualExact.Count -ne $manifestExact.Count) {
+    throw "Operational package manifest $PackagePrefix inventory count does not match packaged files."
+  }
+  foreach ($actualFile in $actualExact) {
+    if (-not $manifestExact.Contains($actualFile)) {
+      throw "Operational package contains an undeclared $PackagePrefix file: $actualFile"
+    }
+  }
+  foreach ($manifestFile in $manifestExact) {
+    if (-not $actualExact.Contains($manifestFile)) {
+      throw "Operational package manifest declares a missing $PackagePrefix file: $manifestFile"
+    }
+  }
+  return @($manifestList)
+}
+
+function Assert-OperationalPackageGitBindings {
+  param([Parameter(Mandatory = $true)][object]$Manifest)
+
+  if (-not $RequireReleaseEligible) { return }
+  $commitMaps = Get-OperationalTrustedCommitMaps
+  $trustedToolPolicy = @(Get-TrustedReleaseToolPolicy -CommitMaps $commitMaps)
+  $trustedIncludedTools = @(Assert-ExactOperationalInventory `
+    -ManifestEntries @($Manifest.includedTools) -PackagePrefix 'tools')
+  if (($trustedIncludedTools -join "`n") -cne ($trustedToolPolicy -join "`n")) {
+    throw 'Operational package tools inventory does not equal the trusted commit-side packaging policy.'
+  }
+  $provenancePolicy = Get-TrustedProvenancePolicy -CommitMaps $commitMaps
+  $trustedProvenanceFiles = @(Assert-ExactOperationalInventory `
+    -ManifestEntries @($Manifest.provenanceFiles) -PackagePrefix 'provenance')
+  $trustedProvenancePolicy = [string[]]@($provenancePolicy.Keys)
+  [Array]::Sort($trustedProvenancePolicy, [System.StringComparer]::Ordinal)
+  if (($trustedProvenanceFiles -join "`n") -cne ($trustedProvenancePolicy -join "`n")) {
+    throw 'Operational package provenance inventory does not equal the trusted commit-side packaging policy.'
+  }
+
+  $allSources = @($trustedToolPolicy) + @($provenancePolicy.Values)
+  Assert-OperationalSourceCheckoutBindings -CommitMaps $commitMaps -SourcePaths $allSources
+  foreach ($includedTool in $trustedToolPolicy) {
+    Assert-PackageFileMatchesTrustedBlobMap -PackageRelativePath $includedTool `
+      -TrustedSourceRelativePath $includedTool -CommitMaps $commitMaps
+  }
+  foreach ($provenanceFile in $trustedProvenancePolicy) {
+    Assert-PackageFileMatchesTrustedBlobMap -PackageRelativePath $provenanceFile `
+      -TrustedSourceRelativePath ([string]$provenancePolicy[$provenanceFile]) `
+      -CommitMaps $commitMaps
+  }
+
+  # Every package tree that is copied directly from the repository is also
+  # content-bound. This prevents a regenerated checksum file from blessing a
+  # modified bridge, document, persona, data, or site payload. Generated trees
+  # are deliberately handled by their own deterministic inventories below.
+  $outerCopyMappings = [System.Collections.Generic.Dictionary[string,string]]::new(
+    [System.StringComparer]::Ordinal)
+  foreach ($prefix in @('bridge', 'docs', 'data', 'personas', 'site')) {
+    $treeRoot = [System.IO.Path]::Combine($packageEnumerationRoot, $prefix)
+    if (-not (Test-Path -LiteralPath $treeRoot -PathType Container)) {
+      throw "Operational package is missing trusted copy tree: $prefix"
+    }
+    foreach ($item in Get-ChildItem -LiteralPath $treeRoot -Recurse -File -Force) {
+      $packageRelative = (Get-PackageItemFullName $item).Substring(
+        $packageRootPrefix.Length).Replace('\', '/')
+      if (-not $commitMaps.treeBlobs.ContainsKey($packageRelative)) {
+        throw "Operational package contains a file outside the trusted copy-tree policy: $packageRelative"
+      }
+      $outerCopyMappings.Add($packageRelative, $packageRelative)
+    }
+  }
+  foreach ($mapping in @(
+    @('AGENTS.md', 'AGENTS.md'),
+    @('CONTRIBUTING.md', 'CONTRIBUTING.md'),
+    @('SECURITY.md', 'SECURITY.md'),
+    @('CODE_OF_CONDUCT.md', 'CODE_OF_CONDUCT.md'),
+    @('LICENSE', 'LICENSE'),
+    @('ARRIVAL_DAY_RUNBOOK.md', 'docs/ARRIVAL_DAY_RUNBOOK.md'),
+    @('QUICKSTART.md', 'docs/RELEASE_QUICKSTART.md')
+  )) {
+    $outerCopyMappings.Add([string]$mapping[0], [string]$mapping[1])
+  }
+  Assert-OperationalSourceCheckoutBindings -CommitMaps $commitMaps `
+    -SourcePaths @($outerCopyMappings.Values)
+  foreach ($packageRelative in $outerCopyMappings.Keys) {
+    Assert-PackageFileMatchesTrustedBlobMap -PackageRelativePath $packageRelative `
+      -TrustedSourceRelativePath ([string]$outerCopyMappings[$packageRelative]) `
+      -CommitMaps $commitMaps
+  }
+
+  Assert-OperationalSourceCheckoutBindings -CommitMaps $commitMaps -SourcePaths @('README.md')
+  $trustedReadmeText = [System.IO.File]::ReadAllText((Join-Path $resolvedVerifierRoot 'README.md'))
+  $expectedPackageReadmeText = ConvertTo-StackchanPackageReadmeText -Text $trustedReadmeText
+  $packageReadmeUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
+  $expectedPackageReadmeBytes = $packageReadmeUtf8.GetBytes($expectedPackageReadmeText)
+  $actualPackageReadmeBytes = [System.IO.File]::ReadAllBytes((Join-PackagePath 'README.md'))
+  if (-not [System.Linq.Enumerable]::SequenceEqual(
+      [byte[]]$actualPackageReadmeBytes, [byte[]]$expectedPackageReadmeBytes)) {
+    throw 'Operational package README does not match the trusted deterministic link rewrite policy.'
+  }
+
+  $mediaSourceMappings = [System.Collections.Generic.Dictionary[string,string]]::new(
+    [System.StringComparer]::Ordinal)
+  $lfsMediaSources = @(
+    'media/voice/rvc/model.pth',
+    'media/voice/rvc/model.index'
+  )
+  $mediaTreeRoot = [System.IO.Path]::Combine($packageEnumerationRoot, 'media')
+  foreach ($item in Get-ChildItem -LiteralPath $mediaTreeRoot -Recurse -File -Force) {
+    $packageRelative = (Get-PackageItemFullName $item).Substring(
+      $packageRootPrefix.Length).Replace('\', '/')
+    if ($packageRelative -in $lfsMediaSources) {
+      continue
+    }
+    $sourceRelative = if ($commitMaps.treeBlobs.ContainsKey($packageRelative)) {
+      $packageRelative
+    } elseif ($commitMaps.treeBlobs.ContainsKey("docs/$packageRelative")) {
+      "docs/$packageRelative"
+    } else { $null }
+    if ($null -ne $sourceRelative) {
+      $mediaSourceMappings.Add($packageRelative, $sourceRelative)
+    }
+  }
+  Assert-OperationalSourceCheckoutBindings -CommitMaps $commitMaps `
+    -SourcePaths @($mediaSourceMappings.Values)
+  foreach ($packageRelative in $mediaSourceMappings.Keys) {
+    Assert-PackageFileMatchesTrustedBlobMap -PackageRelativePath $packageRelative `
+      -TrustedSourceRelativePath ([string]$mediaSourceMappings[$packageRelative]) `
+      -CommitMaps $commitMaps
+  }
+  $manifestLfsBindings = @($Manifest.voiceRvcSourceBindings)
+  if ($manifestLfsBindings.Count -ne $lfsMediaSources.Count) {
+    throw 'Operational package manifest has the wrong RVC LFS source-binding count.'
+  }
+  foreach ($sourcePath in $lfsMediaSources) {
+    if (-not $commitMaps.treeBlobs.ContainsKey($sourcePath) -or
+        -not $commitMaps.indexStates.ContainsKey($sourcePath) -or
+        [string]$commitMaps.indexStates[$sourcePath] -cne 'H') {
+      throw "Operational package policy refuses missing or hidden LFS source state: $sourcePath"
+    }
+    $pointerBlob = [string]$commitMaps.treeBlobs[$sourcePath]
+    $pointerLines = @(Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $resolvedVerifierRoot, 'cat-file', 'blob', $pointerBlob))
+    if ($LASTEXITCODE -ne 0 -or $pointerLines.Count -ne 3) {
+      throw "Operational package policy could not read a canonical trusted LFS pointer: $sourcePath"
+    }
+    $pointerText = ((@($pointerLines | ForEach-Object { [string]$_ }) -join "`n") + "`n")
+    $pointerTextBytes = [System.Text.Encoding]::UTF8.GetByteCount($pointerText)
+    if ($pointerTextBytes -eq 0 -or $pointerTextBytes -gt 1024 -or
+        (Get-StackchanUtf8GitBlobHash `
+          -Text $pointerText -HashLength $pointerBlob.Length) -cne $pointerBlob) {
+      throw "Operational package policy LFS pointer reconstruction does not match the exact commit blob: $sourcePath"
+    }
+    $pointer = ConvertTo-StackchanCanonicalLfsPointerRecord `
+      -PointerText $pointerText -RelativePath $sourcePath
+    Assert-StackchanPackageLfsPayloadMatchesPointerRecord `
+      -Pointer $pointer -PackagePath (Join-PackagePath $sourcePath)
+    Assert-StackchanLfsSourceBindingRecord `
+      -ManifestBindings $manifestLfsBindings `
+      -SourcePath $sourcePath `
+      -ExpectedCommit $ExpectedCommit `
+      -PointerBlob $pointerBlob `
+      -Pointer $pointer
+  }
+
+  $allowedTopDirectories = @(
+    'artifacts', 'bridge', 'character-red-team', 'companion', 'data', 'docs',
+    'firmware', 'media', 'personas', 'provenance', 'site',
+    'third_party_licenses', 'tools')
+  $actualTopDirectories = @(
+    Get-ChildItem -LiteralPath $packageEnumerationRoot -Directory -Force |
+      ForEach-Object { $_.Name } | Sort-Object)
+  if (($actualTopDirectories -join "`n") -cne (($allowedTopDirectories | Sort-Object) -join "`n")) {
+    throw "Operational package top-level directory inventory does not match trusted policy: $($actualTopDirectories -join ', ')"
+  }
+}
+
+function Assert-StackchanVerifierSourceTopology {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourceRoot,
+    [Parameter(Mandatory = $true)][int]$ExpectedLength
+  )
+
+  if ((Split-Path -Leaf $SourceRoot) -cnotmatch '^sc-vrfy-[0-9]{10}-[0-9a-f]{8}$' -or
+      $SourceRoot.Length -ne $ExpectedLength) {
+    throw "Operational independent rebuild requires the proof's fixed-width equal-length source topology."
+  }
+}
+
+function Invoke-StackchanVerifierNativeCapture {
+  param(
+    [Parameter(Mandatory = $true)][string]$Executable,
+    [string[]]$Arguments = @()
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Executable)) {
+    throw 'Operational verifier refuses an empty native executable path.'
+  }
+  $previousErrorActionPreference = $ErrorActionPreference
+  $nativeExitSentinel = [int]::MinValue
+  $nativeExitCode = $nativeExitSentinel
+  $nativeOutput = @()
+  try {
+    # Windows PowerShell surfaces redirected native stderr as ErrorRecord
+    # objects. Capture those records without letting ordinary progress text
+    # unwind the verifier, then authorize only from the native exit code.
+    $ErrorActionPreference = 'Continue'
+    $global:LASTEXITCODE = $nativeExitSentinel
+    $nativeOutput = @(& $Executable @Arguments 2>&1)
+    $nativeExitCode = [int]$global:LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  if ($nativeExitCode -eq $nativeExitSentinel) {
+    throw "Operational verifier native command did not report an exit code: $Executable"
+  }
+  return [pscustomobject]@{
+    output = @($nativeOutput | ForEach-Object { [string]$_ })
+    exitCode = $nativeExitCode
+  }
+}
+
+function Test-StackchanVerifierWorktreeListContains {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$PorcelainLines,
+    [Parameter(Mandatory = $true)][string]$ExpectedPath
+  )
+
+  try {
+    $expectedFullPath = [System.IO.Path]::GetFullPath($ExpectedPath).TrimEnd(
+      [char[]]@([System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar))
+  } catch {
+    return $false
+  }
+  $comparison = if ($env:OS -eq 'Windows_NT') {
+    [System.StringComparison]::OrdinalIgnoreCase
+  } else {
+    [System.StringComparison]::Ordinal
+  }
+  $matches = 0
+  foreach ($line in $PorcelainLines) {
+    $text = [string]$line
+    if (-not $text.StartsWith('worktree ', [System.StringComparison]::Ordinal)) {
+      continue
+    }
+    try {
+      $listedFullPath = [System.IO.Path]::GetFullPath(
+        $text.Substring('worktree '.Length)).TrimEnd(
+          [char[]]@([System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar))
+    } catch {
+      continue
+    }
+    if ([string]::Equals($listedFullPath, $expectedFullPath, $comparison)) {
+      $matches++
+    }
+  }
+  return $matches -eq 1
+}
+
+function Assert-OperationalFirmwareMatchesTrustedRebuild {
+  if (-not $RequireReleaseEligible) { return }
+
+  $pioExecutable = $resolvedPlatformioExecutable
+  $defaultCoreDir = $resolvedLegacyCore
+  $releaseCoreDir = $resolvedReleaseCore
+  $rebuildEvidenceParent = Join-Path $resolvedVerifierRoot 'output/private/operational-firmware-rebuilds'
+  New-Item -ItemType Directory -Force -Path $rebuildEvidenceParent | Out-Null
+  $packageChecksumsPath = Join-PackagePath 'SHA256SUMS.txt'
+  $dependencyLockPathForRebuild = Join-PackagePath 'dependency_lock.json'
+  $packageChecksumsSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $packageChecksumsPath).Hash.ToUpperInvariant()
+  $dependencyLockSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $dependencyLockPathForRebuild).Hash.ToUpperInvariant()
+  $rebuildId = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss') +
+    "-$PID-" + [guid]::NewGuid().ToString('N').Substring(0, 12)
+  $rebuildEvidenceRoot = Join-Path $rebuildEvidenceParent $rebuildId
+  New-Item -ItemType Directory -Path $rebuildEvidenceRoot | Out-Null
+  $rebuildCacheRoot = Join-Path $rebuildEvidenceRoot 'build-cache'
+  New-Item -ItemType Directory -Path $rebuildCacheRoot | Out-Null
+
+  $rebuildScratchParent = if ($env:OS -eq 'Windows_NT') {
+    [System.IO.Path]::GetPathRoot($resolvedVerifierRoot)
+  } else {
+    [System.IO.Path]::GetTempPath()
+  }
+  $fixedWidthProcessId = $PID.ToString('D10', [Globalization.CultureInfo]::InvariantCulture)
+  $rebuildWorktree = Join-Path $rebuildScratchParent (
+    'sc-vrfy-' + $fixedWidthProcessId + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+  Assert-StackchanVerifierSourceTopology `
+    -SourceRoot $rebuildWorktree `
+    -ExpectedLength ([int]$reproducibilityProof.sourceRootLength)
+  if (Test-Path -LiteralPath $rebuildWorktree) {
+    throw "Operational rebuild scratch path unexpectedly exists: $rebuildWorktree"
+  }
+  $worktreeAdded = $false
+  $environmentNames = @(
+    'PLATFORMIO_CORE_DIR', 'PLATFORMIO_BUILD_CACHE_DIR',
+    'STACKCHAN_EXPECTED_BUILD_COMMIT', 'STACKCHAN_EXPECTED_BUILD_EPOCH',
+    'PYTHONSAFEPATH', 'PATH'
+  )
+  $savedEnvironment = @{}
+  foreach ($environmentName in $environmentNames) {
+    $savedEnvironment[$environmentName] = [Environment]::GetEnvironmentVariable(
+      $environmentName, [EnvironmentVariableTarget]::Process)
+  }
+  $rebuildRecords = New-Object System.Collections.Generic.List[object]
+  try {
+    Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $resolvedVerifierRoot, 'worktree', 'add', '--detach',
+      $rebuildWorktree, $ExpectedCommit) | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Operational verifier could not create the independent rebuild worktree.'
+    }
+    $worktreeAdded = $true
+    $rebuildCommit = (Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $rebuildWorktree, 'rev-parse', '--verify', 'HEAD')).Trim().ToLowerInvariant()
+    $rebuildDirty = @(Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $rebuildWorktree, 'status', '--porcelain=v1', '--untracked-files=all'))
+    if ($LASTEXITCODE -ne 0 -or $rebuildCommit -cne $ExpectedCommit -or
+        $rebuildDirty.Count -ne 0) {
+      throw 'Operational verifier independent rebuild worktree is not the exact clean release commit.'
+    }
+    Remove-Item Env:\PYTHONSAFEPATH -ErrorAction SilentlyContinue
+    $env:PATH = @(
+      (Split-Path -Parent $resolvedPlatformioExecutable),
+      (Split-Path -Parent $resolvedPythonExecutable),
+      (Split-Path -Parent $resolvedGitExecutable),
+      (Join-Path ([Environment]::GetFolderPath('Windows')) 'System32'),
+      (Join-Path ([Environment]::GetFolderPath('Windows')) 'System32/WindowsPowerShell/v1.0')
+    ) -join [IO.Path]::PathSeparator
+    Assert-StackchanReleaseBuildPythonEnvironment -ProjectRoot $rebuildWorktree
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $script:verifierToolchainLeaseState -Context 'before PlatformIO version execution'
+    $pioVersionResult = Invoke-StackchanVerifierNativeCapture `
+      -Executable $pioExecutable -Arguments @('--version')
+    $pioVersion = ((@($pioVersionResult.output) | Out-String).Trim())
+    $pioVersionExit = [int]$pioVersionResult.exitCode
+    Assert-StackchanToolchainLeaseStateUnchanged `
+      -LeaseState $script:verifierToolchainLeaseState -Context 'after PlatformIO version execution'
+    if ($pioVersionExit -ne 0 -or $pioVersion -cne 'PlatformIO Core, version 6.1.19' -or
+        [string]$dependencyLock.platformioCore -cne $pioVersion) {
+      throw "Operational independent rebuild requires the packaged PlatformIO Core 6.1.19 identity."
+    }
+    $pioExecutableSha256 = (
+      Get-FileHash -Algorithm SHA256 -LiteralPath $pioExecutable).Hash.ToUpperInvariant()
+
+    $buildSpecs = @(
+      [ordered]@{ environment = 'stackchan'; packageDir = 'display_only'; coreDir = $defaultCoreDir },
+      [ordered]@{ environment = 'stackchan_servo_calibration'; packageDir = 'servo_calibration'; coreDir = $defaultCoreDir },
+      [ordered]@{ environment = 'stackchan_release_full'; packageDir = 'full_online'; coreDir = $releaseCoreDir }
+    )
+    foreach ($spec in $buildSpecs) {
+      $environment = [string]$spec.environment
+      $env:PLATFORMIO_CORE_DIR = [string]$spec.coreDir
+      $env:PLATFORMIO_BUILD_CACHE_DIR = Join-Path $rebuildCacheRoot $environment
+      $env:STACKCHAN_EXPECTED_BUILD_COMMIT = $ExpectedCommit
+      $env:STACKCHAN_EXPECTED_BUILD_EPOCH = $ExpectedSourceEpoch
+      New-Item -ItemType Directory -Path $env:PLATFORMIO_BUILD_CACHE_DIR | Out-Null
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "before $environment dependency staging"
+      $dependencyStageResult = Invoke-StackchanVerifierNativeCapture `
+        -Executable $pioExecutable `
+        -Arguments @('pkg', 'install', '-d', $rebuildWorktree, '-e', $environment)
+      $dependencyStageOutput = @($dependencyStageResult.output)
+      $dependencyStageExit = [int]$dependencyStageResult.exitCode
+      $dependencyStageOutput | Set-Content -LiteralPath (
+        Join-Path $rebuildEvidenceRoot "$environment-dependency-stage.log") -Encoding UTF8
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment dependency staging"
+      if ($dependencyStageExit -ne 0) {
+        throw "Operational dependency staging failed: $environment (exit $dependencyStageExit)."
+      }
+      $env:PYTHONSAFEPATH = '1'
+      $dependencyRootMap = @{
+        pythonHome = [string]$verifierToolchainRootMap.pythonHome
+        gitHome = [string]$verifierToolchainRootMap.gitHome
+        legacyCore = [string]$verifierToolchainRootMap.legacyCore
+        releaseCore = [string]$verifierToolchainRootMap.releaseCore
+        projectRoot = $rebuildWorktree
+        libdepsRoot = Join-Path $rebuildWorktree '.pio/libdeps'
+      }
+      $preExecutionIdentity = Assert-StackchanReleaseToolchainIdentity `
+        -AllowlistPath $ToolchainAllowlistPath -RootMap $dependencyRootMap `
+        -PlatformioExecutable $resolvedPlatformioExecutable `
+        -PythonExecutable $resolvedPythonExecutable -GitExecutable $resolvedGitExecutable `
+        -Phase PostBuild -Environment $environment `
+        -LeaseState $script:verifierToolchainLeaseState -LeaseScope 'independent-rebuild'
+      $script:verifierToolchainIdentityRecords.Add([ordered]@{
+        stage = 'preExecution'; environment = $environment; result = $preExecutionIdentity
+      }) | Out-Null
+      Remove-Item Env:\PYTHONSAFEPATH -ErrorAction SilentlyContinue
+      foreach ($phase in @('clean', 'build')) {
+        $pioArguments = @('run', '-d', $rebuildWorktree, '-e', $environment)
+        if ($phase -eq 'clean') { $pioArguments += @('-t', 'clean') }
+        Assert-StackchanToolchainLeaseStateUnchanged `
+          -LeaseState $script:verifierToolchainLeaseState -Context "before $environment $phase"
+        $phaseResult = Invoke-StackchanVerifierNativeCapture `
+          -Executable $pioExecutable -Arguments $pioArguments
+        $phaseOutput = @($phaseResult.output)
+        $phaseExit = [int]$phaseResult.exitCode
+        $phaseOutput | Set-Content -LiteralPath (
+          Join-Path $rebuildEvidenceRoot "$environment-$phase.log") -Encoding UTF8
+        Assert-StackchanToolchainLeaseStateUnchanged `
+          -LeaseState $script:verifierToolchainLeaseState -Context "after $environment $phase"
+        if ($phaseExit -ne 0) {
+          throw "Operational independent firmware rebuild failed: $environment/$phase (exit $phaseExit)."
+        }
+      }
+      $env:PYTHONSAFEPATH = '1'
+      $postBuildIdentity = Assert-StackchanReleaseToolchainIdentity `
+        -AllowlistPath $ToolchainAllowlistPath -RootMap $dependencyRootMap `
+        -PlatformioExecutable $resolvedPlatformioExecutable `
+        -PythonExecutable $resolvedPythonExecutable -GitExecutable $resolvedGitExecutable `
+        -Phase PostBuild -Environment $environment `
+        -LeaseState $script:verifierToolchainLeaseState -LeaseScope 'independent-rebuild'
+      $script:verifierToolchainIdentityRecords.Add([ordered]@{
+        stage = 'postBuild'; environment = $environment; result = $postBuildIdentity
+      }) | Out-Null
+      Remove-Item Env:\PYTHONSAFEPATH -ErrorAction SilentlyContinue
+      foreach ($artifact in @('firmware.bin', 'firmware.elf', 'bootloader.bin', 'partitions.bin', 'boot_app0.bin')) {
+        $rebuiltPath = if ($artifact -ceq 'boot_app0.bin') {
+          [string](Assert-StackchanReleaseFrameworkOtaSelector `
+            -Environment $environment -CoreDir ([string]$spec.coreDir)).path
+        } else {
+          Join-Path $rebuildWorktree ".pio/build/$environment/$artifact"
+        }
+        if (-not (Test-Path -LiteralPath $rebuiltPath -PathType Leaf)) {
+          throw "Operational independent firmware rebuild is missing $environment/$artifact."
+        }
+        $rebuiltItem = Get-Item -LiteralPath $rebuiltPath
+        $rebuiltHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rebuiltPath).Hash.ToUpperInvariant()
+        $proofMatches = @($reproducibilityProof.cycleBArtifacts | Where-Object {
+          [string]$_.environment -ceq $environment -and [string]$_.artifact -ceq $artifact
+        })
+        if ($artifact -ceq 'boot_app0.bin') {
+          $selectorPolicy = Get-StackchanReleaseOtaSelectorPolicy -Environment $environment
+          if ($proofMatches.Count -ne 1 -or
+              [long]$proofMatches[0].bytes -ne [long]$selectorPolicy.exactBytes -or
+              [string]$proofMatches[0].sha256 -cne [string]$selectorPolicy.sha256) {
+            throw "Two-cycle proof does not match reviewed OTA selector authority: $environment."
+          }
+        }
+        if ($proofMatches.Count -ne 1 -or
+            [long]$proofMatches[0].bytes -ne [long]$rebuiltItem.Length -or
+            [string]$proofMatches[0].sha256 -cne $rebuiltHash) {
+          throw "Operational independent rebuild does not match the two-cycle proof: $environment/$artifact."
+        }
+        $packageRelative = "firmware/$([string]$spec.packageDir)/$artifact"
+        $packageArtifact = Join-PackagePath $packageRelative
+        if (-not (Test-Path -LiteralPath $packageArtifact -PathType Leaf)) {
+          throw "Operational package is missing rebuilt firmware artifact: $packageRelative"
+        }
+        $packageItem = Get-Item -LiteralPath $packageArtifact
+        $packageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $packageArtifact).Hash.ToUpperInvariant()
+        if ([long]$packageItem.Length -ne [long]$rebuiltItem.Length -or
+            $packageHash -cne $rebuiltHash) {
+          throw "Operational packaged firmware does not match the trusted rebuild: $packageRelative"
+        }
+        $rebuildRecords.Add([ordered]@{
+          environment = $environment
+          artifact = $artifact
+          packageRelative = $packageRelative
+          bytes = [long]$rebuiltItem.Length
+          sha256 = $rebuiltHash
+        }) | Out-Null
+      }
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "before $environment dependency inventory"
+      $packageListResult = Invoke-StackchanVerifierNativeCapture `
+        -Executable $pioExecutable `
+        -Arguments @('pkg', 'list', '-d', $rebuildWorktree, '-e', $environment)
+      $packageListOutput = @($packageListResult.output)
+      $packageListExit = [int]$packageListResult.exitCode
+      $packageListOutput | Set-Content -LiteralPath (
+        Join-Path $rebuildEvidenceRoot "$environment-pkg-list.log") -Encoding UTF8
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment dependency inventory"
+      if ($packageListExit -ne 0) {
+        throw "Operational independent dependency inventory failed: $environment (exit $packageListExit)."
+      }
+      $resolvedPackages = @(Convert-StackchanPioPackageList ($packageListOutput -join "`n"))
+      $expectedEnvironmentLock = $dependencyLock.environments.PSObject.Properties[$environment].Value
+      if ($null -eq $expectedEnvironmentLock) {
+        throw "Operational dependency lock is missing environment: $environment"
+      }
+      $actualDependencyIdentity = @($resolvedPackages | ForEach-Object {
+        "$([string]$_.kind)`0$([string]$_.name)`0$([string]$_.version)`0$([string]$_.required)"
+      })
+      $expectedDependencyIdentity = @(@($expectedEnvironmentLock.resolvedPackages) | ForEach-Object {
+        "$([string]$_.kind)`0$([string]$_.name)`0$([string]$_.version)`0$([string]$_.required)"
+      })
+      [Array]::Sort($actualDependencyIdentity, [StringComparer]::Ordinal)
+      [Array]::Sort($expectedDependencyIdentity, [StringComparer]::Ordinal)
+      if ($actualDependencyIdentity.Count -ne $expectedDependencyIdentity.Count -or
+          (Compare-Object -ReferenceObject $expectedDependencyIdentity `
+            -DifferenceObject $actualDependencyIdentity -CaseSensitive).Count -ne 0) {
+        throw "Operational independent dependency inventory does not match package evidence: $environment"
+      }
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "before $environment verbose dependency inventory"
+      $verbosePackageResult = Invoke-StackchanVerifierNativeCapture `
+        -Executable $pioExecutable `
+        -Arguments @('pkg', 'list', '-d', $rebuildWorktree, '-e', $environment, '-v')
+      $verbosePackageOutput = @($verbosePackageResult.output)
+      $verbosePackageExit = [int]$verbosePackageResult.exitCode
+      $verbosePackageOutput | Set-Content -LiteralPath (
+        Join-Path $rebuildEvidenceRoot "$environment-pkg-list-verbose.log") -Encoding UTF8
+      Assert-StackchanToolchainLeaseStateUnchanged `
+        -LeaseState $script:verifierToolchainLeaseState -Context "after $environment verbose dependency inventory"
+      if ($verbosePackageExit -ne 0) {
+        throw "Operational independent verbose dependency inventory failed: $environment (exit $verbosePackageExit)."
+      }
+      $platformSource = Get-StackchanVerbosePlatformSource `
+        -VerbosePackageList ($verbosePackageOutput -join "`n") -PlatformioCoreDir ([string]$spec.coreDir)
+      if ([string]$platformSource.sourceLeaf -cne [string]$expectedEnvironmentLock.platformSourceLeaf) {
+        throw "Operational independent platform source does not match package evidence: $environment"
+      }
+    }
+    $independentIdentityRecords = @($script:verifierToolchainIdentityRecords)
+    if (@($independentIdentityRecords | Where-Object stage -ceq 'preExecution').Count -ne 3 -or
+        @($independentIdentityRecords | Where-Object stage -ceq 'postBuild').Count -ne 3) {
+      throw 'Operational rebuild did not record all three pre-execution and post-build dependency identities.'
+    }
+    foreach ($identityRecord in $independentIdentityRecords) {
+      $packagedStageRecords = if ([string]$identityRecord.stage -ceq 'preExecution') {
+        @($toolchainIdentity.preExecution)
+      } else {
+        @($toolchainIdentity.postBuild)
+      }
+      $packagedMatches = @($packagedStageRecords | Where-Object {
+        [string]$_.environment -ceq [string]$identityRecord.environment -and
+          [string]$_.result.observationSha256 -ceq [string]$identityRecord.result.observationSha256
+      })
+      if ([string]$identityRecord.result.status -cne 'verified' -or $packagedMatches.Count -ne 2) {
+        throw "Operational rebuild toolchain identity does not match both packaged cycles: $([string]$identityRecord.stage)/$([string]$identityRecord.environment)"
+      }
+    }
+    $postBuildCommit = (Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $rebuildWorktree, 'rev-parse', '--verify', 'HEAD')).Trim().ToLowerInvariant()
+    $postBuildDirty = @(Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $rebuildWorktree, 'status', '--porcelain=v1', '--untracked-files=all'))
+    if ($LASTEXITCODE -ne 0 -or $postBuildCommit -cne $ExpectedCommit -or
+        $postBuildDirty.Count -ne 0) {
+      throw 'Operational independent rebuild changed its tracked or nonignored source identity.'
+    }
+    $successfulAttestation = [ordered]@{
+      schema = 'stackchan.operational-firmware-rebuild.v1'
+      status = 'verified-independent-trusted-rebuild'
+      packageChecksumsSha256 = $packageChecksumsSha256
+      dependencyLockSha256 = $dependencyLockSha256
+      version = $Version
+      sourceCommit = $ExpectedCommit
+      sourceEpoch = $ExpectedSourceEpoch
+      platformioExecutable = $pioExecutable
+      platformioExecutableSha256 = $pioExecutableSha256
+      platformioVersion = $pioVersion
+      defaultPlatformioCore = $defaultCoreDir
+      releasePlatformioCore = $releaseCoreDir
+      toolchainIdentity = [ordered]@{
+        allowlistSha256 = $verifierToolchainAllowlistSha256
+        identityHelperSha256 = $verifierToolchainIdentityHelperSha256
+        semanticVerifierSha256 = $verifierToolchainSemanticVerifierSha256
+        preBuild = $verifierToolchainPreBuild
+        preExecution = @($script:verifierToolchainIdentityRecords | Where-Object stage -ceq 'preExecution')
+        postBuild = @($script:verifierToolchainIdentityRecords | Where-Object stage -ceq 'postBuild')
+      }
+      verifiedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+      records = @($rebuildRecords)
+    }
+    $successfulAttestationJson = $successfulAttestation | ConvertTo-Json -Depth 6
+    $successfulAttestationJson | Set-Content -LiteralPath (
+      Join-Path $rebuildEvidenceRoot 'operational_firmware_rebuild.json') -Encoding UTF8
+    Close-StackchanToolchainLeaseScope `
+      -LeaseState $script:verifierToolchainLeaseState -Scope 'independent-rebuild' `
+      -RequireUnchanged -Context 'independent rebuild final authenticated namespace'
+    Invoke-TrustedVerifierGit -Arguments @(
+      '-C', $resolvedVerifierRoot, 'worktree', 'remove', '--force', $rebuildWorktree) | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      throw "Operational verifier could not remove successful rebuild worktree: $rebuildWorktree"
+    }
+    $worktreeAdded = $false
+    $resolvedCache = (Resolve-Path -LiteralPath $rebuildCacheRoot).Path
+    $resolvedEvidence = (Resolve-Path -LiteralPath $rebuildEvidenceRoot).Path.TrimEnd('\', '/') +
+      [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolvedCache.StartsWith(
+        $resolvedEvidence, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Operational verifier refuses unexpected rebuild-cache cleanup target: $resolvedCache"
+    }
+    Remove-Item -LiteralPath $resolvedCache -Recurse -Force
+  } catch {
+    $failure = $_
+    $worktreePathExists = Test-Path -LiteralPath $rebuildWorktree -PathType Container
+    $worktreeProbeExitCode = $null
+    $worktreeProbeError = $null
+    $worktreeAttached = $null
+    try {
+      $previousProbeErrorActionPreference = $ErrorActionPreference
+      $worktreeProbeExitSentinel = [int]::MinValue
+      try {
+        $ErrorActionPreference = 'Continue'
+        $global:LASTEXITCODE = $worktreeProbeExitSentinel
+        $worktreeList = @(Invoke-TrustedVerifierGit -Arguments @(
+          '-C', $resolvedVerifierRoot, 'worktree', 'list', '--porcelain') 2>&1 |
+          ForEach-Object { [string]$_ })
+        $worktreeProbeExitCode = [int]$global:LASTEXITCODE
+      } finally {
+        $ErrorActionPreference = $previousProbeErrorActionPreference
+      }
+      if ($worktreeProbeExitCode -eq $worktreeProbeExitSentinel) {
+        throw 'Operational rebuild worktree attachment probe did not report an exit code.'
+      }
+      if ($worktreeProbeExitCode -eq 0) {
+        $worktreeAttached = Test-StackchanVerifierWorktreeListContains `
+          -PorcelainLines $worktreeList -ExpectedPath $rebuildWorktree
+      } else {
+        $worktreeProbeError =
+          "Trusted Git worktree attachment probe exited $worktreeProbeExitCode."
+      }
+    } catch {
+      $worktreeProbeError = [string]$_.Exception.Message
+    }
+    $worktreePreserved = $worktreePathExists -and $worktreeAttached -eq $true
+    $worktreePreservationKnown = -not $worktreePathExists -or $null -ne $worktreeAttached
+    $failureStatus = if ($worktreePreserved) {
+      'failed-full-worktree-preserved'
+    } elseif ($worktreePreservationKnown) {
+      'failed-worktree-not-preserved'
+    } else {
+      'failed-worktree-preservation-unknown'
+    }
+    [ordered]@{
+      schema = 'stackchan.operational-firmware-rebuild-failure.v1'
+      status = $failureStatus
+      version = $Version
+      sourceCommit = $ExpectedCommit
+      sourceEpoch = $ExpectedSourceEpoch
+      rebuildWorktree = $rebuildWorktree
+      worktreePathExists = $worktreePathExists
+      worktreeStillAttached = $worktreeAttached
+      worktreeProbeExitCode = $worktreeProbeExitCode
+      worktreeProbeError = $worktreeProbeError
+      capturedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+      message = [string]$failure.Exception.Message
+      exceptionType = [string]$failure.Exception.GetType().FullName
+      fullyQualifiedErrorId = [string]$failure.FullyQualifiedErrorId
+      scriptStackTrace = [string]$failure.ScriptStackTrace
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (
+      Join-Path $rebuildEvidenceRoot 'FAILURE_EVIDENCE.json') -Encoding UTF8
+    if ($worktreePreserved) {
+      Write-Warning "Operational firmware rebuild failed; exact worktree remains attached at $rebuildWorktree; evidence: $rebuildEvidenceRoot"
+    } elseif (-not $worktreePreservationKnown) {
+      Write-Warning "Operational firmware rebuild failed and worktree preservation could not be proven; evidence: $rebuildEvidenceRoot"
+    }
+    throw
+  } finally {
+    foreach ($environmentName in $environmentNames) {
+      $savedValue = $savedEnvironment[$environmentName]
+      if ($null -eq $savedValue) {
+        Remove-Item ("Env:\" + $environmentName) -ErrorAction SilentlyContinue
+      } else {
+        Set-Item ("Env:\" + $environmentName) -Value $savedValue
+      }
+    }
+  }
 }
 
 function Assert-File {
@@ -163,6 +1631,26 @@ function Assert-Mp3File {
   }
 }
 
+$m0GovernanceTools = @(
+  "tools/firmware_reproducibility_proof.ps1",
+  "tools/test_firmware_reproducibility_proof_contract.ps1",
+  "tools/firmware_reproducibility_failure.ps1",
+  "tools/test_firmware_reproducibility_failure_contract.ps1",
+  "tools/release_source_binding.ps1",
+  "tools/release_dependency_evidence.ps1",
+  "tools/test_release_dependency_evidence_contract.ps1",
+  "tools/release_git_trust.ps1",
+  "tools/release_ota_selector_policy.ps1",
+  "tools/test_release_ota_selector_policy_contract.ps1",
+  "tools/test_release_flash_snapshot_contract.ps1",
+  "tools/platformio_resolver.ps1",
+  "tools/test_release_package_verifier_trust_contract.ps1",
+  "tools/test_release_source_binding_contract.ps1",
+  "tools/release_zip_safety.ps1",
+  "tools/platformio_reproducible_build.py",
+  "tools/test_firmware_reproducible_build_contract.ps1"
+)
+
 $requiredFiles = @(
   "README.md",
   "AGENTS.md",
@@ -201,9 +1689,14 @@ $requiredFiles = @(
   "docs/store-assets/play/feature-graphic-1024x500.png",
   "docs/store-assets/desktop/stackchan-alive.ico",
   "docs/store-assets/play/README.md",
+  "docs/store-assets/desktop/README.md",
+  "docs/store-assets/play/PRIVACY_POLICY_DEPLOYMENT.json",
+  "docs/store-assets/play/SCREENSHOT_CAPTURE_PLAN.md",
+  "docs/CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json",
   "provenance/pages.yml",
   "docs/BRAIN_MODEL.md",
   "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
+  "docs/COMPANION_APP_GAP_ANALYSIS.md",
   "docs/CONVERSATION_V2_ROADMAP.md",
   "docs/CHARACTER_LOCK.md",
   "docs/CREATING_PERSONAS.md",
@@ -247,6 +1740,7 @@ $requiredFiles = @(
   "data/voice_rvc_base.yaml",
   "data/voice_rvc_base_metadata.json",
   "data/persona_index.json",
+  "data/commands.yaml",
   "bridge/README.md",
   "bridge/bridge_memory.py",
   "bridge/test_bridge_memory.py",
@@ -258,6 +1752,10 @@ $requiredFiles = @(
   "bridge/memory_probe.py",
   "bridge/test_memory_probe.py",
   "bridge/memory_prefill_probe.py",
+  "bridge/conversation_harness.py",
+  "bridge/test_conversation_harness.py",
+  "bridge/litert_lm_stackchan_wrapper.py",
+  "bridge/test_litert_lm_stackchan_wrapper.py",
   "bridge/character_harness.py",
   "bridge/test_character_harness.py",
   "bridge/character_red_team.py",
@@ -392,6 +1890,20 @@ $requiredFiles = @(
   "personas/glow/expressions.yaml",
   "personas/glow/earcons.yaml",
   "personas/glow/voice.yaml",
+  "personas/bolt/pack.yaml",
+  "personas/bolt/character.yaml",
+  "personas/bolt/prompt.md",
+  "personas/bolt/behavior.yaml",
+  "personas/bolt/expressions.yaml",
+  "personas/bolt/earcons.yaml",
+  "personas/bolt/voice.yaml",
+  "personas/pip/pack.yaml",
+  "personas/pip/character.yaml",
+  "personas/pip/prompt.md",
+  "personas/pip/behavior.yaml",
+  "personas/pip/expressions.yaml",
+  "personas/pip/earcons.yaml",
+  "personas/pip/voice.yaml",
   "persona_pack_status.json",
   "persona_prompt_assets.json",
   "character-red-team/CHARACTER_RED_TEAM.md",
@@ -405,14 +1917,17 @@ $requiredFiles = @(
   "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.md",
   "companion/evidence/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json",
   "firmware/display_only/bootloader.bin",
+  "firmware/display_only/boot_app0.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
   "firmware/display_only/partitions.bin",
   "firmware/servo_calibration/bootloader.bin",
+  "firmware/servo_calibration/boot_app0.bin",
   "firmware/servo_calibration/firmware.bin",
   "firmware/servo_calibration/firmware.elf",
   "firmware/servo_calibration/partitions.bin",
   "firmware/full_online/bootloader.bin",
+  "firmware/full_online/boot_app0.bin",
   "firmware/full_online/firmware.bin",
   "firmware/full_online/firmware.elf",
   "firmware/full_online/partitions.bin",
@@ -613,6 +2128,8 @@ $requiredFiles = @(
   "tools/generate_speech_envelope_sidecar.cmd",
   "tools/generate_speech_envelope_sidecar.ps1",
   "tools/generate_speech_envelope_sidecar.py",
+  "tools/platformio_reproducible_build.py",
+  "tools/test_firmware_reproducible_build_contract.ps1",
   "tools/platformio_generate_persona_assets.py",
   "tools/platformio_generate_voice_assets.py",
   "tools/verify_speech_envelope_sidecar.cmd",
@@ -778,6 +2295,8 @@ $requiredFiles = @(
   "provenance/platformio.ini",
   "provenance/partitions_esp_sr_16.csv",
   "provenance/src/main.cpp",
+  "provenance/src/io/BridgeDebugHttpPolicy.hpp",
+  "provenance/src/io/BridgeDebugHttpPolicy.cpp",
   "provenance/src/io/CameraAdapter.hpp",
   "provenance/src/io/CameraAdapter.cpp",
   "provenance/src/io/BridgeClient.hpp",
@@ -926,21 +2445,33 @@ $requiredFiles = @(
   "provenance/personas/glow/earcons.yaml",
   "provenance/personas/glow/voice.yaml"
 )
+$requiredFiles += $m0GovernanceTools
 
 foreach ($file in $requiredFiles) {
   Assert-File $file
 }
 
-. (Join-PackagePath "tools/preview_python_resolver.ps1")
+. (Join-Path $PSScriptRoot "preview_python_resolver.ps1")
 $bridgeRuntimePython = Get-StackchanPreviewPython
-$bridgeRuntimeHelp = @(
-  & $bridgeRuntimePython -B (Join-PackagePath "bridge/lan_service.py") --help 2>&1
-)
-if ($LASTEXITCODE -ne 0) {
-  throw "Packaged bridge runtime import smoke failed: $($bridgeRuntimeHelp -join ' ')"
+$bridgeRuntimeAstCheck = @'
+import ast
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+ast.parse(path.read_text(encoding=sys.getdefaultencoding()), filename=str(path))
+'@
+$previousAstErrorPreference = $ErrorActionPreference
+try {
+  $ErrorActionPreference = 'Continue'
+  $bridgeRuntimeHelp = @(& $bridgeRuntimePython -I -B -c $bridgeRuntimeAstCheck `
+    (Join-PackagePath "bridge/lan_service.py") 2>&1)
+  $bridgeRuntimeAstExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousAstErrorPreference
 }
-if (($bridgeRuntimeHelp | Out-String) -notmatch "Run the local Stackchan P7 LAN WebSocket bridge") {
-  throw "Packaged bridge runtime help output is incomplete."
+if ($bridgeRuntimeAstExit -ne 0) {
+  throw "Packaged bridge runtime AST validation failed: $($bridgeRuntimeHelp -join ' ')"
 }
 
 $projectLicenseText = Get-Content -LiteralPath (Join-PackagePath "LICENSE") -Raw
@@ -993,7 +2524,7 @@ if ($visionModelSha256 -ne "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json", "-RequireArtifacts", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android\screen-off-soak\", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "Stackchan Spark Bright Robot Playback Aid", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json", "-RequireArtifacts", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.ps1", "@releaseToolchain", "archive does not confer release authority", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android\screen-off-soak\", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "Stackchan Spark Bright Robot Playback Aid", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -1022,7 +2553,7 @@ $retiredRvcSharePatterns = @(
   "stackchan_rvc_safety_neutral.mp3", "Voice Source Gate",
   "RVC Candidate Base", "candidate-pending-rights-review"
 )
-foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Stop-ExistingShare", "Remove-ShareRoot", "Test-TcpPortAvailable", "Test-SharePortAvailable", "Find-AvailableTcpPort", "Requested share port", "Get-LanShareUrls", "Get-ShareLanDiagnosticsForBind", "Test-ShareUrlsFromHost", "OPEN_LOCAL_SHARE.cmd", "Write-OpenLocalShareHelper", "OpenLocal", "Invoke-OpenLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "hostProbeResults", "Assert-BindAddressAvailable", "Same-network URL candidates", "loopbackUrl", "lanUrls", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "Next Action", "rolloutNextAction", "rolloutNextCommand", "ActionsStatusPath", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speech envelope mouth demo", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1", "RVC Voice Auditions", "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav", "stackchan_rvc_bright_robot_less_static.wav", "voice/rvc/README.md", "RVC MP3 Readme", "RVC_AUDITION.html", "RVC_AUDITIONS.md", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
+foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Stop-ExistingShare", "Remove-ShareRoot", "Test-TcpPortAvailable", "Test-SharePortAvailable", "Find-AvailableTcpPort", "Requested share port", "Get-LanShareUrls", "Get-ShareLanDiagnosticsForBind", "Test-ShareUrlsFromHost", "OPEN_LOCAL_SHARE.cmd", "Write-OpenLocalShareHelper", "OpenLocal", "Invoke-OpenLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "hostProbeResults", "Assert-BindAddressAvailable", "Same-network URL candidates", "loopbackUrl", "lanUrls", "ROLLOUT_STATUS.json", "Next Action", "rolloutNextAction", "rolloutNextCommand", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speech envelope mouth demo", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1", "RVC Voice Auditions", "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav", "stackchan_rvc_bright_robot_less_static.wav", "voice/rvc/README.md", "RVC MP3 Readme", "RVC_AUDITION.html", "RVC_AUDITIONS.md", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
   if ($retiredRvcSharePatterns -contains $pattern) { continue }
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
@@ -1032,6 +2563,62 @@ foreach ($pattern in @("Production RVC Voice", "model.pth", "model.index", "prod
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing production RVC marker: $pattern"
   }
+}
+
+$packageAuthorityDocPaths = @(
+  'README.md', 'QUICKSTART.md', 'ARRIVAL_DAY_RUNBOOK.md',
+  'docs/RELEASE_PROCESS.md', 'docs/DEVICE_BRINGUP.md', 'docs/ROLLOUT_CHECKLIST.md',
+  'docs/BRIDGE_AI_QUALIFICATION.md', 'docs/COMPANION_APP_GAP_ANALYSIS.md')
+if ($eligibilityDiagnosticPackage -eq $false) {
+  $packageAuthorityDocPaths += 'READINESS_REPORT.md'
+}
+$packageAuthorityToolPattern = '(?im)(?:^|[\\/])(?:package_release|verify_release_package|run_device_preflight|flash_release_firmware|start_hardware_evidence|prepare_device_arrival|start_bridge_ai_supervised_qualification|verify_consumer_promotion|publish_release|audit_published_release|verify_published_release|share_release|export_rollout_status)\.(?:cmd|ps1)'
+$packageAuthorityCmdPattern = '(?im)(?:^|[\\/])(?:package_release|verify_release_package|run_device_preflight|flash_release_firmware|start_hardware_evidence|prepare_device_arrival|start_bridge_ai_supervised_qualification|verify_consumer_promotion|publish_release|audit_published_release|verify_published_release|share_release|export_rollout_status)\.cmd'
+foreach ($relativePath in $packageAuthorityDocPaths) {
+  $authorityText = Get-Content -LiteralPath (Join-PackagePath $relativePath) -Raw
+  if ($authorityText -notmatch '(?i)archive\s+does\s+not\s+confer\s+release\s+authority') {
+    throw "Packaged operator document omits the archive authority boundary: $relativePath"
+  }
+  if ($authorityText -match '(?is)(from inside|inside).{0,80}extracted.{0,240}(?:prepare_device_arrival|flash_release_firmware|start_hardware_evidence)\.(?:cmd|ps1)') {
+    throw "Packaged operator document authorizes an extracted archive: $relativePath"
+  }
+  foreach ($match in [regex]::Matches($authorityText, '(?ms)```powershell\s*(.*?)\s*```')) {
+    $block = [string]$match.Groups[1].Value
+    if ($block -notmatch $packageAuthorityToolPattern) { continue }
+    $isNoPackagePreflightSelfTest = $block.Trim() -ceq '.\tools\run_device_preflight.cmd'
+    $missingLiteralAuthority = @(
+      @('ToolchainAllowlistPath', 'GitExecutable', 'PythonExecutable',
+        'PlatformioExecutable', 'LegacyCoreDir', 'ReleaseCoreDir') | Where-Object {
+        -not $block.Contains('-' + $_)
+      })
+    if (($block -match $packageAuthorityCmdPattern -and -not $isNoPackagePreflightSelfTest) -or
+        (-not $isNoPackagePreflightSelfTest -and
+         -not $block.Contains('@releaseToolchain') -and
+         $missingLiteralAuthority.Count -ne 0)) {
+      throw "Packaged operator document contains an authority-less release command: $relativePath"
+    }
+  }
+}
+foreach ($pattern in @(
+  "verify_release_package.ps1",
+  "RequireReleaseEligible",
+  "New-VerifiedShareSnapshot",
+  "Remove-VerifiedShareSnapshot",
+  "Expand-StackchanReleaseZipSafely",
+  "Missing release ZIP SHA-256 sidecar"
+)) {
+  if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/share_release.ps1 missing release-eligibility trust logic: $pattern"
+  }
+}
+foreach ($mutableShareExporter in @('export_github_actions_status.ps1', 'export_rollout_status.ps1')) {
+  if ($shareGeneratorText.Contains($mutableShareExporter)) {
+    throw "tools/share_release.ps1 must not mix mutable exporter output into the verified share: $mutableShareExporter"
+  }
+}
+if ($shareGeneratorText.Contains('Join-Path $packageRoot "tools/') -or
+    $shareGeneratorText.Contains("Join-Path `$packageRoot 'tools/")) {
+  throw "tools/share_release.ps1 executes package-contained tools"
 }
 
 $shareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_share_release.ps1") -Raw
@@ -1075,9 +2662,16 @@ foreach ($pattern in @("stackchan.hardware-media-manifest.v1", "Test-PhotoEviden
 }
 
 $syntheticEvidenceGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/generate_synthetic_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvidence", "Synthetic hardware evidence packet", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "progress_check.log", "NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Copy-VoiceLeadArtifactsFromZip", "Copy-VoiceGateStatusFromZip", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "voiceGateStatus", "export_rollout_status.ps1", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RVC_LEAD_AUDITION.md", "RUN_PLAY_LEAD_VOICE.cmd", "media/voice/stackchan_spark_audition_bright_robot_greeting.wav", "stackchan.voice-playback-reference.v1", "playback-aid-only", "RUN_SPEAK_ALL_INTENTS.cmd", "AUDIO_REVIEW.md", "synthetic_speaker_fixture.wav", "must not be used as rollout evidence", "-AllowExternalAccountCiBlock", "completed only in a real evidence packet", "Get-CompactEvidenceTag", "fps_window=30.0", "frame_budget_us=33333", "slow_frames=0", "blink_count=3", "saccade_count=4", "speech_env=0.00", "speech_mouth_demo_serial.log", "Speech mouth demo complete", "speak_all_intents_serial.log", "Speak-all-intents demo complete", "command=speak_intent", "[audio_out]", "command=speech_env", "[control] command=", "button_a_listen", "reduced_motion_on", "safe_stop", "[face] reduced_motion=1", "[speech] seq=", "earcon_delay_ms", "heap_free=243000", "stack_face_hwm=2800")) {
+foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvidence", "Synthetic hardware evidence packet", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "progress_check.log", "NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Copy-VoiceLeadArtifactsFromZip", "Copy-VoiceGateStatusFromZip", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "voiceGateStatus", "RUN_ROLLOUT_STATUS.cmd", "rollout-status generation requires the exact trusted source checkout", "six exact-host toolchain authorities", "archive does not confer release authority", "current CI/account state is unavailable from this synthetic packet", "RVC_LEAD_AUDITION.md", "RUN_PLAY_LEAD_VOICE.cmd", "media/voice/stackchan_spark_audition_bright_robot_greeting.wav", "stackchan.voice-playback-reference.v1", "playback-aid-only", "RUN_SPEAK_ALL_INTENTS.cmd", "AUDIO_REVIEW.md", "synthetic_speaker_fixture.wav", "must not be used as rollout evidence", "-AllowExternalAccountCiBlock", "completed only in a real evidence packet", "Get-CompactEvidenceTag", "fps_window=30.0", "frame_budget_us=33333", "slow_frames=0", "blink_count=3", "saccade_count=4", "speech_env=0.00", "speech_mouth_demo_serial.log", "Speech mouth demo complete", "speak_all_intents_serial.log", "Speak-all-intents demo complete", "command=speak_intent", "[audio_out]", "command=speech_env", "[control] command=", "button_a_listen", "reduced_motion_on", "safe_stop", "[face] reduced_motion=1", "[speech] seq=", "earcon_delay_ms", "heap_free=243000", "stack_face_hwm=2800")) {
   if ($syntheticEvidenceGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/generate_synthetic_hardware_evidence.ps1 missing synthetic evidence safety logic: $pattern"
+  }
+}
+foreach ($forbiddenSyntheticRolloutArtifact in @(
+  "export_rollout_status.ps1", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json"
+)) {
+  if ($syntheticEvidenceGeneratorText.Contains($forbiddenSyntheticRolloutArtifact)) {
+    throw "Synthetic diagnostic evidence must not claim or execute operational rollout output without trusted checkout and toolchain authority: $forbiddenSyntheticRolloutArtifact"
   }
 }
 
@@ -1253,14 +2847,14 @@ foreach ($pattern in @("CompanionV1EvidenceRoot", "Assert-CompanionV1PromotionRe
 }
 
 $releaseAssetContractText = Get-Content -LiteralPath (Join-PackagePath "tools/release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "Get-ReleaseCompanionAssetEntries", "firmware-display-only.bin", "firmware-servo-calibration.bin", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan-companion-android-`$Version.apk", "stackchan-companion-android-`$Version.aab", "stackchan-companion-windows-`$Version.msi", "stackchan-companion-linux-`$Version.deb", "stackchan-companion-macos-`$Version.dmg", "COMPANION_RELEASE_EVIDENCE.json")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "Get-ReleaseCompanionAssetEntries", "firmware-display-only.bin", "firmware-servo-calibration.bin", "boot-app0.bin", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan-companion-android-`$Version.apk", "stackchan-companion-android-`$Version.aab", "stackchan-companion-windows-`$Version.msi", "stackchan-companion-linux-`$Version.deb", "stackchan-companion-macos-`$Version.dmg", "COMPANION_RELEASE_EVIDENCE.json")) {
   if ($releaseAssetContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/release_asset_contract.ps1 missing required release asset contract logic: $pattern"
   }
 }
 
 $releaseAssetContractVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 17", "ExpectedCount 20", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "FirmwareAssetRoot", "FirmwareAssetPathMode", "Assert-StagedFirmwareMatchesPackage", "Get-FileHash", "Release asset contract verified")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 18", "ExpectedCount 21", "boot-app0.bin", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "FirmwareAssetRoot", "FirmwareAssetPathMode", "Assert-StagedFirmwareMatchesPackage", "Get-FileHash", "Release asset contract verified")) {
   if ($releaseAssetContractVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_release_asset_contract.ps1 missing required asset contract verification logic: $pattern"
   }
@@ -1281,7 +2875,7 @@ foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.p
 }
 
 $releaseWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/release.yml") -Raw
-foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseCompanionAssetEntries", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "workflow-assets-", "companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "gradle/actions/setup-gradle@v6", "check_companion_release_version.ps1", "check_android_play_release_readiness.ps1 -RequireUploadSigning -Json", "check_desktop_release_signing_readiness.ps1", "Validate production desktop signing credentials", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_MACOS_CERTIFICATE_B64", ":app-desktop:notarizeDmg", "actions/attest@v4", "media/voice/*", "release_assets.json", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDistributionTrust", "RequireUploadSigning", "RequireDesktopPackageEvidence", "RequireDesktopDistributionTrust", '$releaseAssetPaths', '@releaseAssetPaths')) {
+foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseCompanionAssetEntries", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "workflow-publication-", "RequireReleaseEligible", "Expand-StackchanReleaseZipSafely", "companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "gradle/actions/setup-gradle@v6", "check_companion_release_version.ps1", "check_android_play_release_readiness.ps1 -RequireUploadSigning -Json", "check_desktop_release_signing_readiness.ps1", "Validate production desktop signing credentials", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_MACOS_CERTIFICATE_B64", ":app-desktop:notarizeDmg", "actions/attest@v4", "media/voice/*", "release_assets.json", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDistributionTrust", "RequireUploadSigning", "RequireDesktopPackageEvidence", "RequireDesktopDistributionTrust", '$releaseAssetPaths', '@releaseAssetPaths')) {
   if ($releaseWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/release.yml missing release asset contract upload logic: $pattern"
   }
@@ -1337,14 +2931,14 @@ foreach ($pattern in @("Install bridge test dependencies", "sudo apt-get install
     throw "provenance/firmware.yml missing LiteRT-LM contract smoke workflow support: $pattern"
   }
 }
-foreach ($pattern in @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "STACKCHAN_CI_SOURCE_SHA", "github.event.pull_request.head.sha", "companion-platform-builds", "companion-android-emulator-smoke", "python-version: `"3.12`"", "gradle/actions/setup-gradle@v6", "test_android_emulator_release_evidence_contract.ps1", "test_desktop_package_evidence_contract.ps1", "test_desktop_release_signing_readiness_contract.ps1", "test_release_credential_hygiene_contract.ps1", "Run release credential hygiene contract", "test_companion_ci_candidate_contract.ps1", "Run exact-source companion CI candidate contract", "test_desktop_target_install_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "linux-package-evidence.json", "macos-package-evidence.json", "windows-package-evidence.json", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence")) {
+foreach ($pattern in @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "STACKCHAN_CI_SOURCE_SHA", "github.event.pull_request.head.sha", "companion-platform-builds", "companion-android-emulator-smoke", "python-version: `"3.12.10`"", "Get-Command python -CommandType Application -ErrorAction Stop", "gradle/actions/setup-gradle@v6", "test_android_emulator_release_evidence_contract.ps1", "test_desktop_package_evidence_contract.ps1", "test_desktop_release_signing_readiness_contract.ps1", "test_release_credential_hygiene_contract.ps1", "Run release credential hygiene contract", "test_companion_ci_candidate_contract.ps1", "Run exact-source companion CI candidate contract", "test_desktop_target_install_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "linux-package-evidence.json", "macos-package-evidence.json", "windows-package-evidence.json", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence")) {
   if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/firmware.yml missing native desktop package/runtime PR evidence support: $pattern"
   }
 }
 
 $publisherText = Get-Content -LiteralPath (Join-PackagePath "tools/publish_release.ps1") -Raw
-foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "Clear-TransientPackageOutput", "output/voice_auditions/VOICE_AUDITION_INDEX.html", '$baseReleaseAssets', '$finalReleaseAssets', '@baseReleaseAssets', '@finalReleaseAssets', "Verify finalized release asset contract before upload", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "SHA256SUMS.txt", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch", "audit_published_release.ps1", "-UploadToRelease")) {
+foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "Clear-TransientPackageOutput", "output/voice_auditions/VOICE_AUDITION_INDEX.html", "New-VerifiedPublicationSnapshot", "Remove-VerifiedPublicationSnapshot", "RequireReleaseEligible", "Expand-StackchanReleaseZipSafely", '$finalReleaseAssets', '@finalReleaseAssets', "Verify finalized release asset contract against the safe extraction of the exact verified ZIP", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "SHA256SUMS.txt", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "Assert-RemoteTagPublishedAtCommit", "Real publication requires explicit -Repo owner/name", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch", "audit_published_release.ps1", "-UploadToRelease")) {
   if ($publisherText -notmatch [regex]::Escape($pattern)) {
     throw "tools/publish_release.ps1 missing required finalized Actions status publish logic: $pattern"
   }
@@ -1352,7 +2946,7 @@ foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contr
 
 foreach ($docPath in @("README.md", "docs/RELEASE_PROCESS.md")) {
   $publishDocText = Get-Content -LiteralPath (Join-PackagePath $docPath) -Raw
-  foreach ($pattern in @("publish_release.cmd", "-PushCurrentBranch", "-PushTag", "audit_published_release.cmd")) {
+  foreach ($pattern in @("publish_release.ps1", "@releaseToolchain", "-PushCurrentBranch", "-PushTag", "audit_published_release.ps1")) {
     if ($publishDocText -notmatch [regex]::Escape($pattern)) {
       throw "$docPath missing safe publish guidance: $pattern"
     }
@@ -1395,7 +2989,7 @@ foreach ($pattern in @("On-device wake phrase", "microphone capture", "wake-gate
     throw "README.md missing mic capture status guidance: $pattern"
   }
 }
-foreach ($pattern in @("public v0.2 release candidate", "Status as of July 13, 2026", "corrected exact paired candidate", "28807 s", "5643/5643", "77/77", "bounded final stop", "public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
+foreach ($pattern in @("Status as of August 2, 2026", "private paired candidate", "historical", "owner-accepted exact-image physical evidence", "do not inherit that evidence", "installed SHA is", "presently unknown", "28807 s", "5643/5643", "77/77", "bounded final stop", "public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing current release-candidate status or navigation: $pattern"
   }
@@ -1437,7 +3031,7 @@ foreach ($pattern in @("../AGENTS.md", "BRAIN_MODEL.md", "CUSTOMIZING_THE_FACE.m
 }
 
 $conversationV2Text = Get-Content -LiteralPath (Join-PackagePath "docs/CONVERSATION_V2_ROADMAP.md") -Raw
-foreach ($pattern in @("post-release feature", "REPLY_WINDOW", "echo guard", "privacy-filtered", "under 3 seconds", "zero truncation")) {
+foreach ($pattern in @("outside the v1 promotion evidence", "runtime is unpromoted", "REPLY_WINDOW", "echo guard", "privacy-filtered", "under 3 seconds", "zero truncation")) {
   if ($conversationV2Text -notmatch [regex]::Escape($pattern)) {
     throw "docs/CONVERSATION_V2_ROADMAP.md missing bounded v2 architecture or acceptance guidance: $pattern"
   }
@@ -1672,6 +3266,23 @@ foreach ($pattern in @("SpeechAdapter::begin", "SpeechAdapter::handleCue", "Spee
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
+foreach ($pattern in @("BridgeDebugHttpPolicy.hpp", "evaluateBridgeDebugHttpRequestLine", "debug_http_control_policy", "emergency_stop_only", "serveBridgeDebugRejectionJson", "serveBridgeDebugAdmissionJson", "gBridgeDebugHttpEmergencyStops")) {
+  if ($mainText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/main.cpp missing SEC-002 emergency-stop-only containment: $pattern"
+  }
+}
+foreach ($forbidden in @('append(",\"debug_request\":\"%s\"', 'bridge_endpoint_pairing_code=', 'Serial.print(control.pairing.code)', 'requiredPairingCode()')) {
+  if ($mainText.Contains($forbidden)) {
+    throw "provenance/src/main.cpp exposes SEC-002/PRIV-001 forbidden diagnostic material: $forbidden"
+  }
+}
+$debugPolicyHeaderText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeDebugHttpPolicy.hpp") -Raw
+$debugPolicySourceText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeDebugHttpPolicy.cpp") -Raw
+foreach ($pattern in @("BridgeDebugHttpDecision", "BridgeDebugHttpDisposition", "requestLineInvalid", "RejectForbidden", "RejectUriTooLong")) {
+  if (($debugPolicyHeaderText + $debugPolicySourceText) -notmatch [regex]::Escape($pattern)) {
+    throw "firmware debug HTTP policy provenance missing exact containment support: $pattern"
+  }
+}
 foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "publishAudioOutSpeechFrame", "publishBridgeSpeechFrame", "handleBridgeOutput", "pollBridgeOutputs", "BridgeClient", "BridgeAudioDownlink", "BridgeAudioDownlinkSink", "BridgeAudioUplink", "BridgeWakeGate", "BridgeEndpointRegistry", "BridgeEndpointControl", "BridgeEndpointStore", "BridgeWiFiProvisioner", "BridgeNetworkSession", "BridgeWiFiClientSocket", "updateBridgeNetwork", "gBridge", "gBridgeAudioDownlink", "gBridgeAudioUplink", "gBridgeWakeGate", "gBridgeEndpointRegistry", "gBridgeEndpointControl", "gBridgeEndpointStore", "gBridgeWiFi", "gBridgeNetworkSession", "gBridge.update", "gBridgeEndpointStore.load", "gBridgeEndpointControl.attachStore", "gBridgeEndpointControl.update", "gBridgeWiFi.begin", "gBridgeNetworkSession.begin", "gBridgeAudioUplink.begin", "gBridgeWakeGate.begin", "gBridgeWakeGate.update", "gBridgeWakeGate.applyEvent", "gBridgeNetworkSession.update", "handleEndpointControlLine", "handleBridgeUplinkBench", "printBridgeUplinkResult", "submitPcmBytes", "beginTurn", "endTurn", "bench_audio_uplink_abort", "bridge_ready=", "bridge_state=", "bridge_messages=", "bridge_outputs=", "bridge_parse_errors=", "bridge_audio_stream_bytes_received=", "bridge_audio_stream_chunks=", "bridge_audio_stream_errors=", "bridge_endpoint_registry_ready=", "bridge_endpoint_count=", "bridge_endpoint_active=", "bridge_endpoint_restores=", "bridge_endpoint_control_ready=", "bridge_endpoint_messages=", "bridge_endpoint_rejected=", "bridge_endpoint_persistence_saves=", "bridge_endpoint_persistence_errors=", "bridge_endpoint_store_ready=", "bridge_endpoint_store_loads=", "bridge_endpoint_store_saves=", "bridge_endpoint_store_loaded=", "bridge_endpoint_store_saved=", "bridge_endpoint_store_parse_errors=", "bridge_endpoint_store_write_errors=", "bridge_wifi_ready=", "bridge_wifi_configured=", "bridge_wifi_connected=", "bridge_network_state=", "bridge_network_writer_frames=", "bridge_network_writer_text_frames=", "bridge_network_writer_binary_frames=", "bridge_network_text_queued=", "bridge_network_text_dropped=", "bridge_network_binary_queued=", "bridge_network_binary_dropped=", "bridge_downlink_ready=", "bridge_downlink_active=", "bridge_downlink_streams=", "bridge_downlink_completed=", "bridge_downlink_chunks=", "bridge_downlink_bytes=", "bridge_downlink_errors=", "bridge_downlink_playback_ready=", "bridge_downlink_playback_active=", "bridge_downlink_playback_starts=", "bridge_downlink_playback_chunks=", "bridge_downlink_playback_bytes=", "bridge_downlink_playback_unsupported=", "bridge_downlink_playback_errors=", "bridge_uplink_ready=", "bridge_uplink_enabled=", "bridge_uplink_active=", "bridge_uplink_wake_gate_required=", "bridge_uplink_turns=", "bridge_uplink_completed=", "bridge_uplink_chunks=", "bridge_uplink_bytes=", "bridge_uplink_errors=", "bridge_uplink_gate_blocks=", "bridge_uplink_queue_failures=", "bridge_wake_gate_ready=", "bridge_wake_gate_open=", "bridge_wake_gate_turn_active=", "bridge_wake_gate_opens=", "bridge_wake_gate_completed=", "bridge_timeouts=", "[bridge]", "[bridge_uplink]", "[endpoint]", "audio_stream_chunk", "chunk_index=", "chunk_bytes=", "payload_bytes=", "received_bytes=", "M5SpeakerAudioSink", "FirmwareVoiceAssets.hpp", "firmware_voice::find", "M5.Speaker.playWav", "M5.Speaker.playRaw", "STACKCHAN_ENABLE_SPEAKER", "gAudioOut.pollSpeechFrame", "gAudioOut.duck", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_hw_ready=", "audio_out_requests=", "audio_out_playing=", "audio_out_frames=", "audio_out_hw_frames=", "audio_out_hw_drops=", "sidecar_frames=", "playback_ms=", "hw_ready=", "hw_playing=", "hw_starts=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] requested=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
@@ -1886,7 +3497,7 @@ foreach ($pattern in @("scoop/apps/mingw/current/bin", "scoop/apps/gcc/current/b
 }
 
 $voiceSourceStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_voice_source_status.ps1") -Raw
-foreach ($pattern in @("stackchan.voice-source-status.v1", "production-source-ready", "production-model-hash", "production-index-hash", "VOICE_SOURCE_STATUS.md", "voice_source_status.json")) {
+foreach ($pattern in @("stackchan.voice-source-status.v1", "production-source-ready", "production-model-hash", "production-index-hash", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "VoiceRoot", "verify_tracked_rvc_assets.ps1", "-VoiceRoot")) {
   if ($voiceSourceStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_voice_source_status.ps1 missing required voice-source status logic: $pattern"
   }
@@ -1900,14 +3511,14 @@ foreach ($pattern in @("stackchan.voice-source-readiness.v1", "pending-productio
 }
 
 $voiceSourceReadinessContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_voice_source_readiness_contract.ps1") -Raw
-foreach ($pattern in @("pending production voice source remains pending", "complete production voice source is accepted", "fixed voice-source commit remains valid across later package commits", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")) {
+foreach ($pattern in @("pending production voice source remains pending", "packaged voice-source status paths remain portable", "packaged RVC base status paths remain portable", "pointer-only voice root is rejected", "pointer-only RVC base root is rejected", "complete production voice source is accepted", "fixed voice-source commit remains valid across later package commits", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")) {
   if ($voiceSourceReadinessContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_voice_source_readiness_contract.ps1 missing required voice-source readiness contract coverage: $pattern"
   }
 }
 
 $rvcBaseStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_rvc_voice_base_status.ps1") -Raw
-foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "production-release-verified", "distributionApproved", "consumerApproved", "model-hash", "index-hash", "rvc_voice_base_status.json", "RVC_VOICE_BASE_STATUS.md")) {
+foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "production-release-verified", "distributionApproved", "consumerApproved", "model-hash", "index-hash", "rvc_voice_base_status.json", "RVC_VOICE_BASE_STATUS.md", "VoiceRoot", "verify_tracked_rvc_assets.ps1", "-VoiceRoot")) {
   if ($rvcBaseStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_rvc_voice_base_status.ps1 missing required RVC base status logic: $pattern"
   }
@@ -1918,6 +3529,20 @@ foreach ($pattern in @("stackchan.rollout-status.v1", "ROLLOUT_STATUS.md", "ROLL
   if ($rolloutStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_rollout_status.ps1 missing rollout status export logic: $pattern"
   }
+}
+foreach ($pattern in @(
+  "verify_release_package.ps1",
+  "RequireReleaseEligible",
+  "release-package-eligibility",
+  "Expand-StackchanReleaseZipSafely"
+)) {
+  if ($rolloutStatusExporterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/export_rollout_status.ps1 missing release-eligibility trust logic: $pattern"
+  }
+}
+if ($rolloutStatusExporterText.Contains('$ExpectedCommit = [string]$manifest.commit') -or
+    $rolloutStatusExporterText.Contains('$Version = [string]$manifest.version')) {
+  throw "tools/export_rollout_status.ps1 replaces trusted caller authority with package manifest values"
 }
 
 $voiceToolsSetupText = Get-Content -LiteralPath (Join-PackagePath "tools/setup_voice_tools.ps1") -Raw
@@ -2327,14 +3952,14 @@ foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlStat
 }
 
 $dashboardServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard_service.py") -Raw
-foreach ($pattern in @("stackchan.bridge-dashboard.v1", "ThreadingHTTPServer", "/api/status", "/api/refresh", "/api/motion", "/motion-stop", "/motion-resume", "robot_clear", "servo_rail_enabled", "servo_torque_enabled", "motion_thermal_suppressed", "motion_power_suppressed", "X-Stackchan-Dashboard", "Content-Security-Policy", "Dashboard must bind to a loopback host.")) {
+foreach ($pattern in @("stackchan.bridge-dashboard.v1", "ThreadingHTTPServer", "/api/status", "/api/refresh", "/api/motion", "/motion-stop", "robot_clear", "debug_http_control_policy", "emergency_stop_only", "motionResumeAvailable", "motionResumePolicy", "firmware permits emergency stop only", "servo_rail_enabled", "servo_torque_enabled", "motion_thermal_suppressed", "motion_power_suppressed", "X-Stackchan-Dashboard", "Content-Security-Policy", "Dashboard must bind to a loopback host.")) {
   if ($dashboardServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/dashboard_service.py missing dashboard safety support: $pattern"
   }
 }
 
 $dashboardTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_dashboard_service.py") -Raw
-foreach ($pattern in @("DashboardRuntimeTests", "DashboardHttpTests", "DashboardBridgeIntegrationTests", "test_stop_requires_motion_rail_and_torque_verification", "test_cross_origin_write_is_rejected", "test_bridge_dashboard_receives_live_robot_heartbeat")) {
+foreach ($pattern in @("DashboardRuntimeTests", "DashboardHttpTests", "DashboardBridgeIntegrationTests", "test_stop_requires_motion_rail_and_torque_verification", "test_stop_accepts_bounded_admission_response_and_verifies_state", "test_stop_remains_available_under_emergency_stop_only_policy", "test_motion_resume_policy_missing_unknown_malformed_and_stale_fail_closed", "test_cross_origin_write_is_rejected", "test_bridge_dashboard_receives_live_robot_heartbeat")) {
   if ($dashboardTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_dashboard_service.py missing dashboard coverage: $pattern"
   }
@@ -2349,7 +3974,7 @@ foreach ($pattern in @("Stop motion", "Robot is upright and clear", "Resume moti
 foreach ($pattern in @("aspect-ratio: 1", "env(safe-area-inset-top)", "env(safe-area-inset-bottom)", ".mobile-nav")) {
   if ($dashboardCss -notmatch [regex]::Escape($pattern)) { throw "Dashboard CSS missing responsive contract: $pattern" }
 }
-foreach ($pattern in @("robot_clear", "/api/motion", "resumeMotionButton", "setInterval")) {
+foreach ($pattern in @("robot_clear", "/api/motion", "resumeMotionButton", "motionResumeAvailable", "motionResumePolicy", "emergency_stop_only", "setInterval")) {
   if ($dashboardJs -notmatch [regex]::Escape($pattern)) { throw "Dashboard JavaScript missing behavior: $pattern" }
 }
 
@@ -2453,14 +4078,14 @@ foreach ($pattern in @("stackchan.voice-v2-supervised-check.v1", "voice-v2-super
 }
 
 $collectPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/collect_pc_brain_deploy_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "bridge_downlink_playback_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch", "RunTests")) {
+foreach ($pattern in @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "device_debug_schema_invalid", "device_debug_route_invalid", "bridge_downlink_playback_not_started", "bridge_downlink_playback_not_completed", "bridge_downlink_playback_not_drained", "speaker_playback_chunk_mismatch", "RunTests")) {
   if ($collectPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
     throw "tools/collect_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence support: $pattern"
   }
 }
 
 $checkPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/check_pc_brain_deploy_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")) {
+foreach ($pattern in @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "playback-started", "playback-completed", "playback-drained", "speaker-playback-chunks-match", "RequireTests", "RequireReady")) {
   if ($checkPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence check support: $pattern"
   }
@@ -2811,6 +4436,18 @@ foreach ($pattern in @("character_red_team.py", "character-red-team", "CHARACTER
 Assert-File "firmware/display_only/firmware.bin" 100000
 Assert-File "firmware/servo_calibration/firmware.bin" 100000
 Assert-File "firmware/full_online/firmware.bin" 1000000
+Assert-File "firmware/display_only/boot_app0.bin" 8192
+Assert-File "firmware/servo_calibration/boot_app0.bin" 8192
+Assert-File "firmware/full_online/boot_app0.bin" 8192
+foreach ($selectorRelativePath in @(
+    [ordered]@{ path = "firmware/display_only/boot_app0.bin"; environment = "stackchan" },
+    [ordered]@{ path = "firmware/servo_calibration/boot_app0.bin"; environment = "stackchan_servo_calibration" },
+    [ordered]@{ path = "firmware/full_online/boot_app0.bin"; environment = "stackchan_release_full" })) {
+  $selectorPath = Join-PackagePath ([string]$selectorRelativePath.path)
+  Assert-StackchanReleaseOtaSelectorBytes `
+    -Environment ([string]$selectorRelativePath.environment) `
+    -LiteralPath $selectorPath | Out-Null
+}
 Assert-File "media/stackchan_alive_preview.png" 1000
 Assert-File "media/stackchan_alive_expression_sheet.png" 2000
 Assert-File "media/face_gallery.png" 2000
@@ -2874,32 +4511,51 @@ Assert-Bytes "media/voice/stackchan_spark_thinking.wav" ([byte[]](0x52, 0x49, 0x
 Assert-Bytes "media/voice/stackchan_spark_safety.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_warm_slow_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-& (Join-PackagePath "tools/verify_voice_samples.ps1") -VoiceRoot (Join-PackagePath "media/voice")
-& (Join-PackagePath "tools/verify_tracked_rvc_assets.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
-foreach ($asset in @($personaPromptAssets.assets)) {
-  & (Join-PackagePath "tools/verify_speech_envelope_sidecar.ps1") -Path (Join-PackagePath ([string]$asset.sidecar_path))
-}
-
-& (Join-Path $PSScriptRoot "verify_preview_media.ps1") -MediaRoot (Join-PackagePath "media")
-& (Join-PackagePath "tools/verify_face_phase_a.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
-& (Join-PackagePath "tools/verify_face_phase_b.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
-& (Join-PackagePath "tools/verify_face_phase_c.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
-& (Join-PackagePath "tools/verify_face_phase_d.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
-& (Join-PackagePath "tools/verify_face_phase_e.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
 
 $manifestPath = Join-PackagePath "release_manifest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-
+$manifestDiagnosticPackageProperties = @(
+  if ($null -ne $manifest) {
+    $manifest.PSObject.Properties | Where-Object {
+      $_.Name -ceq 'diagnosticPackage'
+    }
+  }
+)
+if ($manifestDiagnosticPackageProperties.Count -ne 1 -or
+    $manifestDiagnosticPackageProperties[0].Value -isnot [bool] -or
+    [bool]$manifestDiagnosticPackageProperties[0].Value -ne $eligibilityDiagnosticPackage) {
+  throw "Release manifest diagnosticPackage changed or became invalid during verification."
+}
 if ($manifest.releaseAssetManifest -ne "release_assets.json") {
   throw "Manifest releaseAssetManifest mismatch: $($manifest.releaseAssetManifest)"
 }
+if ($manifest.version -ne $Version) {
+  throw "Manifest version mismatch: expected $Version, got $($manifest.version)"
+}
+if ($manifest.commit -ne $ExpectedCommit) {
+  throw "Manifest commit mismatch: expected $ExpectedCommit, got $($manifest.commit)"
+}
+Assert-OperationalPackageGitBindings -Manifest $manifest
+
+& (Join-Path $PSScriptRoot "verify_voice_samples.ps1") -VoiceRoot (Join-PackagePath "media/voice")
+& (Join-Path $PSScriptRoot "verify_tracked_rvc_assets.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
+foreach ($asset in @($personaPromptAssets.assets)) {
+  & (Join-Path $PSScriptRoot "verify_speech_envelope_sidecar.ps1") -Path (Join-PackagePath ([string]$asset.sidecar_path))
+}
+
+& (Join-Path $PSScriptRoot "verify_preview_media.ps1") -MediaRoot (Join-PackagePath "media")
+& (Join-Path $PSScriptRoot "verify_face_phase_a.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
+& (Join-Path $PSScriptRoot "verify_face_phase_b.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
+& (Join-Path $PSScriptRoot "verify_face_phase_c.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
+& (Join-Path $PSScriptRoot "verify_face_phase_d.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
+& (Join-Path $PSScriptRoot "verify_face_phase_e.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
 
 $contractZipPath = if ([string]::IsNullOrWhiteSpace($ZipPath)) {
   Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
 } else {
   $ZipPath
 }
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-PackagePath "tools/verify_release_asset_contract.ps1") `
+& $verifierPowerShellExecutable -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify_release_asset_contract.ps1") `
   -Version $Version `
   -PackageRoot $packageRootPath `
   -ZipPath $contractZipPath `
@@ -2907,14 +4563,6 @@ $contractZipPath = if ([string]::IsNullOrWhiteSpace($ZipPath)) {
   -SkipExternalFiles
 if ($LASTEXITCODE -ne 0) {
   throw "Release asset contract verification failed."
-}
-
-if ($manifest.version -ne $Version) {
-  throw "Manifest version mismatch: expected $Version, got $($manifest.version)"
-}
-
-if ($manifest.commit -ne $ExpectedCommit) {
-  throw "Manifest commit mismatch: expected $ExpectedCommit, got $($manifest.commit)"
 }
 
 if ($manifest.board -ne "m5stack-cores3") {
@@ -2932,12 +4580,269 @@ if (-not ($envs -contains "stackchan") -or
   throw "Manifest missing expected environments"
 }
 
-if ($manifest.status -notmatch "test-ready prerelease" -or $manifest.status -notmatch "hardware validation pending") {
+$firmwareReproducibility = $manifest.firmwareReproducibility
+$toolchainIdentity = $manifest.toolchainIdentity
+if ([bool]$manifest.diagnosticPackage) {
+  if (-not $Version.StartsWith("diagnostic-", [System.StringComparison]::Ordinal) -or
+      $manifest.commitRole -ne "package-source-only-not-firmware-identity" -or
+      $manifest.packageSourceIsolationPolicy -ne "diagnostic-mutable-source-unbound" -or
+      $null -ne $manifest.packageSourceCommit -or
+      $null -ne $manifest.packageSourceEpoch -or
+      $manifest.releaseEligible -ne $false -or
+      $manifest.hardwareValidationEligible -ne $false -or
+      $manifest.distributionEligible -ne $false -or
+      $manifest.flashEligible -ne $false -or
+      $firmwareReproducibility.mechanism -ne "unbound-preexisting-artifacts" -or
+      $null -ne $firmwareReproducibility.sourceCommit -or
+      $null -ne $firmwareReproducibility.sourceEpoch -or
+      $firmwareReproducibility.hookCoverage -ne "not-run-skip-build" -or
+      $firmwareReproducibility.releaseOverridePolicy -ne "diagnostic-artifacts-unbound" -or
+      $firmwareReproducibility.scope -ne "unknown/unbound-skip-build; copied pre-existing outputs whose source identity is not established" -or
+      $manifest.servoDefault -ne "boot and motion state unverified; copied firmware identity is unknown; do not flash" -or
+      [string]$toolchainIdentity.status -cne 'not-applicable-diagnostic-skip-build' -or
+      @($toolchainIdentity.preExecution).Count -ne 0 -or @($toolchainIdentity.postBuild).Count -ne 0) {
+    throw "Diagnostic manifest must leave copied firmware identity unbound and forbid release and hardware use"
+  }
+} else {
+  $packagedToolchainFiles = [ordered]@{
+    'tools/release_toolchain_identity_allowlist.json' = $verifierToolchainAllowlistSha256
+    'tools/release_toolchain_identity.ps1' = $verifierToolchainIdentityHelperSha256
+    'tools/verify_git_pack_semantics.py' = $verifierToolchainSemanticVerifierSha256
+  }
+  foreach ($entry in $packagedToolchainFiles.GetEnumerator()) {
+    $packagedHash = (Get-FileHash -LiteralPath (Join-PackagePath ([string]$entry.Key)) `
+      -Algorithm SHA256).Hash.ToUpperInvariant()
+    if ($packagedHash -cne [string]$entry.Value) {
+      throw "Packaged release toolchain authority mismatch: $($entry.Key)"
+    }
+  }
+  $preExecutionIdentity = @($toolchainIdentity.preExecution)
+  $postBuildIdentity = @($toolchainIdentity.postBuild)
+  $invalidToolchainRecords = @($preExecutionIdentity + $postBuildIdentity | Where-Object {
+    [string]$_.result.status -cne 'verified' -or
+      [string]$_.result.allowlistSha256 -cne $verifierToolchainAllowlistSha256 -or
+      [string]$_.result.observationSha256 -notmatch '^[0-9A-F]{64}$'
+  })
+  $expectedCycleEnvironmentKeys = @(
+    foreach ($cycle in @('cycle-a', 'cycle-b')) {
+      foreach ($environment in @('stackchan', 'stackchan_servo_calibration', 'stackchan_release_full')) {
+        "$cycle/$environment"
+      }
+    }
+  )
+  $actualPreExecutionKeys = @($preExecutionIdentity | ForEach-Object {
+    "$([string]$_.cycle)/$([string]$_.environment)"
+  } | Sort-Object)
+  $actualPostBuildKeys = @($postBuildIdentity | ForEach-Object {
+    "$([string]$_.cycle)/$([string]$_.environment)"
+  } | Sort-Object)
+  $expectedCycleEnvironmentKeys = @($expectedCycleEnvironmentKeys | Sort-Object)
+  if ($null -eq $firmwareReproducibility -or
+      $manifest.commitRole -ne "package-and-firmware-source" -or
+      $manifest.packageSourceIsolationPolicy -ne "detached-clean-worktree-pinned-to-package-commit" -or
+      $manifest.packageSourceCommit -cne $ExpectedCommit -or
+      [string]$manifest.packageSourceEpoch -cne [string]$firmwareReproducibility.sourceEpoch -or
+      $manifest.releaseEligible -ne $true -or
+      $manifest.hardwareValidationEligible -ne $true -or
+      $manifest.distributionEligible -ne $true -or
+      $manifest.flashEligible -ne $true -or
+      $firmwareReproducibility.mechanism -ne "git-commit-epoch-builtins-v1" -or
+      $firmwareReproducibility.sourceCommit -ne $ExpectedCommit -or
+      [string]$firmwareReproducibility.sourceEpoch -notmatch '^[0-9]{1,12}$' -or
+      $firmwareReproducibility.hook -ne "tools/platformio_reproducible_build.py" -or
+      $firmwareReproducibility.contract -ne "tools/test_firmware_reproducible_build_contract.ps1" -or
+      $firmwareReproducibility.hookCoverage -ne "exactly-one-effective-hook" -or
+      $firmwareReproducibility.releaseOverridePolicy -ne "release-overrides-fail-closed" -or
+      $firmwareReproducibility.scope -ne "same host/core paths and clean commit across distinct equal-length fixed-width prefix-mapped project roots, canonical recorded PlatformIO toolchain/configuration, and no listed ambient build overrides" -or
+      [string]$toolchainIdentity.status -cne 'verified-reviewed-toolchain-and-two-cycle-dependencies' -or
+      [string]$toolchainIdentity.allowlistSha256 -cne $verifierToolchainAllowlistSha256 -or
+      [string]$toolchainIdentity.identityHelperSha256 -cne $verifierToolchainIdentityHelperSha256 -or
+      [string]$toolchainIdentity.semanticVerifierSha256 -cne $verifierToolchainSemanticVerifierSha256 -or
+      [string]$toolchainIdentity.preBuild.status -cne 'verified' -or
+      [string]$toolchainIdentity.preBuild.allowlistSha256 -cne $verifierToolchainAllowlistSha256 -or
+      [string]$toolchainIdentity.preBuild.observationSha256 -cne [string]$verifierToolchainPreBuild.observationSha256 -or
+      $preExecutionIdentity.Count -ne 6 -or $postBuildIdentity.Count -ne 6 -or
+      ($actualPreExecutionKeys -join "`n") -cne ($expectedCycleEnvironmentKeys -join "`n") -or
+      ($actualPostBuildKeys -join "`n") -cne ($expectedCycleEnvironmentKeys -join "`n") -or
+      $invalidToolchainRecords.Count -ne 0) {
+    throw "Manifest firmwareReproducibility provenance is missing or invalid"
+  }
+  if (-not [string]::IsNullOrWhiteSpace($ExpectedSourceEpoch) -and
+      [string]$firmwareReproducibility.sourceEpoch -cne $ExpectedSourceEpoch) {
+    throw "Manifest firmware source epoch does not match ExpectedSourceEpoch"
+  }
+}
+$includedTools = @($manifest.includedTools)
+foreach ($governanceTool in $m0GovernanceTools) {
+  if ($includedTools -notcontains $governanceTool) {
+    throw "Manifest includedTools is missing M0 governance input: $governanceTool"
+  }
+}
+$reproducibilityHook = "pre:tools/platformio_reproducible_build.py"
+$reproducibilityRootEnvironments = @(
+  "stackchan",
+  "stackchan_servo_calibration",
+  "stackchan_wifi_uplink",
+  "stackchan_wake_sr_probe",
+  "stackchan_wake_mww_probe",
+  "stackchan_wake_mww_uplink",
+  "stackchan_sd_provisioner",
+  "stackchan_wake_sr_direct_probe",
+  "stackchan_wake_sr_afe_lite",
+  "stackchan_full_online"
+)
+if (([regex]::Matches(
+      $platformioText,
+      "(?m)^\s+$([regex]::Escape($reproducibilityHook))\s*$")).Count -ne 10) {
+  throw "Packaged platformio.ini must contain exactly ten raw reproducibility hooks"
+}
+if ($platformioText -match '(?mi)^\s*build_cache_dir\s*=') {
+  throw "Packaged platformio.ini must not configure a persistent firmware build cache"
+}
+foreach ($environment in $reproducibilityRootEnvironments) {
+  $block = [regex]::Match(
+    $platformioText,
+    "(?ms)^\[env:$([regex]::Escape($environment))\]\s*(.*?)(?=^\[env:|\z)"
+  ).Value
+  $extraScripts = [regex]::Match(
+    $block,
+    '(?ms)^extra_scripts\s*=\s*\r?\n(?<entries>(?:[ \t]+[^\r\n]+\r?\n?)*)')
+  $entries = if ($extraScripts.Success) {
+    @($extraScripts.Groups['entries'].Value -split '\r?\n' |
+      ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  } else { @() }
+  if ($entries.Count -eq 0 -or $entries[0] -cne $reproducibilityHook -or
+      ([regex]::Matches($block, [regex]::Escape($reproducibilityHook))).Count -ne 1) {
+    throw "Packaged platformio.ini has invalid reproducibility hook wiring for $environment"
+  }
+}
+foreach ($environment in @("stackchan_wifi", "native_logic")) {
+  $block = [regex]::Match(
+    $platformioText,
+    "(?ms)^\[env:$([regex]::Escape($environment))\]\s*(.*?)(?=^\[env:|\z)"
+  ).Value
+  if ($block.Contains($reproducibilityHook)) {
+    throw "Packaged platformio.ini must not redeclare the reproducibility hook in $environment"
+  }
+}
+
+$reproducibilityHookText = Get-Content -LiteralPath (
+  Join-PackagePath "tools/platformio_reproducible_build.py") -Raw
+foreach ($pattern in @(
+  'datetime.fromtimestamp(epoch, timezone.utc)',
+  '_MONTHS',
+  '--untracked-files=all',
+  '--show-toplevel',
+  'not key.upper().startswith("GIT_")',
+  'STACKCHAN_BUILD_EPOCH',
+  'SOURCE_DATE_EPOCH',
+  'STACKCHAN_BUILD_STAMP',
+  'STACKCHAN_DISABLE_REPRODUCIBLE_BUILD',
+  'GIT_DIR',
+  'GIT_NO_REPLACE_OBJECTS',
+  'STACKCHAN_EXPECTED_BUILD_COMMIT',
+  'STACKCHAN_EXPECTED_BUILD_EPOCH',
+  'AppendUnique',
+  '-D__DATE__=',
+  '-D__TIME__=',
+  '-ffile-prefix-map=',
+  '_CANONICAL_DEBUG_ROOT',
+  '_CANONICAL_CORE_ROOT',
+  'PROJECT_CORE_DIR'
+)) {
+  if (-not $reproducibilityHookText.Contains($pattern)) {
+    throw "Packaged reproducibility hook is missing fail-closed mechanism: $pattern"
+  }
+}
+
+$reproducibilityContractText = Get-Content -LiteralPath (
+  Join-PackagePath "tools/test_firmware_reproducible_build_contract.ps1") -Raw
+foreach ($pattern in @(
+  'platformio_resolver.ps1',
+  'Invoke-StackchanPlatformio project config --json-output',
+  'effective-hook-count',
+  'hook-behavior-failed',
+  'package-contract-order'
+)) {
+  if (-not $reproducibilityContractText.Contains($pattern)) {
+    throw "Packaged reproducibility contract is missing required governance: $pattern"
+  }
+}
+
+$packagedReleaseBuilderText = Get-Content -LiteralPath (
+  Join-PackagePath "tools/package_release.ps1") -Raw
+$packagedFailureHelperText = Get-Content -LiteralPath (
+  Join-PackagePath "tools/firmware_reproducibility_failure.ps1") -Raw
+$packagedReleaseGovernanceText = $packagedReleaseBuilderText + "`n" + $packagedFailureHelperText
+$packagePathWorkIndex = $packagedReleaseBuilderText.IndexOf('$physicalRepoRoot =')
+foreach ($overrideName in @(
+  "PLATFORMIO_BUILD_FLAGS", "STACKCHAN_BUILD_EPOCH", "SOURCE_DATE_EPOCH",
+  "STACKCHAN_BUILD_STAMP", "STACKCHAN_DISABLE_REPRODUCIBLE_BUILD",
+  "STACKCHAN_PERSONA", "PLATFORMIO_EXE", "PLATFORMIO_CORE_DIR", "PLATFORMIO_BUILD_CACHE_DIR", "GIT_DIR",
+  "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"
+)) {
+  $overrideIndex = $packagedReleaseBuilderText.IndexOf('"' + $overrideName + '"')
+  if ($overrideIndex -lt 0 -or $packagePathWorkIndex -lt 0 -or $overrideIndex -gt $packagePathWorkIndex) {
+    throw "Packaged release builder lacks an early fail-closed override guard: $overrideName"
+  }
+}
+foreach ($pattern in @(
+  'Test-Path ("Env:\" + $releaseOverrideName)',
+  '$_.Name -like "PLATFORMIO_*"',
+  'verified-two-clean-cycles',
+  'minimumClockBoundarySeconds = 65',
+  "-CycleName 'cycle-a'",
+  "-CycleName 'cycle-b'",
+  'isolated-empty-per-cycle-environment',
+  'Assert-ReleaseSourceIdentity',
+  'output/private/reproducibility-failures',
+  'stackchan.firmware-reproducibility-failure.v2',
+  'failed-full-worktree-preserved',
+  '-SkipBuild is diagnostic-only and requires -AllowDirty',
+  'DIAGNOSTIC_PACKAGE_DO_NOT_FLASH.txt'
+)) {
+  if (-not $packagedReleaseGovernanceText.Contains($pattern)) {
+    throw "Packaged release builder is missing reproducibility enforcement: $pattern"
+  }
+}
+
+$reproducibilityProof = $firmwareReproducibility.proof
+Assert-StackchanFirmwareReproducibilityProof `
+  -Proof $reproducibilityProof `
+  -DiagnosticPackage ([bool]$manifest.diagnosticPackage) `
+  -AllowDirtyPackage ([bool]$AllowDirtyPackage) `
+  -ManifestCommit ([string]$manifest.commit) `
+  -SourceEpoch ([string]$firmwareReproducibility.sourceEpoch) `
+  -ManifestStatus ([string]$manifest.status) `
+  -PackageRoot $packageRootPath
+
+if (-not [bool]$manifest.diagnosticPackage) {
+  foreach ($cycleName in @('cycleAArtifacts', 'cycleBArtifacts')) {
+    foreach ($environment in @('stackchan', 'stackchan_servo_calibration', 'stackchan_release_full')) {
+      $policy = Get-StackchanReleaseOtaSelectorPolicy -Environment $environment
+      $selectorProof = @($reproducibilityProof.$cycleName | Where-Object {
+        [string]$_.environment -ceq $environment -and
+          [string]$_.artifact -ceq 'boot_app0.bin'
+      })
+      if ($selectorProof.Count -ne 1 -or
+          [long]$selectorProof[0].bytes -ne [long]$policy.exactBytes -or
+          [string]$selectorProof[0].sha256 -cne [string]$policy.sha256) {
+        throw "Firmware proof $cycleName does not match reviewed OTA selector authority: $environment."
+      }
+    }
+  }
+}
+
+if (-not [bool]$manifest.diagnosticPackage -and
+    ($manifest.status -notmatch "test-ready prerelease" -or $manifest.status -notmatch "hardware validation pending")) {
   throw "Manifest status must identify a test-ready prerelease with hardware validation pending"
 }
 
+if ($manifest.dirty -and -not [bool]$manifest.diagnosticPackage) {
+  throw "A dirty package can never be release-eligible"
+}
 if ($manifest.dirty -and -not $AllowDirtyPackage) {
-  throw "Release package manifest reports a dirty source worktree"
+  throw "Diagnostic package manifest reports a dirty package-source worktree"
 }
 
 if ($manifest.dependencyReport -ne "DEPENDENCIES.md") {
@@ -3451,6 +5356,21 @@ if ($dependencyLock.version -ne $Version) {
 if ($dependencyLock.commit -ne $ExpectedCommit) {
   throw "dependency_lock.json commit mismatch: expected $ExpectedCommit, got $($dependencyLock.commit)"
 }
+if ([bool]$manifest.diagnosticPackage) {
+  if ($dependencyLock.dependencyEvidencePolicy -ne "diagnostic-current-state-unbound" -or
+      $null -ne $dependencyLock.dependencySourceCommit -or
+      $null -ne $dependencyLock.dependencySourceEpoch -or
+      $dependenciesText -notmatch "unbound to the copied firmware") {
+    throw "Diagnostic dependency evidence must remain explicitly unbound"
+  }
+} else {
+  if ($dependencyLock.dependencyEvidencePolicy -ne "exact-cycle-b-build-snapshot" -or
+      $dependencyLock.dependencySourceCommit -cne $ExpectedCommit -or
+      [string]$dependencyLock.dependencySourceEpoch -cne [string]$firmwareReproducibility.sourceEpoch -or
+      $dependenciesText -notmatch "exact cycle-B dependency inventory") {
+    throw "Release dependency evidence is not bound to the proved cycle-B build"
+  }
+}
 
 if ($dependencyLock.platformioCore -notmatch "PlatformIO Core, version 6\.1\.19") {
   throw "dependency_lock.json has unexpected PlatformIO version: $($dependencyLock.platformioCore)"
@@ -3479,8 +5399,8 @@ $expectedDeclaredLibDeps = @(
   "bblanchon/ArduinoJson@7.4.3",
   "robotis-git/Dynamixel2Arduino@0.7.0",
   "madhephaestus/ESP32Servo@0.13.0",
+  "M5Stack/M5GFX@0.2.24",
   "M5Stack/M5Unified@0.2.17",
-  "M5GFX@0.2.24",
   "https://github.com/mongonta0716/SCServo.git#ee6ee4a",
   "arminjo/ServoEasing@3.1.0",
   "tobozo/YAMLDuino@1.5.0"
@@ -3514,9 +5434,25 @@ function Assert-LockedPackage {
 function ConvertTo-Array {
   param([object]$Value)
   if ($null -eq $Value) {
-    return @()
+    return ,@()
   }
-  return @($Value)
+  return ,@($Value)
+}
+
+function Assert-DependencyAuditCollectionFields {
+  param([Parameter(Mandatory = $true)][object]$DependencyAudit)
+
+  foreach ($field in @(
+    'directGitDepsMissingRef',
+    'gitResolvedWithoutSha',
+    'duplicateResolvedPackages',
+    'unpinnedGitRequirements'
+  )) {
+    $property = $DependencyAudit.PSObject.Properties[$field]
+    if ($null -eq $property -or $null -eq $property.Value) {
+      throw "dependency_lock.json dependencyAudit requires a non-null collection field: $field"
+    }
+  }
 }
 
 foreach ($envName in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")) {
@@ -3531,6 +5467,28 @@ foreach ($envName in @("stackchan", "stackchan_servo_calibration", "stackchan_re
     throw "dependency_lock.json framework mismatch for $envName`: $($envLock.framework)"
   }
   $packages = @($envLock.resolvedPackages)
+  $platformSourceLeaf = [string]$envLock.platformSourceLeaf
+  $expectedPlatformSourceLeaf = if ($envName -eq 'stackchan_release_full') {
+    'espressif32'
+  } else {
+    'espressif32@7.0.1'
+  }
+  if ($platformSourceLeaf -cne $expectedPlatformSourceLeaf) {
+    throw "dependency_lock.json platformSourceLeaf mismatch for $envName`: $platformSourceLeaf"
+  }
+  $resolvedPackageNames = @(
+    $packages | Where-Object { $_.kind -eq 'package' } |
+      ForEach-Object { [string]$_.name } | Sort-Object -Unique)
+  $corePackageNames = @($envLock.corePackageNames)
+  if ($corePackageNames.Count -eq 0) {
+    throw "dependency_lock.json missing corePackageNames for $envName"
+  }
+  foreach ($corePackageName in $corePackageNames) {
+    if ([string]$corePackageName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
+        $resolvedPackageNames -cnotcontains [string]$corePackageName) {
+      throw "dependency_lock.json has unbound core package for $envName`: $corePackageName"
+    }
+  }
   if ($envName -eq "stackchan_release_full") {
     if ($envLock.platform -ne "pioarduino/platform-espressif32@55.03.36") {
       throw "dependency_lock.json platform mismatch for $envName`: $($envLock.platform)"
@@ -3552,7 +5510,12 @@ foreach ($envName in @("stackchan", "stackchan_servo_calibration", "stackchan_re
     Assert-LockedPackage $packages "stackchan-arduino" "sha\.b7b98f5$"
   }
   Assert-LockedPackage $packages "ArduinoJson" "^7\.4\.3$"
-  Assert-LockedPackage $packages "M5Unified" "^0\.2\.17$"
+  Assert-StackchanSingleResolvedPackageVersion `
+    -ResolvedPackages $packages -Environment $envName `
+    -Name "M5GFX" -ExpectedVersion "0.2.24"
+  Assert-StackchanSingleResolvedPackageVersion `
+    -ResolvedPackages $packages -Environment $envName `
+    -Name "M5Unified" -ExpectedVersion "0.2.17"
   Assert-LockedPackage $packages "SCServo" "sha\.ee6ee4a$"
 }
 
@@ -3564,6 +5527,8 @@ if ($null -eq $dependencyAudit) {
 if ([string]::IsNullOrWhiteSpace([string]$dependencyAudit.policy)) {
   throw "dependency_lock.json dependencyAudit missing policy"
 }
+
+Assert-DependencyAuditCollectionFields -DependencyAudit $dependencyAudit
 
 $directGitDepsMissingRef = ConvertTo-Array $dependencyAudit.directGitDepsMissingRef
 if ($directGitDepsMissingRef.Count -gt 0) {
@@ -3579,37 +5544,8 @@ if ($gitResolvedWithoutSha.Count -gt 0) {
 $duplicateResolvedPackages = ConvertTo-Array $dependencyAudit.duplicateResolvedPackages
 foreach ($duplicate in $duplicateResolvedPackages) {
   $knownLegacyScServo = $duplicate.name -eq "SCServo" -and $duplicate.environment -in @("stackchan", "stackchan_servo_calibration")
-  $duplicateEntries = ConvertTo-Array $duplicate.entries
-  $duplicateVersions = @($duplicateEntries | ForEach-Object { [string]$_.version } | Sort-Object -Unique)
-  $knownPinnedM5GfxWithTransitiveCopy = (
-    $duplicate.name -eq "M5GFX" -and
-    $duplicate.environment -in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full") -and
-    $duplicate.count -eq 2 -and
-    $duplicateVersions.Count -eq 2 -and
-    $duplicateVersions[0] -eq "0.2.24" -and
-    $duplicateVersions[1] -eq "0.2.26"
-  )
-  $knownPinnedM5UnifiedWithTransitiveCopy = (
-    $duplicate.name -eq "M5Unified" -and
-    $duplicate.environment -in @("stackchan", "stackchan_servo_calibration") -and
-    $duplicate.count -eq 2 -and
-    $duplicateEntries.Count -eq 2 -and
-    $duplicateVersions.Count -eq 2 -and
-    $duplicateVersions[0] -eq "0.2.17" -and
-    $duplicateVersions[1] -eq "0.2.19" -and
-    @($duplicateEntries | Where-Object {
-      $_.version -eq "0.2.17" -and
-      $_.required -eq "M5Stack/M5Unified @ 0.2.17"
-    }).Count -eq 1 -and
-    @($duplicateEntries | Where-Object {
-      $_.version -eq "0.2.19" -and
-      $_.required -eq "M5Stack/M5Unified @ ^0.2.5"
-    }).Count -eq 1
-  )
   if (
-    -not $knownLegacyScServo -and
-    -not $knownPinnedM5GfxWithTransitiveCopy -and
-    -not $knownPinnedM5UnifiedWithTransitiveCopy
+    -not $knownLegacyScServo
   ) {
     throw "dependency_lock.json has unexpected duplicate resolved package: $($duplicate.environment)/$($duplicate.name)"
   }
@@ -3675,8 +5611,23 @@ foreach ($entry in $thirdPartyLicenseIndex) {
   }
   $indexedThirdPartyPaths += $relative
 }
+foreach ($envName in @('stackchan', 'stackchan_servo_calibration', 'stackchan_release_full')) {
+  Assert-StackchanCorePackageEvidenceAllowlisted `
+    -Environment $envName `
+    -CorePackageNames @($dependencyLock.environments.$envName.corePackageNames) `
+    -IndexedThirdPartyPaths @($indexedThirdPartyPaths)
+  $platformSourceLeaf = [string]$dependencyLock.environments.$envName.platformSourceLeaf
+  foreach ($relative in @($indexedThirdPartyPaths)) {
+    if ($relative -match ('^' + [regex]::Escape($envName) + '/platform/([^/]+)/') -and
+        $Matches[1] -cne $platformSourceLeaf) {
+      throw "Unlisted PlatformIO platform evidence for $envName`: $($Matches[1])"
+    }
+  }
+}
 
 $requiredThirdPartyPatterns = @(
+  '^stackchan/platform/espressif32@7\.0\.1/LICENSE$',
+  '^stackchan_servo_calibration/platform/espressif32@7\.0\.1/LICENSE$',
   '^stackchan_release_full/platform/espressif32/LICENSE$',
   '^stackchan_release_full/packages/framework-arduinoespressif32/package\.json$',
   '^stackchan_release_full/packages/framework-arduinoespressif32-libs/package\.json$',
@@ -3699,20 +5650,34 @@ $releaseNotes = Get-Content -LiteralPath (Join-PackagePath "RELEASE_NOTES.md") -
 if ($releaseNotes -notmatch [regex]::Escape($ExpectedCommit)) {
   throw "RELEASE_NOTES.md missing expected commit"
 }
-if ($releaseNotes -notmatch "Hardware validation is still required") {
-  throw "RELEASE_NOTES.md must state that hardware validation is still required"
-}
-foreach ($pattern in @("model.pth", "model.index", "private paired reference robot", "exact-image evidence", "does not validate another assembled unit")) {
-  if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
-    throw "RELEASE_NOTES.md missing reference-versus-recipient validation boundary: $pattern"
+if ([bool]$manifest.diagnosticPackage) {
+  foreach ($pattern in @(
+    "Diagnostic Package", "-SkipBuild -AllowDirty", "not a prerelease candidate",
+    "must not be flashed", "must not be flashed, run on hardware, or used as qualification evidence"
+  )) {
+    if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
+      throw "Diagnostic RELEASE_NOTES.md missing required prohibition: $pattern"
+    }
   }
-}
-if ($releaseNotes -notmatch "READINESS_REPORT.md") {
-  throw "RELEASE_NOTES.md missing readiness report reference"
-}
-foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "tools/run_character_red_team.cmd -Json", "tools/run_character_red_team.cmd -RequireRunner -Json", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/verify_tracked_rvc_assets.cmd", "model.pth", "model.index", "SHA-256", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3")) {
-  if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
-    throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
+  if ($releaseNotes -match 'This is the publicly shareable .+ prerelease candidate') {
+    throw "Diagnostic RELEASE_NOTES.md must not advertise a publicly shareable prerelease candidate"
+  }
+} else {
+  if ($releaseNotes -notmatch "Hardware validation is still required") {
+    throw "RELEASE_NOTES.md must state that hardware validation is still required"
+  }
+  foreach ($pattern in @("model.pth", "model.index", "private paired reference robot", "exact-image evidence", "does not validate another assembled unit")) {
+    if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
+      throw "RELEASE_NOTES.md missing reference-versus-recipient validation boundary: $pattern"
+    }
+  }
+  if ($releaseNotes -notmatch "READINESS_REPORT.md") {
+    throw "RELEASE_NOTES.md missing readiness report reference"
+  }
+  foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "tools/run_character_red_team.cmd -Json", "tools/run_character_red_team.cmd -RequireRunner -Json", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/verify_tracked_rvc_assets.cmd", "model.pth", "model.index", "SHA-256", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3")) {
+    if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
+      throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
+    }
   }
 }
 
@@ -3935,7 +5900,7 @@ foreach ($gate in @("production-model-hash", "production-index-hash", "owner-rel
   }
 }
 
-& (Join-PackagePath "tools/verify_tracked_rvc_assets.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
+& (Join-Path $PSScriptRoot "verify_tracked_rvc_assets.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
 
 Assert-File "media/voice/rvc/model.pth" 57577722
 Assert-File "media/voice/rvc/model.index" 99428699
@@ -3966,36 +5931,66 @@ $acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.jso
 if ($acceptance.schema -ne "stackchan.release-acceptance.v1") {
   throw "release_acceptance.json schema mismatch: $($acceptance.schema)"
 }
-if ($acceptance.releaseClass -ne "test-ready-prerelease") {
-  throw "release_acceptance.json releaseClass mismatch: $($acceptance.releaseClass)"
-}
-if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
-  throw "release_acceptance.json currentDecision mismatch: $($acceptance.currentDecision)"
-}
-if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
-  throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
-}
-foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "companion-c6-brain-supervision-evidence", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
-  $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
-  if ($match.Count -ne 1) {
-    throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
+if ([bool]$manifest.diagnosticPackage) {
+  if ($acceptance.diagnosticPackage -ne $true -or
+      $acceptance.releaseClass -ne "diagnostic-only-unqualified" -or
+      $acceptance.currentDecision -ne "release-and-hardware-use-forbidden" -or
+      $acceptance.consumerRolloutDecision -ne "forbidden-diagnostic-package") {
+    throw "Diagnostic release_acceptance.json contains release-ready labels"
   }
-}
-foreach ($requirement in @("display-only-flash", "speech-mouth-demo-evidence", "servo-calibration", "mixed-mode-soak", "power-cycle-recovery", "target-speaker-audio-evidence", "hardware-evidence-verification")) {
-  $match = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq $requirement -and $_.status -match "pending" })
-  if ($match.Count -ne 1) {
-    throw "release_acceptance.json missing pending hardware requirement: $requirement"
+  foreach ($requirement in @($acceptance.noHardwareAcceptance)) {
+    if ($requirement.status -ne "not-accepted-diagnostic") {
+      throw "Diagnostic release_acceptance.json improperly accepts requirement: $($requirement.requirement)"
+    }
   }
-}
-$productionVoiceRequirement = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq "production-voice-assets" -and $_.status -eq "pass" })
-if ($productionVoiceRequirement.Count -ne 1) {
-  throw "release_acceptance.json missing passed production voice asset requirement"
+  foreach ($requirement in @($acceptance.hardwareAcceptanceRequired)) {
+    if ($requirement.status -ne "forbidden-diagnostic") {
+      throw "Diagnostic release_acceptance.json improperly permits hardware requirement: $($requirement.requirement)"
+    }
+  }
+} else {
+  if ($acceptance.diagnosticPackage -eq $true -or $acceptance.releaseClass -ne "test-ready-prerelease") {
+    throw "release_acceptance.json releaseClass mismatch: $($acceptance.releaseClass)"
+  }
+  if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
+    throw "release_acceptance.json currentDecision mismatch: $($acceptance.currentDecision)"
+  }
+  if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
+    throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
+  }
+  foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "companion-c6-brain-supervision-evidence", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
+    $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
+    if ($match.Count -ne 1) {
+      throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
+    }
+  }
+  foreach ($requirement in @("display-only-flash", "speech-mouth-demo-evidence", "servo-calibration", "mixed-mode-soak", "power-cycle-recovery", "target-speaker-audio-evidence", "hardware-evidence-verification")) {
+    $match = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq $requirement -and $_.status -match "pending" })
+    if ($match.Count -ne 1) {
+      throw "release_acceptance.json missing pending hardware requirement: $requirement"
+    }
+  }
+  $productionVoiceRequirement = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq "production-voice-assets" -and $_.status -eq "pass" })
+  if ($productionVoiceRequirement.Count -ne 1) {
+    throw "release_acceptance.json missing passed production voice asset requirement"
+  }
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "Consumer rollout: blocked pending hardware validation", "Required Physical Qualification", "source commit and firmware SHA-256", "Owner approval has not been recorded for this candidate", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Production RVC model and index")) {
-  if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
-    throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
+if ([bool]$manifest.diagnosticPackage) {
+  foreach ($pattern in @("Diagnostic Package", "release and hardware use forbidden", "Nothing in this package is accepted as release evidence", "Do not flash it")) {
+    if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
+      throw "Diagnostic RELEASE_ACCEPTANCE.md missing prohibition: $pattern"
+    }
+  }
+  if ($acceptanceText -match 'Decision:\s*test-ready' -or $acceptanceText -match '\[x\]') {
+    throw "Diagnostic RELEASE_ACCEPTANCE.md contains acceptance claims"
+  }
+} else {
+  foreach ($pattern in @("test-ready for device arrival", "Consumer rollout: blocked pending hardware validation", "Required Physical Qualification", "source commit and firmware SHA-256", "Owner approval has not been recorded for this candidate", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Production RVC model and index")) {
+    if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
+      throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
+    }
   }
 }
 
@@ -4012,13 +6007,24 @@ if ($actionsStatus.commit -ne $ExpectedCommit) {
 if ($null -eq $actionsStatus.firmwareCandidateReady) {
   throw "github_actions_status.json missing firmwareCandidateReady"
 }
-if (@("post-push-check-required", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "success") -notcontains $actionsStatus.status) {
-  throw "github_actions_status.json status is not release-acceptable: $($actionsStatus.status)"
-}
 $requiredActionWorkflowNames = @($actionsStatus.requiredWorkflows | ForEach-Object { [string]$_ })
-foreach ($workflowName in @("Firmware", "Release")) {
-  if ($requiredActionWorkflowNames -notcontains $workflowName) {
-    throw "github_actions_status.json missing required workflow contract: $workflowName"
+if ([bool]$manifest.diagnosticPackage) {
+  if ($actionsStatus.status -ne "diagnostic-not-applicable" -or
+      $actionsStatus.firmwareCandidateReady -ne $false -or
+      $actionsStatus.promotionReady -ne $false -or
+      $requiredActionWorkflowNames.Count -ne 0 -or
+      @($actionsStatus.missingRequiredWorkflows).Count -ne 0 -or
+      @($actionsStatus.workflows).Count -ne 0) {
+    throw "Diagnostic github_actions_status.json must not claim candidate evidence"
+  }
+} else {
+  if (@("post-push-check-required", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "success") -notcontains $actionsStatus.status) {
+    throw "github_actions_status.json status is not release-acceptable: $($actionsStatus.status)"
+  }
+  foreach ($workflowName in @("Firmware", "Release")) {
+    if ($requiredActionWorkflowNames -notcontains $workflowName) {
+      throw "github_actions_status.json missing required workflow contract: $workflowName"
+    }
   }
 }
 if ($actionsStatus.firmwareCandidateReady -eq $true) {
@@ -4037,16 +6043,34 @@ if ($actionsStatus.firmwareCandidateReady -eq $true) {
 }
 
 $actionsStatusText = Get-Content -LiteralPath (Join-PackagePath "GITHUB_ACTIONS_STATUS.md") -Raw
-foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "Required workflows", "github_actions_status.json")) {
+$actionsStatusPatterns = if ([bool]$manifest.diagnosticPackage) {
+  @("GitHub Actions Status -- Diagnostic Only", $Version, $ExpectedCommit, "diagnostic-not-applicable", "Do not push a release tag", "github_actions_status.json")
+} else {
+  @("GitHub Actions Status", $Version, $ExpectedCommit, "Required workflows", "github_actions_status.json")
+}
+foreach ($pattern in $actionsStatusPatterns) {
   if ($actionsStatusText -notmatch [regex]::Escape($pattern)) {
     throw "GITHUB_ACTIONS_STATUS.md missing expected status text: $pattern"
   }
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "Status: test-ready prerelease", "Consumer rollout: blocked pending hardware validation", "Proven Without Hardware", "Required Physical Qualification", "Historical private paired-reference evidence", "source commit and firmware SHA-256", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "Owner approval has not been recorded for this candidate")) {
-  if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
-    throw "READINESS_REPORT.md missing expected text: $pattern"
+$readinessSemanticMarkdown = ConvertTo-StackchanMarkdownSemanticText -Text $readinessMarkdown
+$arrivalAuthorityGuidance = Get-StackchanArrivalAuthorityGuidance
+if ([bool]$manifest.diagnosticPackage) {
+  foreach ($pattern in @($Version, $ExpectedCommit, "Diagnostic package:", "Status: diagnostic-only unqualified", "Consumer rollout: forbidden diagnostic package", "Release and hardware use: forbidden", "source identity is not established", "Do not flash it")) {
+    if ($readinessSemanticMarkdown -notmatch [regex]::Escape($pattern)) {
+      throw "Diagnostic READINESS_REPORT.md missing prohibition: $pattern"
+    }
+  }
+  if ($readinessMarkdown -match 'Status:\s*test-ready' -or $readinessMarkdown -match 'Proven Without Hardware') {
+    throw "Diagnostic READINESS_REPORT.md contains readiness claims"
+  }
+} else {
+  foreach ($pattern in @($Version, $ExpectedCommit, "Status: test-ready prerelease", "Consumer rollout: blocked pending hardware validation", "Proven Without Hardware", "Required Physical Qualification", "Historical private paired-reference evidence", "source commit and firmware SHA-256", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "Owner approval has not been recorded for this candidate", $arrivalAuthorityGuidance)) {
+    if ($readinessSemanticMarkdown -notmatch [regex]::Escape($pattern)) {
+      throw "READINESS_REPORT.md missing expected text: $pattern"
+    }
   }
 }
 
@@ -4060,57 +6084,81 @@ if ($readinessJson.version -ne $Version) {
 if ($readinessJson.commit -ne $ExpectedCommit) {
   throw "readiness_report.json commit mismatch: expected $ExpectedCommit, got $($readinessJson.commit)"
 }
-if ($readinessJson.status -ne "test-ready-prerelease") {
-  throw "readiness_report.json status mismatch: $($readinessJson.status)"
-}
-if ($readinessJson.consumerRollout -ne "blocked-pending-hardware-validation") {
-  throw "readiness_report.json must block rollout pending hardware validation"
-}
-foreach ($gate in @($readinessJson.noHardwareProof)) {
-  if ($gate.status -ne "pass") {
-    throw "readiness_report.json has non-passing no-hardware gate: $($gate.gate)"
+if ([bool]$manifest.diagnosticPackage) {
+  if ($readinessJson.diagnosticPackage -ne $true -or
+      $readinessJson.commitRole -ne "package-source-only-not-firmware-identity" -or
+      $readinessJson.firmwareIdentity -ne "unknown-unbound-preexisting-outputs" -or
+      $readinessJson.status -ne "diagnostic-only-unqualified" -or
+      $readinessJson.consumerRollout -ne "forbidden-diagnostic-package" -or
+      $readinessJson.releaseAndHardwareUse -ne "forbidden" -or
+      $null -ne $readinessJson.nextOperatorCommand) {
+    throw "Diagnostic readiness_report.json contains release-ready state"
   }
-}
-$voiceSourceNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "voice-source-provenance-template-present" -and $_.status -eq "pass" })
-if ($voiceSourceNoHardwareGate.Count -ne 1) {
-  throw "readiness_report.json missing passed voice-source provenance template gate"
-}
-$voiceSourceStatusNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "voice-source-status-report-present" -and $_.status -eq "pass" })
-if ($voiceSourceStatusNoHardwareGate.Count -ne 1) {
-  throw "readiness_report.json missing passed voice-source status report gate"
-}
-$characterRedTeamNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "character-red-team-dry-run" -and $_.status -eq "pass" })
-if ($characterRedTeamNoHardwareGate.Count -ne 1) {
-  throw "readiness_report.json missing passed character red-team dry-run gate"
-}
-$companionC6NoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "companion-c6-brain-supervision-evidence" -and $_.status -eq "pass" })
-if ($companionC6NoHardwareGate.Count -ne 1) {
-  throw "readiness_report.json missing passed companion-c6-brain-supervision-evidence gate"
-}
-$mediaImporterNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "hardware-media-importer-present" -and $_.status -eq "pass" })
-if ($mediaImporterNoHardwareGate.Count -ne 1) {
-  throw "readiness_report.json missing passed hardware-media-importer-present gate"
-}
-$speakerAudioGate = @($readinessJson.hardwareGates | Where-Object { $_.gate -eq "target-speaker-audio-evidence" -and $_.status -eq "pending-device" })
-if ($speakerAudioGate.Count -ne 1) {
-  throw "readiness_report.json missing pending target-speaker-audio-evidence gate"
-}
-$speechMouthGate = @($readinessJson.hardwareGates | Where-Object { $_.gate -eq "speech-mouth-demo-evidence" -and $_.status -eq "pending-device" })
-if ($speechMouthGate.Count -ne 1) {
-  throw "readiness_report.json missing pending speech-mouth-demo-evidence gate"
-}
-$powerCycleGate = @($readinessJson.hardwareGates | Where-Object { $_.gate -eq "power-cycle-recovery" -and $_.status -eq "pending-device" })
-if ($powerCycleGate.Count -ne 1) {
-  throw "readiness_report.json missing pending power-cycle-recovery gate"
-}
-foreach ($gate in @($readinessJson.hardwareGates)) {
-  $allowedStatus = if ($gate.gate -eq "production-voice-assets") { "pass" } else { "pending-device" }
-  if ($gate.status -ne $allowedStatus) {
-    throw "readiness_report.json hardware gate status mismatch: $($gate.gate)"
+  foreach ($gate in @($readinessJson.noHardwareProof)) {
+    if ($gate.status -ne "not-qualified-diagnostic") {
+      throw "Diagnostic readiness_report.json improperly qualifies gate: $($gate.gate)"
+    }
+  }
+  foreach ($gate in @($readinessJson.hardwareGates)) {
+    if ($gate.status -ne "forbidden-diagnostic") {
+      throw "Diagnostic readiness_report.json improperly permits hardware gate: $($gate.gate)"
+    }
+  }
+} else {
+  if ($readinessJson.diagnosticPackage -eq $true -or
+      $readinessJson.status -ne "test-ready-prerelease" -or
+      $null -ne $readinessJson.nextOperatorCommand -or
+      [string]$readinessJson.nextOperatorGuidance -cne $arrivalAuthorityGuidance) {
+    throw "readiness_report.json status mismatch: $($readinessJson.status)"
+  }
+  if ($readinessJson.consumerRollout -ne "blocked-pending-hardware-validation") {
+    throw "readiness_report.json must block rollout pending hardware validation"
+  }
+  foreach ($gate in @($readinessJson.noHardwareProof)) {
+    if ($gate.status -ne "pass") {
+      throw "readiness_report.json has non-passing no-hardware gate: $($gate.gate)"
+    }
+  }
+  foreach ($requiredGate in @("voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run", "companion-c6-brain-supervision-evidence", "hardware-media-importer-present")) {
+    if (@($readinessJson.noHardwareProof | Where-Object { $_.gate -eq $requiredGate -and $_.status -eq "pass" }).Count -ne 1) {
+      throw "readiness_report.json missing passed no-hardware gate: $requiredGate"
+    }
+  }
+  foreach ($requiredGate in @("target-speaker-audio-evidence", "speech-mouth-demo-evidence", "power-cycle-recovery")) {
+    if (@($readinessJson.hardwareGates | Where-Object { $_.gate -eq $requiredGate -and $_.status -eq "pending-device" }).Count -ne 1) {
+      throw "readiness_report.json missing pending hardware gate: $requiredGate"
+    }
+  }
+  foreach ($gate in @($readinessJson.hardwareGates)) {
+    $allowedStatus = if ($gate.gate -eq "production-voice-assets") { "pass" } else { "pending-device" }
+    if ($gate.status -ne $allowedStatus) {
+      throw "readiness_report.json hardware gate status mismatch: $($gate.gate)"
+    }
   }
 }
 if (@($readinessJson.hardwareGates).Count -lt 8) {
   throw "readiness_report.json is missing required hardware gates"
+}
+
+if ([bool]$manifest.diagnosticPackage) {
+  $diagnosticMarker = Join-PackagePath "DIAGNOSTIC_PACKAGE_DO_NOT_FLASH.txt"
+  if (-not (Test-Path -LiteralPath $diagnosticMarker -PathType Leaf)) {
+    throw "Diagnostic package is missing DIAGNOSTIC_PACKAGE_DO_NOT_FLASH.txt"
+  }
+  $diagnosticMarkerText = Get-Content -LiteralPath $diagnosticMarker -Raw
+  foreach ($pattern in @("DIAGNOSTIC-ONLY UNQUALIFIED PACKAGE", "RELEASE AND HARDWARE USE ARE FORBIDDEN", "Do not flash it")) {
+    if ($diagnosticMarkerText -notmatch [regex]::Escape($pattern)) {
+      throw "Diagnostic package marker is missing prohibition: $pattern"
+    }
+  }
+  foreach ($bannerPath in @("README.md", "QUICKSTART.md", "ARRIVAL_DAY_RUNBOOK.md", "docs/README.md")) {
+    $bannerText = Get-Content -LiteralPath (Join-PackagePath $bannerPath) -Raw
+    foreach ($pattern in @("DIAGNOSTIC-ONLY UNQUALIFIED PACKAGE", "RELEASE AND HARDWARE USE ARE FORBIDDEN", "Do not flash it", "not this diagnostic archive")) {
+      if ($bannerText -notmatch [regex]::Escape($pattern)) {
+        throw "Diagnostic package file lacks the required banner: $bannerPath ($pattern)"
+      }
+    }
+  }
 }
 
 $hashPath = Join-PackagePath "SHA256SUMS.txt"
@@ -4141,8 +6189,8 @@ foreach ($line in $hashLines) {
   }
 }
 
-$packagedFiles = Get-ChildItem -LiteralPath $packageRootPath -File -Recurse |
-  ForEach-Object { $_.FullName.Substring($packageRootPath.Length + 1).Replace("\", "/") } |
+$packagedFiles = Get-ChildItem -LiteralPath $packageEnumerationRoot -File -Recurse |
+  ForEach-Object { (Get-PackageItemFullName $_).Substring($packageRootPath.Length + 1).Replace("\", "/") } |
   Where-Object { $_ -ne "SHA256SUMS.txt" -and $_ -notlike "output/*" }
 
 foreach ($file in $packagedFiles) {
@@ -4157,19 +6205,108 @@ foreach ($file in $seen.Keys) {
   }
 }
 
-Write-Host "Release package verified:"
+function Assert-OperationalWholePackageInventory {
+  if (-not $RequireReleaseEligible) { return }
+  # Root admission is closed independently of SHA256SUMS. A caller cannot add
+  # a launcher/payload at the archive root and bless it by regenerating hashes.
+  $allowedRootFiles = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+  foreach ($requiredFile in $requiredFiles) {
+    if ([string]$requiredFile -notmatch '/') {
+      [void]$allowedRootFiles.Add([string]$requiredFile)
+    }
+  }
+  foreach ($generatedRootFile in @(
+    'RVC_VOICE_BASE_STATUS.md', 'rvc_voice_base_status.json')) {
+    [void]$allowedRootFiles.Add($generatedRootFile)
+  }
+  $actualRootFiles = @(
+    Get-ChildItem -LiteralPath $packageEnumerationRoot -File -Force |
+      ForEach-Object { $_.Name })
+  foreach ($actualRootFile in $actualRootFiles) {
+    if (-not $allowedRootFiles.Contains([string]$actualRootFile)) {
+      throw "Operational package contains a root file outside the trusted packaging policy: $actualRootFile"
+    }
+  }
+  foreach ($allowedRootFile in $allowedRootFiles) {
+    if ($actualRootFiles -cnotcontains $allowedRootFile) {
+      throw "Operational package is missing a root file required by the trusted packaging policy: $allowedRootFile"
+    }
+  }
+
+  # Generated/license trees have independent exact inventories. This turns the
+  # existing content validators into admission control, not merely spot checks.
+  $allowedThirdParty = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+  [void]$allowedThirdParty.Add('third_party_licenses/files.json')
+  foreach ($relative in $indexedThirdPartyPaths) {
+    [void]$allowedThirdParty.Add('third_party_licenses/' + [string]$relative)
+  }
+  $actualThirdParty = @(
+    Get-ChildItem -LiteralPath ([System.IO.Path]::Combine(
+        $packageEnumerationRoot, 'third_party_licenses')) `
+      -File -Recurse -Force | ForEach-Object {
+        (Get-PackageItemFullName $_).Substring($packageRootPrefix.Length).Replace('\', '/')
+      })
+  if ($actualThirdParty.Count -ne $allowedThirdParty.Count) {
+    throw 'Operational third-party-license tree inventory count does not match its deterministic index.'
+  }
+  foreach ($path in $actualThirdParty) {
+    if (-not $allowedThirdParty.Contains([string]$path)) {
+      throw "Operational package contains an unindexed third-party file: $path"
+    }
+  }
+
+  $allowedPackageFiles = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+  foreach ($path in @($requiredFiles) + @($manifest.includedTools) +
+      @($manifest.provenanceFiles) + @($manifest.mediaArtifacts) +
+      @($manifest.companionEvidence) + @($allowedThirdParty)) {
+    [void]$allowedPackageFiles.Add([string]$path)
+  }
+  foreach ($generatedRootFile in @(
+    'RVC_VOICE_BASE_STATUS.md', 'rvc_voice_base_status.json')) {
+    [void]$allowedPackageFiles.Add($generatedRootFile)
+  }
+  $actualPackageFiles = @(
+    Get-ChildItem -LiteralPath $packageEnumerationRoot -File -Recurse -Force |
+      ForEach-Object {
+        (Get-PackageItemFullName $_).Substring($packageRootPrefix.Length).Replace('\', '/')
+      })
+  if ($actualPackageFiles.Count -ne $allowedPackageFiles.Count) {
+    throw "Operational whole-package inventory count does not match trusted packaging policy: expected $($allowedPackageFiles.Count), got $($actualPackageFiles.Count)"
+  }
+  foreach ($path in $actualPackageFiles) {
+    if (-not $allowedPackageFiles.Contains([string]$path)) {
+      throw "Operational package contains a file outside the trusted whole-package inventory: $path"
+    }
+  }
+}
+Assert-OperationalWholePackageInventory
+
+if ($RequireReleaseEligible -and
+    ([bool]$manifest.diagnosticPackage -or
+     $manifest.releaseEligible -ne $true -or
+     $manifest.hardwareValidationEligible -ne $true -or
+     $manifest.distributionEligible -ne $true -or
+     $manifest.flashEligible -ne $true)) {
+  throw "Diagnostic archive integrity verification never authorizes flashing, evidence capture, publication, or release workflows"
+}
+
+Assert-OperationalFirmwareMatchesTrustedRebuild
+
+if ($RequireReleaseEligible) {
+  Close-StackchanToolchainLeaseState `
+    -LeaseState $script:verifierToolchainLeaseState -RequireUnchanged `
+    -Context 'completed release-eligible verification'
+}
+
+if ([bool]$manifest.diagnosticPackage) {
+  Write-Host "Diagnostic archive integrity verified; release and hardware use forbidden:"
+} else {
+  Write-Host "Package integrity verified in non-authorizing mode; release eligibility not established:"
+}
 Write-Host $packageRootPath
 
-if ($cleanupDir) {
-  $resolvedCleanup = (Resolve-Path $cleanupDir).Path
-  $resolvedTempRoot = (Resolve-Path $tempRoot).Path
-  if (-not $resolvedCleanup.StartsWith($resolvedTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Refusing to clean unexpected verification directory: $resolvedCleanup"
-  }
-  $cleanupFileSystemPath = if ($env:OS -eq "Windows_NT" -and -not $resolvedCleanup.StartsWith("\\?\")) {
-    "\\?\$resolvedCleanup"
-  } else {
-    $resolvedCleanup
-  }
-  [System.IO.Directory]::Delete($cleanupFileSystemPath, $true)
-}
+Remove-VerificationExtraction
+Close-VerifierToolchainResources

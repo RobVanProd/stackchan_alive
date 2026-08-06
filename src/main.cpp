@@ -606,6 +606,7 @@ static_assert(STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY == 0 ||
 #include "io/BridgeAudioDownlink.hpp"
 #include "io/BridgeAudioUplink.hpp"
 #include "io/BridgeClient.hpp"
+#include "io/BridgeDebugHttpPolicy.hpp"
 #include "io/BridgeEndpointControl.hpp"
 #include "io/BridgeEndpointRegistry.hpp"
 #include "io/BridgeEndpointStore.hpp"
@@ -699,6 +700,10 @@ BridgeWiFiProvisioningPreferencesStore gBridgeWiFiStoreBackend;
 WiFiServer gBridgeDebugServer(STACKCHAN_BRIDGE_DEBUG_PORT);
 LanOtaServer gLanOtaServer(STACKCHAN_OTA_PORT);
 bool gBridgeDebugServerStarted = false;
+uint32_t gBridgeDebugHttpRequests = 0;
+uint32_t gBridgeDebugHttpRejected = 0;
+uint32_t gBridgeDebugHttpEmergencyStops = 0;
+uint32_t gBridgeDebugHttpCameraRoutes = 0;
 RTC_DATA_ATTR uint32_t gRtcBootCount = 0;
 esp_reset_reason_t gBootResetReason = ESP_RST_UNKNOWN;
 bool gChipTemperatureValid = false;
@@ -984,12 +989,12 @@ volatile bool gWakeMwwStereoDirectionPendingReady = false;
 #endif
 #if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
 constexpr uint32_t kWakeMwwCueCompletionTimeoutMs = 120;
-// Hard ceiling on one capture, in 100 ms chunks. This is the backstop behind the
-// voice-activity endpoint, which normally ends capture as soon as the speaker
-// stops. 130 chunks is 13 s, or 416 KB of 16 kHz mono PCM, inside the 512 KB
-// uplink limit. Was 96 (9.6 s), and the endpoint's own 4.8 s cap fired first,
-// which is what truncated longer sentences.
-constexpr uint16_t kWakeMwwDedicatedCaptureChunks = 130;
+// Hard ceiling on one capture, in compile-time-sized chunks. This is the
+// backstop behind the voice-activity endpoint, which normally ends capture as
+// soon as the speaker stops. The release profile uses 800-sample chunks, so 240
+// chunks is 12 s (384 KB of 16 kHz mono PCM), inside the 512 KB uplink limit and
+// equal to VoiceActivityEndpointConfig::maximumCaptureMs.
+constexpr uint16_t kWakeMwwDedicatedCaptureChunks = 240;
 // One chunk is STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES at the capture rate.
 constexpr uint32_t kWakeMwwDedicatedCaptureCeilingMs =
     (static_cast<uint32_t>(kWakeMwwDedicatedCaptureChunks) *
@@ -999,6 +1004,10 @@ constexpr uint32_t kWakeMwwDedicatedCaptureCeilingMs =
 // it closes the turn mid-utterance and the remaining chunks are rejected.
 static_assert(kWakeMwwDedicatedCaptureCeilingMs < kBridgeWakeGateMaxTurnMs,
               "wake gate max turn must exceed the dedicated capture ceiling");
+static_assert(static_cast<uint32_t>(kWakeMwwDedicatedCaptureChunks) *
+                  STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES * sizeof(int16_t) <=
+              kBridgeAudioUplinkMaxBytes,
+              "dedicated capture must fit the bridge audio uplink limit");
 RobotEvent gWakeMwwPendingCaptureEvent {};
 bool gWakeMwwPendingCaptureEventReady = false;
 bool gWakeMwwPendingCaptureIsConversationReply = false;
@@ -2023,14 +2032,18 @@ const char* bridgeAudioSafetyStopReasonName(BridgeAudioSafetyStopReason reason) 
 
 bool bridgeAudioRuntimeHeld() {
   const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
-  return downlink.active || downlink.playbackActive || gSpeakerSink.speakerPowerActive() != 0 ||
-         gSpeakerSink.speakerRunning() != 0;
+  return downlink.active || downlink.playbackActive || downlink.playbackCompletionPending ||
+         gSpeakerSink.speakerPowerActive() != 0 || gSpeakerSink.speakerRunning() != 0;
 }
 
 bool stopBridgeAudioRuntime(uint32_t nowMs, BridgeAudioSafetyStopReason reason) {
   const bool held = bridgeAudioRuntimeHeld();
+  const bool signalPlaybackTerminal =
+      reason != BridgeAudioSafetyStopReason::TransportDisconnected &&
+      gBridgeNetworkSession.telemetry().state == BridgeNetworkSessionState::Connected;
   gConversationReplyWindow.cancel(nowMs);
-  gBridgeAudioDownlink.abort(nowMs, 100u + static_cast<uint32_t>(reason));
+  gBridgeAudioDownlink.abort(
+      nowMs, 100u + static_cast<uint32_t>(reason), signalPlaybackTerminal);
   gAudioOut.cancel();
   gSpeakerSink.stop(nowMs);
   gBridgeSpeechCuePending = false;
@@ -2069,15 +2082,23 @@ void serviceBridgeAudioTransportSafety(uint32_t nowMs) {
 
 void queueBridgePlaybackCompletion(uint32_t nowMs) {
   uint32_t seq = 0;
-  if (!gBridgeAudioDownlink.peekPlaybackCompletion(&seq)) {
+  bool interrupted = false;
+  if (!gBridgeAudioDownlink.peekPlaybackCompletion(&seq, &interrupted)) {
     return;
   }
   char frame[112] = {};
-  const int written = snprintf(frame,
-                               sizeof(frame),
-                               "{\"type\":\"playback_complete\",\"seq\":%lu,\"at_ms\":%lu}",
-                               static_cast<unsigned long>(seq),
-                               static_cast<unsigned long>(nowMs));
+  const int written = interrupted
+                          ? snprintf(frame,
+                                     sizeof(frame),
+                                     "{\"type\":\"playback_complete\",\"seq\":%lu,"
+                                     "\"at_ms\":%lu,\"interrupted\":true}",
+                                     static_cast<unsigned long>(seq),
+                                     static_cast<unsigned long>(nowMs))
+                          : snprintf(frame,
+                                     sizeof(frame),
+                                     "{\"type\":\"playback_complete\",\"seq\":%lu,\"at_ms\":%lu}",
+                                     static_cast<unsigned long>(seq),
+                                     static_cast<unsigned long>(nowMs));
   if (written > 0 && static_cast<size_t>(written) < sizeof(frame) &&
       gBridgeNetworkSession.queueTextFrame(frame)) {
     gBridgeAudioDownlink.consumePlaybackCompletion();
@@ -4623,10 +4644,17 @@ void drainWakeMwwUplinkQueue(uint32_t nowMs) {
 #endif
 
 #if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
-bool submitDedicatedWakeCaptureChunk(uint32_t seq,
-                                     const int16_t* samples,
-                                     uint16_t sampleCount,
-                                     uint32_t nowMs) {
+enum class DedicatedWakeCaptureSubmitResult : uint8_t {
+  Submitted,
+  AuthorityExpired,
+  Failed,
+};
+
+DedicatedWakeCaptureSubmitResult submitDedicatedWakeCaptureChunk(uint32_t seq,
+                                                                 const int16_t* samples,
+                                                                 uint16_t sampleCount,
+                                                                 uint32_t nowMs) {
+  (void)nowMs;
   constexpr uint16_t kSubmitAttempts =
       STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS > 0
           ? STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS
@@ -4636,11 +4664,19 @@ bool submitDedicatedWakeCaptureChunk(uint32_t seq,
   for (uint16_t attempt = 0; attempt < kSubmitAttempts; ++attempt) {
     const uint32_t attemptMs = millis();
     gBridgeNetworkSession.update(attemptMs);
+    const uint32_t authorityNowMs = millis();
+    const BridgeWakeGateTelemetry& gateBeforeAttempt = gBridgeWakeGate.telemetry();
+    if (!dedicatedWakeCaptureMaySubmit(
+            gBridgeWakeGate.isGateOpen(authorityNowMs),
+            gateBeforeAttempt.turnActive,
+            gBridgeAudioUplink.telemetry().active)) {
+      return DedicatedWakeCaptureSubmitResult::AuthorityExpired;
+    }
     const BridgeSocketWriterTelemetry& writer = gBridgeNetworkSession.writer().telemetry();
     if (!writer.frameBuffered && !writer.binaryFrameQueued &&
-        gBridgeAudioUplink.submitPcmChunk(seq, samples, sampleCount, attemptMs)) {
+        gBridgeAudioUplink.submitPcmChunk(seq, samples, sampleCount, authorityNowMs)) {
       gBridgeNetworkSession.update(millis());
-      return true;
+      return DedicatedWakeCaptureSubmitResult::Submitted;
     }
     gBridgeNetworkSession.update(millis());
     if (kSubmitDelayMs > 0) {
@@ -4649,7 +4685,7 @@ bool submitDedicatedWakeCaptureChunk(uint32_t seq,
       taskYIELD();
     }
   }
-  return false;
+  return DedicatedWakeCaptureSubmitResult::Failed;
 }
 
 void finishDedicatedWakeCaptureTurn(uint32_t seq, uint32_t nowMs) {
@@ -4756,6 +4792,16 @@ void serviceDedicatedWakeCaptureChunk() {
     return;
   }
 
+  const uint32_t serviceNowMs = millis();
+  const BridgeWakeGateTelemetry& gateBeforeCapture = gBridgeWakeGate.telemetry();
+  if (!dedicatedWakeCaptureMaySubmit(
+          gBridgeWakeGate.isGateOpen(serviceNowMs),
+          gateBeforeCapture.turnActive,
+          gBridgeAudioUplink.telemetry().active)) {
+    finishDedicatedWakeCaptureSession(gWakeMwwDedicatedCapture.chunksSubmitted > 0);
+    return;
+  }
+
   const uint32_t serviceStartUs = micros();
 
   constexpr bool kRecordStereo = STACKCHAN_MWW_WAKE_RECORD_STEREO != 0;
@@ -4814,9 +4860,22 @@ void serviceDedicatedWakeCaptureChunk() {
       }
     }
 
-    if (submitDedicatedWakeCaptureChunk(
-            gWakeMwwDedicatedCapture.seq, monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs)) {
+    const BridgeWakeGateTelemetry& gateBeforeSubmit = gBridgeWakeGate.telemetry();
+    if (!dedicatedWakeCaptureMaySubmit(
+            gBridgeWakeGate.isGateOpen(gWakeSrProbe.lastRecordMs),
+            gateBeforeSubmit.turnActive,
+            gBridgeAudioUplink.telemetry().active)) {
+      finishDedicatedWakeCaptureSession(gWakeMwwDedicatedCapture.chunksSubmitted > 0);
+      return;
+    }
+
+    const DedicatedWakeCaptureSubmitResult submitResult = submitDedicatedWakeCaptureChunk(
+        gWakeMwwDedicatedCapture.seq, monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs);
+    if (submitResult == DedicatedWakeCaptureSubmitResult::Submitted) {
       ++gWakeMwwDedicatedCapture.chunksSubmitted;
+    } else if (submitResult == DedicatedWakeCaptureSubmitResult::AuthorityExpired) {
+      finishDedicatedWakeCaptureSession(gWakeMwwDedicatedCapture.chunksSubmitted > 0);
+      return;
     } else {
       gWakeMwwUplinkSubmitFailed = gWakeMwwUplinkSubmitFailed + 1u;
       submitFailed = true;
@@ -6046,8 +6105,6 @@ void printRuntimeStatus() {
   Serial.print(endpointControl.rejectedMessages);
   Serial.print(F(" bridge_endpoint_pairing_required="));
   Serial.print(gBridgeEndpointControl.pairingCodeRequired() ? 1 : 0);
-  Serial.print(F(" bridge_endpoint_pairing_code="));
-  Serial.print(gBridgeEndpointControl.requiredPairingCode());
   Serial.print(F(" bridge_endpoint_pairing_rejects="));
   Serial.print(endpointControl.pairingRejects);
   Serial.print(F(" bridge_endpoint_persistence_saves="));
@@ -6331,10 +6388,6 @@ void printBenchControl(const BenchControl& control) {
   if (control.hasPairingControl) {
     Serial.print(F(" pairing_action="));
     Serial.print(control.pairing.clear ? F("clear") : F("set"));
-    if (!control.pairing.clear) {
-      Serial.print(F(" pairing_code="));
-      Serial.print(control.pairing.code);
-    }
   }
   if (control.hasPairingTicket) {
     Serial.print(F(" pairing_ticket=1"));
@@ -6750,8 +6803,6 @@ void handlePairingControl(const BenchPairingControl& pairing, uint32_t nowMs) {
   Serial.print(accepted ? F("accepted") : F("rejected"));
   Serial.print(F(" required="));
   Serial.print(gBridgeEndpointControl.pairingCodeRequired() ? 1 : 0);
-  Serial.print(F(" code="));
-  Serial.print(gBridgeEndpointControl.requiredPairingCode());
   Serial.print(F(" at_ms="));
   Serial.println(nowMs);
 }
@@ -6785,8 +6836,6 @@ void handlePairingTicketControl(const BenchPairingTicketControl& ticket, uint32_
   Serial.print(pairingAccepted ? F("accepted") : F("rejected"));
   Serial.print(F(" pairing_required="));
   Serial.print(gBridgeEndpointControl.pairingCodeRequired() ? 1 : 0);
-  Serial.print(F(" code="));
-  Serial.print(gBridgeEndpointControl.requiredPairingCode());
   Serial.print(F(" bridge_url_applied="));
   Serial.print(bridgeUpdated ? 1 : 0);
   Serial.print(F(" bridge_ssid_available="));
@@ -7513,14 +7562,7 @@ void updateBridgeNetwork(uint32_t nowMs) {
 
 void serveBridgeLeanStatusJson(WiFiClient& client,
                                const char* schema,
-                               const char* requestTarget,
-                               bool speakerToneRequest,
-                               bool micToneRequest,
-                               bool wakeResetRequest,
-                               bool motionControlRequest,
-                               bool motionControlTargetEnabled,
-                               bool motionControlRequestAccepted,
-                               bool toneRequestAccepted) {
+                               const BridgeDebugHttpDecision& decision) {
   const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
   const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
   const BridgeClientTelemetry& bridge = gBridge.telemetry();
@@ -7545,15 +7587,6 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   sampleChipTemperature(millis(), false);
   samplePowerTelemetry(millis(), true);
 #endif
-  const bool recoveryRequest =
-      strcmp(requestTarget, "/recover") == 0 || strcmp(requestTarget, "/bridge-recover") == 0 ||
-      strcmp(requestTarget, "/wifi-recover") == 0;
-  const bool rebootRequest =
-      strcmp(requestTarget, "/reboot") == 0 || strcmp(requestTarget, "/restart") == 0 ||
-      strcmp(requestTarget, "/reset") == 0;
-  const bool audioStopRequest =
-      strcmp(requestTarget, "/audio-stop") == 0 || strcmp(requestTarget, "/playback-stop") == 0;
-
   static char body[20480];
   constexpr size_t kDebugJsonTailReserve = 96;
   size_t len = 0;
@@ -7583,7 +7616,15 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
 
   append("{\"schema\":\"%s\"", schema);
   append(",\"wifi_connected\":%s", wifi.connected ? "true" : "false");
-  append(",\"debug_request\":\"%s\"", requestTarget);
+  append(",\"debug_http_control_policy\":\"emergency_stop_only\"");
+  append(",\"debug_request_method\":\"%s\"", bridgeDebugHttpMethodName(decision.method));
+  append(",\"debug_request_route\":\"%s\"", bridgeDebugHttpRouteName(decision.route));
+  append(",\"debug_request_result\":\"%s\"", bridgeDebugHttpDispositionName(decision.disposition));
+  append(",\"debug_http_requests\":%lu", static_cast<unsigned long>(gBridgeDebugHttpRequests));
+  append(",\"debug_http_rejections\":%lu", static_cast<unsigned long>(gBridgeDebugHttpRejected));
+  append(",\"debug_http_emergency_stops\":%lu", static_cast<unsigned long>(gBridgeDebugHttpEmergencyStops));
+  append(",\"debug_http_camera_routes\":%lu", static_cast<unsigned long>(gBridgeDebugHttpCameraRoutes));
+  append(",\"control_disabled\":true");
   append(",\"debug_port\":%lu", static_cast<unsigned long>(STACKCHAN_BRIDGE_DEBUG_PORT));
 #if defined(ARDUINO_ARCH_ESP32)
   append(",\"uptime_ms\":%lu", static_cast<unsigned long>(millis()));
@@ -8314,19 +8355,17 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
 #endif
   append(",\"motion_enabled_at_boot\":%d", STACKCHAN_MOTION_ENABLED_AT_BOOT ? 1 : 0);
   append(",\"motion_autonomous_at_boot\":%d", STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT ? 1 : 0);
-  append(",\"debug_tone_request\":%s", (speakerToneRequest || micToneRequest) ? "true" : "false");
-  append(",\"debug_tone_accepted\":%s", toneRequestAccepted ? "true" : "false");
-  append(",\"debug_wake_reset_request\":%s", wakeResetRequest ? "true" : "false");
-  append(",\"debug_motion_request\":%s", motionControlRequest ? "true" : "false");
-  append(",\"debug_motion_target_enabled\":%s", motionControlTargetEnabled ? "true" : "false");
-  append(",\"debug_motion_accepted\":%s", motionControlRequestAccepted ? "true" : "false");
-  append(",\"debug_recovery_request\":%s", recoveryRequest ? "true" : "false");
-  append(",\"debug_recovery_accepted\":%s",
-         (recoveryRequest && STACKCHAN_REMOTE_RECOVERY_ENABLE != 0) ? "true" : "false");
-  append(",\"debug_reboot_request\":%s", rebootRequest ? "true" : "false");
-  append(",\"debug_reboot_accepted\":%s",
-         (rebootRequest && STACKCHAN_REMOTE_RECOVERY_ENABLE != 0) ? "true" : "false");
-  append(",\"debug_audio_stop_request\":%s", audioStopRequest ? "true" : "false");
+  append(",\"debug_tone_request\":false");
+  append(",\"debug_tone_accepted\":false");
+  append(",\"debug_wake_reset_request\":false");
+  append(",\"debug_motion_request\":false");
+  append(",\"debug_motion_target_enabled\":false");
+  append(",\"debug_motion_accepted\":false");
+  append(",\"debug_recovery_request\":false");
+  append(",\"debug_recovery_accepted\":false");
+  append(",\"debug_reboot_request\":false");
+  append(",\"debug_reboot_accepted\":false");
+  append(",\"debug_audio_stop_request\":false");
   append(",\"recovery_enabled\":%d", STACKCHAN_REMOTE_RECOVERY_ENABLE ? 1 : 0);
   append(",\"recovery_requested\":%s", gBridgeRecovery.recoveryRequested ? "true" : "false");
   append(",\"recovery_reboot_requested\":%s", gBridgeRecovery.rebootRequested ? "true" : "false");
@@ -8411,8 +8450,12 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          gBridgeAudioDownlink.telemetry().playbackAwaitingDrain ? "true" : "false");
   append(",\"bridge_downlink_playback_completion_pending\":%s",
          gBridgeAudioDownlink.telemetry().playbackCompletionPending ? "true" : "false");
+  append(",\"bridge_downlink_playback_completion_interrupted\":%s",
+         gBridgeAudioDownlink.telemetry().playbackCompletionInterrupted ? "true" : "false");
   append(",\"bridge_downlink_playback_completions\":%lu",
          static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackCompletions));
+  append(",\"bridge_downlink_playback_interruptions\":%lu",
+         static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackInterruptions));
   append(",\"bridge_downlink_playback_completion_signals\":%lu",
          static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackCompletionSignals));
   append(",\"bridge_downlink_playback_completion_seq\":%lu",
@@ -8749,6 +8792,81 @@ void serveCameraVisionTarget(WiFiClient& client, const char* requestTarget) {
 }
 #endif
 
+void serveBridgeDebugRejectionJson(WiFiClient& client, uint16_t statusCode) {
+  const char* statusText = "Bad Request";
+  switch (statusCode) {
+    case 403:
+      statusText = "Forbidden";
+      break;
+    case 404:
+      statusText = "Not Found";
+      break;
+    case 405:
+      statusText = "Method Not Allowed";
+      break;
+    case 414:
+      statusText = "URI Too Long";
+      break;
+    default:
+      statusCode = 400;
+      break;
+  }
+  constexpr char body[] = "{\"ok\":false,\"accepted\":false,\"error\":\"control_disabled\"}\n";
+  constexpr size_t bodyLength = sizeof(body) - 1u;
+  char header[192] = {};
+  const int headerLength = snprintf(
+      header,
+      sizeof(header),
+      "HTTP/1.1 %u %s\r\nContent-Type: application/json\r\nCache-Control: no-store\r\n"
+      "Content-Length: %u\r\nConnection: close\r\n\r\n",
+      static_cast<unsigned>(statusCode),
+      statusText,
+      static_cast<unsigned>(bodyLength));
+  if (headerLength <= 0 || static_cast<size_t>(headerLength) >= sizeof(header)) {
+    client.stop();
+    return;
+  }
+  client.write(reinterpret_cast<const uint8_t*>(header), static_cast<size_t>(headerLength));
+  client.write(reinterpret_cast<const uint8_t*>(body), bodyLength);
+  delay(1);
+  client.stop();
+}
+
+void serveBridgeDebugAdmissionJson(WiFiClient& client,
+                                   uint16_t statusCode,
+                                   const char* statusText,
+                                   bool accepted) {
+  const char* acceptedJson = accepted ? "true" : "false";
+  char body[64] = {};
+  const int bodyLength = snprintf(
+      body,
+      sizeof(body),
+      "{\"ok\":%s,\"accepted\":%s}\n",
+      acceptedJson,
+      acceptedJson);
+  if (bodyLength <= 0 || static_cast<size_t>(bodyLength) >= sizeof(body)) {
+    client.stop();
+    return;
+  }
+  char header[192] = {};
+  const int headerLength = snprintf(
+      header,
+      sizeof(header),
+      "HTTP/1.1 %u %s\r\nContent-Type: application/json\r\nCache-Control: no-store\r\n"
+      "Content-Length: %u\r\nConnection: close\r\n\r\n",
+      static_cast<unsigned>(statusCode),
+      statusText,
+      static_cast<unsigned>(bodyLength));
+  if (headerLength <= 0 || static_cast<size_t>(headerLength) >= sizeof(header)) {
+    client.stop();
+    return;
+  }
+  client.write(reinterpret_cast<const uint8_t*>(header), static_cast<size_t>(headerLength));
+  client.write(reinterpret_cast<const uint8_t*>(body), static_cast<size_t>(bodyLength));
+  delay(1);
+  client.stop();
+}
+
 void pollBridgeDebugServer(uint32_t nowMs) {
 #if defined(ARDUINO_ARCH_ESP32)
   if (!gBridgeWiFi.isConnected()) {
@@ -8768,17 +8886,32 @@ void pollBridgeDebugServer(uint32_t nowMs) {
   char requestLine[256] = {};
   size_t requestLineLen = 0;
   bool firstLineComplete = false;
+  bool requestLineOverflow = false;
+  bool requestLineInvalid = false;
+  bool pendingCarriageReturn = false;
   while (client.connected() && requestStartMs != 0 &&
          millis() - requestStartMs < STACKCHAN_BRIDGE_DEBUG_REQUEST_TIMEOUT_MS) {
     while (client.available() > 0) {
       const char ch = static_cast<char>(client.read());
-      if (!firstLineComplete && ch != '\r' && ch != '\n' && requestLineLen < sizeof(requestLine) - 1u) {
-        requestLine[requestLineLen++] = ch;
-        requestLine[requestLineLen] = '\0';
-      }
-      if (ch == '\n') {
-        firstLineComplete = true;
-        requestStartMs = 0;
+      if (!firstLineComplete) {
+        if (ch == '\n') {
+          firstLineComplete = true;
+          pendingCarriageReturn = false;
+          requestStartMs = 0;
+        } else if (pendingCarriageReturn) {
+          requestLineInvalid = true;
+          pendingCarriageReturn = false;
+        } else if (ch == '\r') {
+          pendingCarriageReturn = true;
+        } else if (static_cast<unsigned char>(ch) < 0x20u ||
+                   static_cast<unsigned char>(ch) == 0x7fu) {
+          requestLineInvalid = true;
+        } else if (requestLineLen < sizeof(requestLine) - 1u) {
+          requestLine[requestLineLen++] = ch;
+          requestLine[requestLineLen] = '\0';
+        } else {
+          requestLineOverflow = true;
+        }
       }
     }
     if (requestStartMs != 0) {
@@ -8786,129 +8919,82 @@ void pollBridgeDebugServer(uint32_t nowMs) {
     }
   }
 
-  char requestTarget[224] = "/";
-  const char* firstSpace = strchr(requestLine, ' ');
-  if (firstSpace != nullptr) {
-    const char* targetStart = firstSpace + 1;
-    const char* secondSpace = strchr(targetStart, ' ');
-    const size_t targetLen =
-        secondSpace != nullptr ? static_cast<size_t>(secondSpace - targetStart) : strlen(targetStart);
-    const size_t copyLen = targetLen < sizeof(requestTarget) - 1u ? targetLen : sizeof(requestTarget) - 1u;
-    memcpy(requestTarget, targetStart, copyLen);
-  requestTarget[copyLen] = '\0';
-  }
-#if STACKCHAN_ENABLE_CAMERA_HOST_VISION
-  if (strncmp(requestTarget, "/camera-gray.pgm?", 17) == 0) {
-    serveCameraGrayFrame(client, requestTarget);
-    return;
-  }
-  if (strncmp(requestTarget, "/vision-target?", 15) == 0) {
-    serveCameraVisionTarget(client, requestTarget);
-    return;
-  }
-#endif
-  const bool speakerToneRequest =
-      strcmp(requestTarget, "/tone") == 0 || strcmp(requestTarget, "/speaker-test") == 0;
-  const bool micToneSoftRequest =
-      strcmp(requestTarget, "/mic-tone") == 0 || strcmp(requestTarget, "/mic-tone-soft") == 0;
-  const bool micToneTapRequest = strcmp(requestTarget, "/mic-tone-tap") == 0;
-  const bool micToneOldRequest = strcmp(requestTarget, "/mic-tone-old") == 0;
-  const bool micToneRequest = micToneSoftRequest || micToneTapRequest || micToneOldRequest;
-  const bool wakeResetRequest = strcmp(requestTarget, "/wake-reset") == 0;
-  const bool audioStopRequest =
-      strcmp(requestTarget, "/audio-stop") == 0 || strcmp(requestTarget, "/playback-stop") == 0;
-  const bool motionEnableRequest =
-      strcmp(requestTarget, "/motion-resume") == 0 || strcmp(requestTarget, "/motion-on") == 0 ||
-      strcmp(requestTarget, "/servos-on") == 0;
-  const bool motionDisableRequest =
-      strcmp(requestTarget, "/motion-stop") == 0 || strcmp(requestTarget, "/motion-off") == 0 ||
-      strcmp(requestTarget, "/servos-off") == 0;
-  const bool motionControlRequest = motionEnableRequest || motionDisableRequest;
-  const bool recoveryRequest =
-      strcmp(requestTarget, "/recover") == 0 || strcmp(requestTarget, "/bridge-recover") == 0 ||
-      strcmp(requestTarget, "/wifi-recover") == 0;
-  const bool rebootRequest =
-      strcmp(requestTarget, "/reboot") == 0 || strcmp(requestTarget, "/restart") == 0 ||
-      strcmp(requestTarget, "/reset") == 0;
-  const LanOtaTelemetry& ota = gLanOtaServer.telemetry();
-  const bool otaBusy = ota.uploadActive || ota.rebootPending;
-  bool toneRequestAccepted = false;
-  bool motionControlRequestAccepted = false;
-  if (speakerToneRequest && !otaBusy) {
-    suppressWakeMwwDetections(millis(), 900);
-    toneRequestAccepted = gSpeakerSink.playDiagnosticTone();
-  } else if (micToneSoftRequest && !otaBusy) {
-    suppressWakeMwwDetections(millis(), 900);
-    toneRequestAccepted = gSpeakerSink.playMicActivationTone();
-  } else if (micToneTapRequest && !otaBusy) {
-    suppressWakeMwwDetections(millis(), 900);
-    toneRequestAccepted = gSpeakerSink.playMicActivationTap();
-  } else if (micToneOldRequest && !otaBusy) {
-    suppressWakeMwwDetections(millis(), 900);
-    toneRequestAccepted = gSpeakerSink.playLegacyMicActivationTone();
-  }
-#if STACKCHAN_HAS_MWW_WAKE_PROBE
-  if (wakeResetRequest) {
-    gWakeMwwResetRequested = true;
-  }
-#endif
-  if (audioStopRequest) {
-    gBridgeAudioRemoteStopRequests++;
-    stopBridgeAudioRuntime(nowMs, BridgeAudioSafetyStopReason::RemoteRequest);
-  }
-  if (motionControlRequest) {
-    BenchControl control;
-    control.hasMotionEnable = true;
-    control.motionEnabled = motionEnableRequest;
-    motionControlRequestAccepted = publishMotionControl(control);
-  }
-#if defined(ARDUINO_ARCH_ESP32) && STACKCHAN_REMOTE_RECOVERY_ENABLE != 0
-  if (recoveryRequest) {
-    gBridgeRecovery.recoveryRequested = true;
-    gBridgeRecovery.scheduledRecoveryMs = millis() + STACKCHAN_REMOTE_RECOVERY_DELAY_MS;
-    gBridgeRecovery.lastReason = "remote_recover";
-  }
-  if (rebootRequest) {
-    gBridgeRecovery.rebootRequested = true;
-    requestBridgeReboot("remote_reboot", millis());
-  }
-#endif
-#if STACKCHAN_HAS_MWW_WAKE_PROBE
-  if (strcmp(requestTarget, "/wake.wav") == 0 || strcmp(requestTarget, "/wake-pcm.wav") == 0) {
-    serveWakeMwwPcmWav(client);
-    client.flush();
-    delay(1);
-    client.stop();
-    return;
-  }
-#endif
-  if (strcmp(requestTarget, "/debug") == 0) {
-    serveBridgeLeanStatusJson(
-        client,
-        "stackchan.bridge-debug.v1",
-        requestTarget,
-        speakerToneRequest,
-        micToneRequest,
-        wakeResetRequest,
-        motionControlRequest,
-        motionEnableRequest,
-        motionControlRequestAccepted,
-        toneRequestAccepted);
-    return;
-  }
-
-  serveBridgeLeanStatusJson(
-      client,
-      "stackchan.bridge-status.v1",
+  char requestTarget[224] = {};
+  const BridgeDebugHttpDecision decision = evaluateBridgeDebugHttpRequestLine(
+      requestLine,
+      firstLineComplete,
+      requestLineOverflow,
+      requestLineInvalid,
       requestTarget,
-      speakerToneRequest,
-      micToneRequest,
-      wakeResetRequest,
-      motionControlRequest,
-      motionEnableRequest,
-      motionControlRequestAccepted,
-      toneRequestAccepted);
-  return;
+      sizeof(requestTarget));
+  gBridgeDebugHttpRequests++;
+  switch (decision.disposition) {
+    case BridgeDebugHttpDisposition::ServeStatus:
+      serveBridgeLeanStatusJson(client, "stackchan.bridge-status.v1", decision);
+      return;
+    case BridgeDebugHttpDisposition::ServeDebug:
+      serveBridgeLeanStatusJson(client, "stackchan.bridge-debug.v1", decision);
+      return;
+    case BridgeDebugHttpDisposition::EmergencyAudioStop:
+      gBridgeDebugHttpEmergencyStops++;
+      gBridgeAudioRemoteStopRequests++;
+      stopBridgeAudioRuntime(nowMs, BridgeAudioSafetyStopReason::RemoteRequest);
+      serveBridgeDebugAdmissionJson(client, 202, "Accepted", true);
+      return;
+    case BridgeDebugHttpDisposition::EmergencyMotionStop: {
+      gBridgeDebugHttpEmergencyStops++;
+      BenchControl control;
+      control.hasMotionEnable = true;
+      control.motionEnabled = false;
+      const bool accepted = publishMotionControl(control);
+      if (accepted) {
+        serveBridgeDebugAdmissionJson(client, 202, "Accepted", true);
+      } else {
+        serveBridgeDebugAdmissionJson(client, 503, "Service Unavailable", false);
+      }
+      return;
+    }
+    case BridgeDebugHttpDisposition::CameraGray:
+      gBridgeDebugHttpCameraRoutes++;
+#if STACKCHAN_ENABLE_CAMERA_HOST_VISION
+      serveCameraGrayFrame(client, requestTarget);
+#else
+      serveBridgeDebugRejectionJson(client, 404);
+#endif
+      return;
+    case BridgeDebugHttpDisposition::CameraVision:
+      gBridgeDebugHttpCameraRoutes++;
+#if STACKCHAN_ENABLE_CAMERA_HOST_VISION
+      serveCameraVisionTarget(client, requestTarget);
+#else
+      serveBridgeDebugRejectionJson(client, 404);
+#endif
+      return;
+    case BridgeDebugHttpDisposition::RejectBadRequest:
+      gBridgeDebugHttpRejected++;
+      serveBridgeDebugRejectionJson(client, decision.statusCode);
+      return;
+    case BridgeDebugHttpDisposition::RejectForbidden:
+      gBridgeDebugHttpRejected++;
+      serveBridgeDebugRejectionJson(client, decision.statusCode);
+      return;
+    case BridgeDebugHttpDisposition::RejectNotFound:
+      gBridgeDebugHttpRejected++;
+      serveBridgeDebugRejectionJson(client, decision.statusCode);
+      return;
+    case BridgeDebugHttpDisposition::RejectMethod:
+      gBridgeDebugHttpRejected++;
+      serveBridgeDebugRejectionJson(client, decision.statusCode);
+      return;
+    case BridgeDebugHttpDisposition::RejectUriTooLong:
+      gBridgeDebugHttpRejected++;
+      serveBridgeDebugRejectionJson(client, decision.statusCode);
+      return;
+    default:
+      gBridgeDebugHttpRejected++;
+      serveBridgeDebugRejectionJson(client, 400);
+      return;
+  }
 #endif
 }
 

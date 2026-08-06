@@ -1,13 +1,604 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-13 15:53 America/New_York
+Status timestamp: 2026-08-05 America/New_York
 
-## Current Lead: Power-Coordinated Full-Online Accepted Lead
+## Current Exact-Image Physical Checkpoint (2026-08-05)
 
-This supersedes the older recovery-only status below. The current physical lead is the
-full-online CoreS3 firmware with smooth face, bot-local wake, Whisper STT uplink,
-Gemma 4 PC brain, warm PC-side RVC voice conversion, M5 speaker downlink, and servo
-support compiled with motion disabled at boot.
+The installed firmware and running host source checkpoint is
+`a0f56b76f0bece2f4f732f70d3115bc6800c843d`. Private candidate
+`stackchan_release_forensics` SHA-256
+`2e9924e621e305b10642c2a0db395ed6aee7bdbd9766ea90faca7760a971fb62` was installed by LAN OTA and
+confirmed on `app0`. Live evidence reports motion request, autonomous motion, servo rail, and torque
+off. The first candidate boot reports ESP panic code `4` with PMIC boot event `none`; no cause is
+assigned. Preserve the boot and hold P1/P2 rather than rebooting, reflashing, or discarding evidence.
+
+The candidate passed 304/304 native tests, 577/577 bridge tests, 124/124 focused transcript/LAN tests,
+the silent trusted-facts smoke, the DirectML launcher contract, a public build, and one clean private
+build. It has not passed two-cycle reproducibility or full physical P1. Camera and host vision are
+compiled out. The 2026-08-05 23:55Z armed physical speech attempt failed: firmware reported 81
+uplink chunks / 129,600 bytes (about 4.05 seconds of 16 kHz PCM) over an 18.436-second capture
+interval, but the host received no completed `utterance_end`, invoked no STT, and produced no reply.
+The operator reported that they had not finished the sentence. The one-shot expected-versus-Whisper
+diagnostic remains unconsumed, so this trial has no valid WER and must be classified as endpoint/turn
+delivery failure. This image can support focused audio diagnosis only; it cannot earn full P1.
+
+A reviewer-approved four-second physical recorder diagnostic is sealed at
+`output/pc-brain/passive-no-motion-diagnostic-a0f56b76-20260805-202408`. It recorded 6/6 successful
+exact-image/host polls, a stable boot count, zero motion breaches, no safety-stop call, and unchanged
+zero motion-enable, refresh, rail-enable, power-grant, and actuator-write counters. VBUS stayed at or
+above 4,959 mV during the sample (reported boot minimum 4,947 mV), chip temperature reached 60.5 C,
+and the maximum display frame was 20,422 us. It correctly failed only because the evidence tooling
+tree was dirty and the preserved reset reason is panic. This validates recorder mechanics against
+the real robot; it is not P1 evidence.
+
+The exact committed follow-up at
+`output/pc-brain/passive-no-motion-diagnostic-edd519f9-20260805-203820` bound recorder and checker
+bytes to source `edd519f9faacf56d84f01fdc2a248521ef26ef85`. It recorded 10/10 real polls over
+6.058 seconds, 5.172 seconds of monotonic coverage, a maximum 1.157-second gap, zero motion breaches,
+unchanged motion/rail/write counters, and motion/rail/torque off afterward. The checker passed every
+gate except clean reset and the summary fields that truthfully carry that panic hold. This proves the
+committed recorder's real-device mechanics, not P1 or long-term stability.
+
+The focused 600-second physical run at
+`output/pc-brain/passive-no-motion-600s-6de75980-20260805-204103` used clean, pushed recorder source
+`6de75980a6fc8ad443ec2bc0e1fe973fd707d821`. It completed 300/300 successful hardware polls over
+601.219 seconds with 598.767 seconds of monotonic coverage and a maximum 2.773-second gap. It
+observed zero motion breaches, no safety-stop call, no motion/rail/torque authority, unchanged
+motion and power counters, a live exact host PID/bridge/socket on every sample, minimum sampled VBUS
+4,950 mV, maximum chip temperature 60.5 C, and maximum display frame time 34,820 us. The checker
+failed only `clean-reset` plus the summary fields that propagate the preserved panic code `4`.
+This is valid focused no-motion evidence for the installed image; it is an expected failure, not a
+P1 pass, because reset provenance is not clean and camera/host vision are compiled out.
+
+The dated records below remain evidence. This checkpoint supersedes their former claims that no
+replacement was installed or that the live bridge was absent. It does not transfer old qualification
+or soak evidence to the current SHA.
+
+## Qualification Checkout Authority (2026-08-05)
+
+The authoritative checkout for the current M0/P0 qualification lane is the clean worktree at
+`D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
+`codex/aliveness-repository-truth`. Do not infer qualification state from the repository's default
+working directory or from another retained worktree. At this checkpoint the exact clean head and
+remote branch must be checked immediately before every qualification command with `git status`,
+`git rev-parse HEAD`, and `git rev-parse origin/codex/aliveness-repository-truth`. The tooling head
+is expected to advance when reviewed evidence code lands; it is not the installed firmware identity.
+
+The primary checkout at `D:\CodexProjects\stackchan_alive` was cleanly moved from
+`agent/away-cloudflare-bridge` to current local `main`, and local `main` was fast-forwarded to the
+verified remote `39b750e6c354d1c4721c70bf20fba98b8ce5c3ec`. The remote-access branch is preserved unchanged at
+`269b11beeac788f76fff5d566446a91b8688bf8f`; it is not a qualification input. It predates the current
+containment lane and adds Cloudflare-backed remote access plus firmware network-path changes.
+Because remote-access infrastructure requires explicit approval, do not merge, rebase, flash,
+package, or qualify that exact branch. Any explicitly approved future remote-access work must be
+implemented afresh from the then-current qualification head and receive a separate security,
+privacy, protocol-authority, and motion-containment review.
+
+## Historical SEC-002 Qualification Hold (2026-08-03)
+
+The clean `SEC-002` package built from `4d31de41` is preserved as source/package evidence only.
+Its public `full_online` image is SHA-256
+`4256F2E5F4A5567361A97796CFC2A81E7DE24EC7F2202FCFB7C9C4CFC1B31055` and its effective build
+configuration requests motion and autonomous motion at boot. It must not be installed for the
+planned exact-image no-motion qualification. This corrects the package's former role without
+rewriting its historical hash or claiming that it was deployed.
+
+The replacement source profile inherits motion-off-at-boot, explicitly keeps autonomous refresh
+off, and is committed as `b5ea5c5f95e737d50c2ef2619b8efc4d846b4ea3`. OTA selector authority and
+publication locking are committed through `e52826a4a130f00718e20e71e5aea0f1cbc050ff`. The reviewed
+24-component exact-host toolchain integration is committed as
+`616424e4b87bc8cc7c737a849d543eda7bf51dfd`; independent
+recomputation matched every component and clean B/C canonical libdeps for all three release
+environments. The packager/verifier integration and broad reproducibility contracts pass, but the
+retained exact-host guard and governed package have not yet passed for this commit. No replacement package,
+installation, physical qualification, or soak exists yet. The release package/flasher source carries a per-environment
+`boot_app0.bin` bound to reviewed framework versions, exact 8,192-byte size, and SHA-256, and writes
+it at `0xE000` between the partition table and application. The flasher uses a second-verified,
+read-locked private ZIP snapshot and hashes locked payload streams against that snapshot before
+esptool. Publication holds staged assets read-locked through upload and downloads the standalone
+firmware assets for remote hash verification. A diagnostic-only v13 rehearsal verified those
+contracts, but it is not a flash or qualification input.
+Hold all flashing and physical promotion until the exact-host guard and exact clean governed
+package pass their two-cycle build and independent rebuild for the committed source, a reviewed rollback
+path exists, and a fresh passive no-motion preflight is complete.
+
+### Authenticated exact-host retry evidence (2026-08-04)
+
+Source commit `cf75a8dbddf90c2fcd02558f6ffc76899f34b697` passed all 11 jobs in exact-head
+GitHub Firmware run `30890019733`. The second local guarded attempt is preserved under outer run
+`output/private/current-head-guard-promotions/20260804-101617-358f1e7e3ec3` and runner run
+`output/private/toolchain-guard-smoke/20260804-101639-1304-c17b029421024407978cff288d3480a2`.
+It failed closed during build A before packaging. Linking completed, but pioarduino had created the
+51,819-byte target-specific `pioarduino-build.py.esp32s3` backup even though the governed profiles
+have no `lib_ignore`. Its `checkprogsize` post-action then tried to restore the framework script
+while the authenticated lifetime guard correctly held that file read-only. The resulting Windows
+sharing violation is evidence of an upstream no-op toolchain write, not a locked `firmware.elf`,
+firmware failure, or hardware failure. The contaminated framework-libs tree is not allowlisted.
+
+The same run exposed a separate evidence-wrapper defect: a collector-status query overlapped
+`wpr -stop -compress`, returned duplicate-control-library error `0xc5580601`, and prevented formal
+merged-ETL loss proof. Twenty-nine earlier collector samples reported zero loss, and WPR later
+reported scoped idle, but those facts do not replace the missing final proof. The raw trace and all
+failed-run evidence remain preserved; no package was produced and no bridge, robot, port, flash,
+or actuator operation occurred.
+
+The reviewed source correction is now provisioned on the exact release host. It keeps empty
+normalized `lib_ignore` read-only while preserving the backup immediately before a real LTO edit;
+the WPR wrapper correction serializes stop/export against every WPR control command. Source commit
+`76d67273f5a8ec4ecdb603627c99e83f07aec64e` passed all 11 jobs in exact-head GitHub Firmware run
+`30920597195`. The old failed-run scheduled authority and active-file pair were archived under their
+historical pins and removed. State-D finalization is recorded by `removal.final.json` SHA-256
+`DB4693B7BB71BB7C4A6EC90636DFAB3B33063F189C2816EAD5D03ED21CD43CC6`; the task and both active
+files remain absent.
+
+An unisolated validation build refreshed two existing CPython cache files, and four generated cache
+files were present when recovery began. A later diagnostic `git status` rewrote the governed
+platform `.git/index`; neither event is attributed to firmware or hardware. The four exact cache
+files were archived and removed in a sealed transaction from
+platform identity `2AD818580622CA4F57C4F480222EAAF1EFA6961A5DD332F3102A669E61B6D55E` (616 files,
+22,522,081 bytes) to `9371DF52EF5A5A9A8D3ABF35D1D08F47994FE3929B67B5C94CF24316F3D8738F`
+(612 files, 22,355,010 bytes), with zero added or changed retained files. Completion evidence is
+SHA-256 `001CBC5D6F511C32B0829F1FB34A0FE851F48846C8290F29C5A09F434920FB67`.
+The independently reviewed 24-component allowlist and matching packager/verifier pins now cover
+those exact host bytes; the reviewed allowlist SHA-256 is
+`8425BFD814AD4395E70DD86AFF7CFD3D9003F3D5E91FBBC1F2F19BAAF0FF1790`, and all three
+toolchain/promotion trust contracts pass. The cache-free allowlist promotion is committed as
+`4590528941eefd919edcb62ecc9aa5bbd4657d51`; all 11 jobs passed in exact-head GitHub Firmware run
+`30925806783`. A fresh detached build worktree at that commit and the private guarded authority
+chain independently reverified the exact release-platform identity above, 612 files, 22,355,010
+bytes, zero CPython cache files, and the expected clean source/configuration identities.
+
+Two subsequent local guarded executions failed closed before producing a package. Outer run
+`output/private/current-head-guard-promotions/20260804-161747-853de45e39bf` reached build A, then
+its recorder jumped from zero loss to 2,622,135 lost events. The runner was contained, the partial
+output had no firmware binary, the compiler outcome remained indeterminate, and all available
+retained evidence was preserved. The wrapper was then hardened and self-tested with 10-second
+collector polling,
+nullable-exit handling, bounded diagnostic trace salvage, fresh storage/journal checks, and a
+512 x 1 MiB exact diagnostic buffer profile. Those changes improve containment and evidence
+quality; they do not make a lossy trace eligible for promotion.
+
+The one corrected retry is outer run
+`output/private/current-head-guard-promotions/20260804-172745-f3d5c167fe8b`, transaction SHA-256
+`18CD37DF9F339BE6BB1CD0235E139FE3AD802A69047BB3A7B67EBDADEAFD43AD`, with runner evidence under
+`output/private/toolchain-guard-smoke/20260804-172801-26784-9c832522d58449fc8a26bd1195724780`.
+Exact prebuild identity, dependency installation, and clean-before-build-A passed. During build A,
+collector sample 132 still reported zero loss; sample 133 reported 990,278 lost/dropped events.
+The wrapper immediately terminated the runner, recorded 1,126,928 events lost before cleanup, and
+completed diagnostic-only ETL salvage. The sealed ETL header reports 1,265,270 lost events. The
+wrapper manifest is SHA-256
+`9D8EBC63AF6D3C78D8F06E4C27EDC91E2F24AEBECF7A7BCE51995BFAEA081105` and remains `status=fail`.
+Storage stayed within policy, the durable journal drained 1,450/1,450 samples, final WPR state is
+idle, terminal containment is proven, conventional authorities were restored to `B/B/B`, and no
+promotion occurred. Exact failed-run cleanup archived the residual authority, removed only the
+disabled task and active-file pair, and reached state D; its `removal.final.json` is SHA-256
+`F92ED013CE327081DD7E5A9E2861A8B7A04193168215862DBCEE1B39BB965197`.
+
+These are host evidence-recorder failures, not firmware, robot, USB, power, thermal, or actuator
+failures. In these two guarded executions, no governed package or replacement firmware was
+produced, and the guarded workflow did not flash, start a bridge session, access a robot port,
+perform no-motion qualification, or move a motor. After the two failed recorder parameter
+variations, no third WPR tuning run is authorized. WPR/ETL is now optional corroborating forensic
+evidence, not a release-promotion predicate; recorder loss must remain visible as
+`diagnostic-failed` and any recorder session must return idle, but it does not override the direct
+reproducibility proof.
+
+The M0/P0 build authority remains fail-closed through the reviewed public controls: one exact clean
+commit and host-installed toolchain allowlist, retained file leases and namespace mutation guards,
+sanitized build environment, two clean cycles from distinct detached worktrees and caches, exact
+artifact-byte comparison, package source binding, and independent package rebuild/verification.
+Any failure in those controls still rejects the candidate. The SEC-002 hold remains in force until
+that governed two-cycle proof succeeds and the resulting exact package passes its independent
+rebuild and passive no-motion preflight; lossless system-wide WPR is not additionally required.
+
+### Direct package routing failure (2026-08-04)
+
+Qualification head `ce5dc3abdfd390c4b06762a3547b5895b05df681` passed all 11 jobs in exact-head
+GitHub Firmware run `30942401869`. The first direct WPR-free public-packager attempt then failed
+closed before cycle A and before release-output creation. The physical checkout was long enough to
+require the packager's temporary `R:` mapping. In the short-path child, Windows kept
+`Resolve-Path R:\` as the logical alias while the reviewed Git executable canonicalized
+`rev-parse --show-toplevel` to the exact physical
+`D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` path. The bootstrap
+guard compared those equivalent roots as strings and rejected the child with
+`Release packaging must start at its exact Git top-level.`
+
+This is a release-host routing defect, not a toolchain-identity, firmware, robot, USB, power,
+thermal, motion, or reproducibility result. The failed attempt produced no cycle A/B build, ZIP,
+sidecar, package verification log, flash, bridge session, robot-port access, or actuator command.
+WPR remained idle, the temporary mapping was removed, retained packager processes exited, and the
+qualification worktree remained clean at the failed head. The source correction preserves exact
+Git-top-level validation by requiring an empty Git `--show-prefix`, exactly one mapping for the
+governed short drive, exact equality between the mapped physical target and Git's canonical
+top-level, a non-reparse target directory, and an unchanged mapping after bootstrap trust. Its
+contract executes the production resolver both from the physical checkout and from the actual
+short-drive child context. The SEC-002 hold remains in force until that correction is committed,
+passes exact-head CI, and a fresh direct two-cycle package plus independent rebuild succeed.
+
+### Direct package reproducibility failure (2026-08-04)
+
+Qualification head `1da3c505fd83a664f4d348b84714398f2e941e8f` passed all 11 jobs on the
+first attempt in exact-head GitHub Firmware run `30949170237`. Direct WPR-free packaging for
+`sec-002-1da3c505` passed the corrected physical-to-`R:` bootstrap, exact-host authority scans, and
+both clean firmware build cycles, then failed closed during artifact comparison. No package ZIP,
+sidecar, package verification log, flash, bridge session, robot-port access, or actuator command
+was produced. WPR was idle, the temporary mapping was removed, and all packager/PlatformIO
+processes exited. The complete failed cycle-B worktree remains attached at
+`E:\sc-firmware-b-22576-e1b117f4`; ignored failure evidence is preserved under
+`output/private/reproducibility-failures/20260804-213837-22576-9fb7bb93f52f4d9794f4a1bff3f43cd8`.
+
+Direct hashing found nine matching artifact pairs and six mismatches: `firmware.bin` and
+`firmware.elf` for each of `stackchan`, `stackchan_servo_calibration`, and
+`stackchan_release_full`. Every bootloader, partition table, and `boot_app0.bin` pair matched. Each
+firmware BIN had identical size and differed in exactly 65 bytes: the 32-byte ESP application ELF
+hash plus the final checksum and image digest. All runtime/loadable ELF sections matched. Only
+non-runtime DWARF `.debug_info`/`.debug_line` metadata differed; cycle B recorded alternate relative
+M5GFX include paths containing `../` segments. The source commit/epoch, dependency revisions,
+toolchain identities, and runtime bytes were identical, so this is a real exact-byte reproducibility
+failure but not evidence of changed firmware logic, robot behavior, power, USB, thermal, or motion.
+
+The varying input was the packager's intentional unequal scratch-root length (`fw-a` versus
+`firmware-b`). A targeted diagnostic rebuilt `stackchan` from two fresh distinct 30-character
+detached roots with separate caches, fixed-width names, the same exact commit/epoch, and different
+dependency-install timestamps. Both firmware BINs matched at
+`6873F6967C5DCD01BC6E7D62C63C48ED2BFF21EAB1FF0FFA4962BDF720DBB22B`; both ELFs matched at
+`69D94CE11BF69EA1DE9F13AC03B61D8D6ADC5E5ABDF7F5C2113C25902B2BBA1D`. The release correction
+therefore keeps distinct worktrees/caches and exact byte comparison, but requires `fw-a`, `fw-b`,
+and independent-verifier `vrfy` roots to use one equal total length with a ten-digit process-ID
+field. The SEC-002 hold remains in force until that correction passes contracts, exact-head CI, a
+fresh full two-cycle package, and the independent rebuild.
+
+### Equal-length proof and commit-bound RVC packaging hold (2026-08-04)
+
+Qualification head `16d8f1b0245f829737e406c5a6309d5486249f2a` passed all 11 jobs on the
+first attempt in exact-head GitHub Firmware run `30955812308`. Direct WPR-free packaging for
+`sec-002-16d8f1b0` then built both release cycles from distinct equal-length 30-character source
+roots, passed exact comparison of all 15 firmware artifacts, removed both clean cycle worktrees,
+and advanced into the detached release-source staging phase. This closes the prior unequal-root
+DWARF/ELF-hash failure in the actual governed path; it does not by itself create an eligible
+package.
+
+The same run failed closed before ZIP creation and independent verification when the RVC verifier
+read the canonical 133-byte Git LFS pointer for `model.pth` as though it were the 57,577,722-byte
+payload. Hardened Git intentionally disables LFS filters, so the detached commit-bound worktree
+correctly remains pointer-only. Both referenced objects are already present in the local Git LFS
+object cache and independently match the committed OIDs, declared sizes, and reviewed production
+SHA-256 values. No download, smudge, source-worktree hydration, flash, COM access, bridge session,
+robot-port access, or actuator command occurred during the package run. The partial output has no
+manifest, checksum inventory, ZIP, or verifier result and is not a candidate.
+
+The release correction keeps Git LFS execution and network access disabled. It requires ordinary
+`H` index state and exact commit-pointer blob bytes, parses only the canonical three-line LFS v1
+pointer, selects the matching content-addressed object under the non-reparse local Git common
+directory, copies it through one held read-only handle to a temporary package file, verifies size
+and SHA-256, and only then promotes it to its destination. The independent verifier separately
+binds the packaged bytes and manifest record back to the exact expected commit pointer, then applies
+the existing production RVC hash allowlist. The source-binding, command-trust, verifier-trust, and
+full 22-environment reproducibility contract bundle pass with this correction.
+A focused real-cache probe used the retained pointer-only worktree at
+`E:\sc-firmware-b-22576-e1b117f4`, streamed both local content-addressed objects through the new
+helper, independently rebound the staged files to those pointers, and matched both reviewed hashes;
+ignored evidence is under `output/private/manual-lfs-probe-20260804`.
+
+Qualification head `df8e74694b5beda356ddd6f92837e4b64b70aca2` then passed all 11 jobs on the
+first attempt in exact-head GitHub Firmware run `30960949704`. Governed packaging for
+`sec-002-df8e7469` again completed both equal-length firmware cycles and exact comparison of all 15
+artifacts. The detached release-source phase successfully materialized and verified both production
+RVC payloads from the exact commit pointers. The run then failed closed before manifest, ZIP, or
+independent package verification when the Character Lock red-team CLI could not import its sibling
+`character_harness` module. Release Python intentionally had `PYTHONSAFEPATH=1`; the CLI had relied
+on Python implicitly adding the script directory to `sys.path`, so the isolated package path exposed
+the defect. The partial output under `output/release/sec-002-df8e7469` is not a candidate. No flash,
+OTA request, COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction keeps the global safe-path policy in force and explicitly anchors the red-team CLI's
+sibling imports to the resolved directory containing its own exact tracked file. A subprocess
+regression launches the CLI from an unrelated directory with `PYTHONSAFEPATH=1` and
+`PYTHONNOUSERSITE=1`. Qualification head
+`aa038361105aa29cced9525c17388193f3a59a07` passed all 11 jobs on the first attempt in exact-head
+GitHub Firmware run `30965070918`.
+
+Governed packaging for `sec-002-aa038361` again completed both equal-length firmware cycles, exact
+comparison of all 15 artifacts, commit-bound production RVC materialization, and the previously
+failing Character Lock red-team export. It then failed closed before manifest, ZIP, or independent
+package verification when `export_voice_source_status.ps1` invoked the production RVC verifier
+against its detached source root, where the files are intentionally 133-byte Git LFS pointers,
+instead of the already verified package RVC root. The partial output under
+`output/release/sec-002-aa038361` is not a candidate. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction adds an explicit voice root to the exporter, binds the governed package invocation
+to `media/voice/rvc` inside that package, and adds a negative contract proving that a pointer-only
+override is rejected without producing ready status. A focused read-only probe exported both status
+files from the exact materialized RVC directory in the retained partial package; ignored evidence is
+under `output/private/manual-voice-source-export-probe-20260805`. The SEC-002 hold remains in force
+until this correction passes the broad contracts, exact-head CI, and a fresh governed package plus
+independent rebuild.
+
+Qualification head `332708ef157529eb568f50d1deacb2a7b836d5ee` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30968255009`. Governed packaging for
+`sec-002-332708ef` again completed both equal-length firmware cycles, exact comparison of all 15
+artifacts, commit-bound production RVC materialization, Character Lock red-team export, and the
+corrected voice-source status export. It then failed closed before manifest, ZIP, or independent
+package verification when the adjacent `export_rvc_voice_base_status.ps1` repeated the detached
+source-root mistake and read the 133-byte Git LFS pointers instead of the verified package RVC
+payloads. The partial output under `output/release/sec-002-332708ef` is not a candidate. No flash,
+OTA request, COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction gives the RVC base-status exporter the same explicit voice-root boundary, binds its
+governed package invocation to the materialized `media/voice/rvc` directory, and adds paired
+positive and pointer-only negative contracts for both status exporters. The remaining direct
+production RVC verifier invocations in packaging and independent verification were audited and
+already target the materialized package directory. The SEC-002 hold remains in force until this
+correction passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
+Qualification head `93bda8cbd59791cf950b554b0fcd46b7eb06b83b` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30971770631`. Governed packaging for
+`sec-002-93bda8cb` completed both equal-length firmware cycles, exact artifact comparison,
+commit-bound production RVC materialization, both corrected voice status exports, manifest and
+acceptance generation, and provisional ZIP creation. Independent ZIP verification then failed
+closed because its static synthetic-evidence marker list still required
+`export_rollout_status.ps1`. Commit `616424e4` had intentionally replaced that synthetic packet
+command with a non-authorizing message requiring the exact trusted source checkout and six exact
+host toolchain authorities, but had not updated the verifier marker. The provisional ZIP and
+partial output under `output/release/sec-002-93bda8cb` are not candidates. No flash, OTA request,
+COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction removes the stale mutable-exporter/output expectations, pins the stronger exact
+checkout, exact-host toolchain, and archive-authority boundary in both generator and independent
+verifier, and adds a regression that rejects reintroducing the exporter into synthetic diagnostic
+packets. The SEC-002 hold remains in force until this correction passes the broad contracts,
+exact-head CI, and a fresh governed package plus independent verification.
+
+Qualification head `403073c866b97c597ccffb415a7a89ab8027a75a` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30975232501`. Governed packaging for
+`sec-002-403073c8` completed both equal-length firmware cycles, exact artifact comparison,
+package assembly, voice/RVC status export, provisional ZIP creation, and the independent verifier's
+exact-commit firmware rebuild. Verification then failed closed before release eligibility when
+`Get-OperationalTrustedCommitMaps` read its script-scope cache under strict mode before that cache
+had been initialized. The provisional ZIP and partial output under
+`output/release/sec-002-403073c8` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction initializes the operational trusted-commit map cache explicitly before any
+strict-mode access and adds a contract requiring that initialization to precede the cache function.
+An audit of verifier script-scope cache reads found no second uninitialized cache. The SEC-002 hold
+remains in force until this correction passes the broad contracts, exact-head CI, and a fresh
+governed package plus independent verification.
+
+Qualification head `760d94465c2a973b37636d44a9b5546619298c77` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30978581265`. Governed packaging for
+`sec-002-760d9446` completed both equal-length firmware cycles, exact size/SHA-256 comparison of
+all 15 artifact pairs, package assembly, voice/RVC status export, provisional ZIP creation, and
+launch of the independent release-eligible verifier. Verification then failed closed before
+release eligibility at `verify_release_package.ps1:663`: Windows PowerShell 5.1 rejected
+`Join-Path` when its valid package enumeration root used the `\\?\` extended-length prefix and
+reported the misleading internal error that argument `drive` was null. The provisional ZIP and
+partial output under `output/release/sec-002-760d9446` are not candidates. No flash, OTA request,
+COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction preserves the extended-length enumeration root and replaces all four provider-backed
+joins against it with `System.IO.Path.Combine`. The verifier trust contract now rejects any
+`Join-Path` use against that root, pins the four governed child joins, and exercises traversal of a
+combined Windows extended-length child. The SEC-002 hold remains in force until this correction
+passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
+Qualification head `72ce564aa8ccb28216a6ae70f52ad186fd04cf33` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30982583318`. Governed packaging for
+`sec-002-72ce564a` completed both equal-length firmware cycles, exact size/SHA-256 comparison of
+all 15 artifact pairs, package assembly, provisional ZIP creation, and launch of the independent
+release-eligible verifier. The verifier passed the corrected extended-length package inventory and
+then failed closed on the deterministic package README check. The trusted qualification worktree
+README had 386 CRLF plus 30 LF endings, while the fresh commit-bound producer worktree materialized
+all 416 endings as CRLF under the same canonical Git blob. After line-ending normalization, all
+text and all nine link rewrites matched exactly. The provisional ZIP and partial output under
+`output/release/sec-002-72ce564a` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction makes the already-trusted source-binding helper produce one deterministic all-CRLF
+package README from LF, CRLF, mixed, or bare-CR source materialization before applying the exact
+`docs/media` link rewrite. Both producer and verifier use that helper, while the verifier compares
+the expected UTF-8/no-BOM bytes to the packaged bytes without normalizing the package. Contract
+fixtures reject alternate EOLs, BOM, UTF-16, and semantic mutation. The SEC-002 hold remains in
+force until this correction passes the broad contracts, exact-head CI, and a fresh governed package
+plus independent verification.
+
+Qualification head `ea392b7020f7b52dd0f09a27890a2d81568b9491` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30987403879`. Governed packaging for
+`sec-002-ea392b70` completed both equal-length firmware cycles and exact size/SHA-256 comparison of
+all 15 artifact pairs, package assembly, provisional ZIP creation, and launch of the independent
+release-eligible verifier. The verifier passed the trusted package inventory, deterministic README,
+voice/RVC material, preview media, and phase A-E face assets. It then failed closed at
+`verify_release_package.ps1:5365` because the empty `directGitDepsMissingRef` JSON array was
+enumerated away by the `ConvertTo-Array` function boundary and strict mode rejected `.Count` on the
+result. The dependency-lock evidence itself contains the required empty collection. The provisional
+ZIP and partial output under `output/release/sec-002-ea392b70` are not candidates. No flash, OTA
+request, COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction returns array objects non-enumerated across the PowerShell function boundary and
+requires all four dependency-audit collection fields to be present and non-null before conversion.
+The verifier trust contract exercises null, empty, singleton, and multiple-value shapes, rejects
+missing or null audit fields, pins all five array consumers, and proves a singleton license index
+reaches the intended small-index rejection. The SEC-002 hold remains in force until this correction
+passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
+Qualification head `494a6e2d69ba562e6c4a76cf6f348e44422b763e` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30993330105`. Governed packaging for
+`sec-002-494a6e2d` completed two clean cycles, exact size/SHA-256 comparison of all 15 artifact
+pairs, package assembly, and provisional ZIP creation. The independent verifier passed package
+inventory, deterministic README, voice/RVC, preview media, phase A-E face assets, and the release
+asset contract. It then failed closed at `verify_release_package.ps1:5919` because the generated
+Markdown wrapped `exact clean trusted source checkout` and `archive does not confer release
+authority` across line boundaries while the verifier required literal spaces. The complete
+authority guidance is present contiguously in `readiness_report.json`; this is producer/verifier
+formatting drift, not missing authority policy. The provisional ZIP and output under
+`output/release/sec-002-494a6e2d` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction defines one canonical arrival-authority sentence in the trusted source-binding
+helper, uses it for both generated readiness formats, compares the JSON value exactly, and checks a
+whitespace-semantic Markdown view without changing case, punctuation, filenames, or token order.
+The production readiness report is also included in the contradictory extracted-archive authority
+scan. Contract fixtures accept LF, CRLF, tabs, and repeated formatting spaces while rejecting
+changes to exact-clean checkout authority, the six-value toolchain, the trusted arrival helper, or
+the archive boundary. The SEC-002 hold remains in force until this correction passes the broad
+contracts, exact-head CI, and a fresh governed package plus independent verification.
+
+Qualification head `619ff544039020041f09f9aeee3aa26d4382ae6f` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `30998405766`. Governed packaging for
+`sec-002-619ff544` completed two clean cycles and exact size/SHA-256 comparison of all 15 artifact
+pairs. The public `stackchan_release_full` firmware from both cycles is 2,803,504 bytes with
+SHA-256 `FFFA8F159DBEE5C4700075D88A6F24607100A5A1BE85BF15EAD845DBC049552F`.
+The provisional 189,653,086-byte ZIP has SHA-256
+`C12917BF98DA88853C1B2CCE263AC5B1028DF1173A98C67E5A90BB648C03411F`. Its independent verifier
+failed closed at `verify_release_package.ps1:2436` during the archive-authority content scan,
+before the full manifest load and validation at line 4380, because that scan referenced `$manifest`
+before assignment. The provisional ZIP and output under `output/release/sec-002-619ff544` are not
+candidates. No flash, OTA request, COM access, bridge session, robot-port access, or actuator
+command occurred.
+
+The correction derives one exactly typed JSON-boolean diagnostic classification from the existing
+early eligibility manifest gate, rejects a missing, null, or non-boolean classification, uses that
+classification for the production-only readiness authority scan, and requires the later full
+manifest parse to retain the same classification. A source-binding contract also rejects any
+`$manifest` use before its assignment. The SEC-002 hold remains in force until this correction
+passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
+Qualification head `612ef7beb24bfcfc4ad33eae31e41c3b7900d2bc` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `31004056148`. Governed packaging for
+`sec-002-612ef7be` completed two clean cycles and exact size/SHA-256 comparison of all 15 artifact
+pairs. The public `stackchan_release_full` firmware from both cycles is 2,803,504 bytes with
+SHA-256 `67CD01A6300D1E4FCFE654C8743C200B882F142906D8D237F43A4D3DF7A1C622`.
+The provisional 189,655,016-byte ZIP has SHA-256
+`20FF0870A3C6FBF7FC03AFCC07EDEBA79FBDB54EA4192E9F8D65D62E8538A208`. Its independent verifier
+failed closed before reaching the corrected archive-authority scan, at
+`verify_release_package.ps1:547`: PowerShell unrolled the one matching `diagnosticPackage`
+property emitted through the conditional assignment, so the resulting scalar did not expose the
+required collection `Count`. The provisional ZIP and output under
+`output/release/sec-002-612ef7be` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The follow-up correction wraps the complete early and late property-selection expressions in
+array subexpressions, preserving exact parsed-property zero/one/many cardinality before the type
+and equality checks. The SEC-002 hold remains in force until this correction passes the broad
+contracts, exact-head CI, and a fresh governed package plus independent verification.
+
+Qualification head `f012271a3b616e5adac19cf8203810fb1282b4b6` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `31010210311`. Governed packaging for
+`sec-002-f012271a` completed two clean cycles and exact size/SHA-256 comparison of all 15 artifact
+pairs. The public `stackchan_release_full` firmware from both cycles is 2,803,504 bytes with
+SHA-256 `802232F72456D0BAC928AF9A1C6636B28AE1541C4D283A7EDFEB574ACE00E944`. The provisional
+189,656,098-byte ZIP has SHA-256
+`063F4F8A13D2C660DBCEA47BE3BDF7F59C817FDC5EA08347E797257C72EC5EB7`. Its independent verifier
+passed voice/RVC, preview media, face phases A-E, release assets, checksums, and the third-party
+inventory, then failed closed at `verify_release_package.ps1:6155`: the physical archive contains
+the intentionally copied and later validated `docs/COMPANION_APP_GAP_ANALYSIS.md`, but the trusted
+whole-package required-file set omitted that path (1,570 actual files versus 1,569 admitted files).
+The provisional ZIP and output under `output/release/sec-002-f012271a` are not candidates. No
+flash, OTA request, COM access, bridge session, robot-port access, or actuator command occurred.
+
+The correction admits that exact companion document into the required-file policy and adds a
+producer/verifier regression whose mutation canary removes only the policy entry while preserving
+the copy. The count and path allowlists remain fail closed for undeclared files. The SEC-002 hold
+remains in force until this correction passes the broad contracts, exact-head CI, and a fresh
+governed package plus independent verification.
+
+Qualification head `611f609f8df1e4608a9249314eeff9ae3e8845c2` passed all 11 jobs on the first
+attempt in exact-head GitHub Firmware run `31017406734`. Governed packaging for
+`sec-002-611f609f` completed two clean cycles and exact size/SHA-256 comparison of all 15 artifact
+pairs. The public `stackchan_release_full` firmware from both cycles is 2,803,504 bytes with
+SHA-256 `8FF304E88F7B03A114D96B2ADB16D3475B7508148FAF3A025524916935CC2E76`. The provisional
+189,657,088-byte ZIP has SHA-256
+`18530C8AC81FEC49618BD56BA734EBC0F6D088DCBBA85C6A42969A4177B8F2A1`. Packaging passed the broad
+contracts and credential hygiene before package assembly. The independent verifier passed
+voice/RVC, preview media, face phases A-E, and release assets, then failed closed at
+`verify_release_package.ps1:1177` during the fresh exact-commit rebuild's first dependency-staging
+command. Windows PowerShell 5.1 promoted
+Git's ordinary `Cloning into ...` stderr progress to a terminating `RemoteException` under the
+verifier's global `Stop` policy, before PlatformIO's native exit code or dependency-stage log could
+be captured. The PlatformIO result is therefore unknown and must not be classified as a dependency
+or network failure.
+
+Failure evidence under
+`output/private/operational-firmware-rebuilds/20260805-160150-528-146af296067c` also incorrectly
+recorded `failed-worktree-not-preserved`: Git listed the generated worktree with forward slashes,
+while the catch path compared it literally and case-sensitively against the backslash path. The
+clean detached worktree actually remains registered at `D:\sc-vrfy-0000000528-c19e1066` on exact
+head `611f609f8df1e4608a9249314eeff9ae3e8845c2`. The provisional ZIP and output under
+`output/release/sec-002-611f609f` are not candidates. No flash, OTA request, COM access, bridge
+session, robot-port access, or actuator command occurred.
+
+The correction routes all five captured PlatformIO sites through one narrowly scoped native
+stderr collector, restores the global `Stop` policy in `finally`, and keeps native exit codes as the
+only process authority. Captured process logs are persisted before post-command lease assertions,
+and AST plus behavioral mutation contracts bind all five call sites to the reviewed executable,
+argument, result, output consumer, exit, and unconditional-failure topology. It canonicalizes Git worktree paths
+with OS-appropriate comparison, requires one exact registration, records an explicit
+preservation-unknown state when the probe itself cannot be trusted, retains richer exception
+evidence, and uses a context-preserving bare rethrow. The SEC-002 hold remains in force until this
+correction passes the broad contracts, exact-head CI, and a fresh governed package plus independent
+verification.
+
+A private full-SPI-flash backup captured on 2026-08-02 is preserved under ignored
+`output/private/firmware-backups/20260802-233346-COM4`. Three 16 MiB reads match at SHA-256
+`036828305B8204A73205143591CB5029B0177A0C9E62050D3A7A8C8D3A9538AE`. Offline parsing shows that
+`app0` was selected at backup time; its application image-file SHA-256 is
+`BB8311FFD1DFB059561697242E0C87ED45D38BDBEB0B8CEB32937089314621B1`, with source mapping unknown.
+The whole-flash hash is not an application hash. This backup does not prove the current live slot,
+current bytes, release identity, or automatic restore authority, and it must never be published.
+
+Bounded read-only update on 2026-08-03: the matching CoreS3 USB PnP identity is present on COM4;
+the unrelated CH340 remains separate on COM3. Neither port was opened. Later bounded `/debug`
+retries intermittently returned HTTP 200 between isolated timeouts. A preserved successful sample
+under ignored `output/private/p0-live-state-20260803` reports increasing uptime, `boot_count=1`,
+`reset_reason=poweron`, motion request/autonomous/enabled false, servo rail and torque false, and
+both power motion/rail authority false. It also self-reports confirmed `app0` with expected SHA-256
+`69d3db27f2d7197799fdc08ff3c1dc4d6e3011724fe29899367dc016e48ebfa8`. That value agrees with the
+historical accepted lead but is not an independent current flash-byte readback. The same sample
+reports `motion_enabled_at_boot=1` and `motion_autonomous_at_boot=1`, so the installed image is not
+the planned P1 no-motion candidate even though its runtime actuator state was safely off.
+
+No local bridge/RVC/debug listener was present on ports 8765, 5059, or 8789, and the robot reported
+`network_state=backoff`, `bridge_state=offline`, and `network_error=tcp_connect_failed`. The
+intermittent HTTP timeouts, followed by later successful samples with increasing uptime and the same
+boot count, are not evidence of a freeze, reset, blackout, USB fault, board fault, or power root
+cause. Diagnostic selector-authority rehearsal v13 is
+`output/diagnostics/stackchan_alive_diagnostic-m0-selector-authority-v13.zip`, 189,427,490 bytes,
+SHA-256 `15D5609CE6F1706FB4E5B9771CFFDF402473026FA1BC13E632029B174C04E926`. Its three 8,192-byte selector
+entries each hash to `F94C5D786A7A8FAB06AC5D10E33BF37711A6697636DC037559EA19CC410A17F0`;
+the non-authorizing verifier passes, the operational flasher rejects it before flash preparation,
+and all release, hardware-validation, flash, and distribution eligibility flags are false.
+
+### Operator-requested USB motor disable (2026-08-04)
+
+With Stackchan connected by USB and the area reported clear, an HTTP `/motion-stop` succeeded and
+reported motion request/enabled, servo power authority, rail, and torque all false with
+`motion_last_reason=manual_stop`. A redundant `motion stop` attempt through the official COM4
+serial helper is preserved under ignored `output/private/manual-motion-stop-20260804`, but opening
+COM4 unexpectedly reset the board (`reset_reason` code `11`) before the command was consumed; it is
+not counted as a successful serial stop. COM4 was left closed. A bounded post-reset HTTP
+`/motion-stop` returned 200 on the first attempt, and a fresh `/debug` snapshot again reported all
+motion/servo authorities false, `motion_last_reason=manual_stop`, protected power mode, and VBUS
+`4488 mV`. No flash or observed actuator movement occurred. The reset is an observed USB/serial-open
+event, not an inferred power, brownout, firmware, or containment root cause. A later read-only
+`/debug` check with COM4 still closed again reported motion request/enabled, servo power authority,
+rail, and torque all false with `motion_last_reason=manual_stop`; it reported `boot_count=1`,
+`reset_reason=poweron` (code `1`), uptime about 577 seconds, idle power mode, VBUS `4639 mV`, and the
+bridge offline. This is a subsequent observed boot relative to the earlier code-11 snapshot. Its
+cause is unknown and is not attributed to USB, power, firmware, or the packaging work.
+
+## Last Owner-Accepted Physical Lead — Historical Evidence; Current Installation Unknown
+
+This section records the latest owner-accepted physical lead as of 2026-07-13. A fresh device
+snapshot did not establish the currently installed firmware during the 2026-08-02 repository audit.
+The latest documented accepted image is clean source
+`ce66f8a0fadfadbc07eb59124522267ba66ee70a`, firmware SHA-256
+`69d3db27f2d7197799fdc08ff3c1dc4d6e3011724fe29899367dc016e48ebfa8`, described below. Its evidence
+does not transfer to a later binary, current `main`, or the current installation.
 
 ### Launch Candidate And Owner-Accepted Release Evidence (2026-07-12)
 
@@ -242,6 +833,12 @@ support compiled with motion disabled at boot.
   the soak evidence contract passes, and the real `stackchan_release_full` embedded build succeeds
   at `54.4%` RAM and `42.4%` flash. This source candidate is built but not flashed or physically
   accepted yet.
+
+## Historical Timeline Boundary
+
+Everything below this boundary is a dated July 11-and-earlier snapshot. Words such as “current,”
+“live,” “installed,” “next,” and recorded process IDs describe only that session; they are not the
+2026-08-02 repository or installation state.
 
 ### Final Integration Checkpoint (2026-07-11)
 
@@ -598,7 +1195,7 @@ Open before calling the full system final:
 - The servo soak is not complete until `summary.json` reports `status="pass"`, `issues=[]`, `motionSampleRatio >= 0.95`, `rvcWorkerReadySamples == rvcWorkerPolls`, max display frame time stays at or below `50000` us, no motion session timeout is observed, no sustained debug dropout is observed, and `tools\check_full_system_soak_evidence.ps1 -SummaryJsonPath <summary.json> -RequireReady -Json` reports `full-system-soak-ready`.
 - Keep the archived lead zips as restore points: pre-ROCm CPU RVC, warm-ROCm RVC, and the flashed motion timing candidate.
 
-## Current Live Configuration
+## Historical Live Configuration Snapshot (2026-07-08 to 2026-07-11)
 
 - Robot IP: `192.168.1.238`
 - PC bridge host: `192.168.1.240`
@@ -615,9 +1212,11 @@ Open before calling the full system final:
 - Current robot-mic/uplink validation status: gated, not physically validated after servo bring-up
 - Rollback firmware environment: `stackchan_wifi`
 
-## Recovery Decision
+## Historical Recovery Decision (2026-07-07)
 
-The robot was restored to the smooth face/bridge-only baseline after the bad full-online attempt. Treat this as the known-good physical baseline.
+At that historical checkpoint, the robot was restored to the smooth face/bridge-only baseline
+after the bad full-online attempt. It was the known-good physical baseline for that dated sequence,
+not a statement about the current installation.
 
 Do not jump directly from this baseline to motor-enabled full-online firmware. The safer sequence is:
 
@@ -630,7 +1229,7 @@ Do not jump directly from this baseline to motor-enabled full-online firmware. T
 7. Only after visual face stability and voice-gate behavior are confirmed on staged firmware, consider `stackchan_full_online`.
 8. Flash `stackchan_full_online` only through the guarded wrapper with operator present, body clear, and explicit servo-risk confirmation. Do not remove the successful servo guardrails from `stackchan_wake_mww_uplink_servos`: motion disabled at boot, servo attach fail-closed, write rate limiting, and session auto-stop.
 
-## Validated After Recovery
+## Historical Validation After Recovery (2026-07-07)
 
 - User visually confirmed the face is smooth after unplug/reboot.
 - `stackchan_wifi` was reflashed on `COM4` and reconnected from stored Wi-Fi provisioning.
@@ -669,7 +1268,7 @@ Do not jump directly from this baseline to motor-enabled full-online firmware. T
 - Servo motion auto-stopped after the guarded session timeout; follow-up status reported `motion_enabled=0`.
 - Post-motion display telemetry returned to a smooth baseline around `frame_ms_avg=25.7 ms`, `frame_ms_max=28.0-28.4 ms`, and `slow_frames=0`.
 
-## Current Evidence
+## Historical Evidence Index (2026-07-07 to 2026-07-11)
 
 - Power-cycle/reconnect note: `output/hardware-evidence/first-live-bridge/POWER_CYCLE_RECONNECT_20260707.md`
 - Full-online preflight: `output/pc-brain/full-online-preflight-latest/FULL_ONLINE_PREFLIGHT.md`
@@ -690,7 +1289,7 @@ Do not jump directly from this baseline to motor-enabled full-online firmware. T
 - Hardened VBUS-guard 20-minute full-system servo validation: `output\pc-brain\full-system-soak-vbus-guard-hardened-servo-20min-20260709-121456\summary.json`
 - Current lead reproducibility report: `output\current-lead\current-lead-reproducibility-latest\CURRENT_LEAD_REPRODUCIBILITY.md`
 
-## Still Open
+## Open Items At The Historical Checkpoint
 
 - Do not treat `Hey Stackchan` as validated on the current live robot yet; the successful session validated guarded servo motion and face stability, not a live robot-mic/STT turn.
 - The first bot-local wake probe listened for `Hi Stack Chan`, not `Hey Stackchan`.

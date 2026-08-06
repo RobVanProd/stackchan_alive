@@ -2,26 +2,33 @@ param(
   [string]$ReleaseTag = "",
   [string]$PackageZip = "",
   [string]$PackageRoot = "",
+  [string]$ExpectedCommit = "",
   [string]$Port = "",
   [string]$Operator = "",
   [string]$DeviceId = "",
   [string]$ShareRoot = "",
   [string]$CompanionV1EvidenceRoot = "output/companion-v1-evidence/latest",
   [switch]$AllowIncompleteMetadata,
-  [switch]$AllowDirtyPackage
+  [switch]$AllowDirtyPackage,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
-. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 
 function Invoke-GitText {
   param([string[]]$Arguments)
 
   try {
-    $output = & git @Arguments 2>$null
+    $output = & git -c core.hooksPath=NUL -c core.fsmonitor=false `
+      -c maintenance.auto=false -c core.untrackedCache=false @Arguments 2>$null
   } catch {
     return ""
   }
@@ -72,7 +79,7 @@ function Copy-AcceptanceArtifactsFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     Copy-AcceptanceArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -181,7 +188,7 @@ function Copy-VoiceLeadArtifactsFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     return Copy-VoiceLeadArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -237,7 +244,7 @@ function Copy-VoiceGateStatusFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     return Copy-VoiceGateStatusFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -415,7 +422,7 @@ function Write-EvidenceChecklist {
         '`pio test -e native_logic` passes.',
         '`pio test -e stackchan --without-uploading --without-testing` passes.',
         '`tools/run_device_preflight.ps1` passes.',
-        '`tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor` passes for the release ZIP.'
+        '`tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor @releaseToolchain` passes for the release ZIP.'
       )) {
       $lines = Set-ChecklistItemState -Lines $lines -ExactItemText $item -Checked $true
     }
@@ -424,8 +431,8 @@ function Write-EvidenceChecklist {
   if ($PackageVerified) {
     foreach ($item in @(
         'Release package ZIP contains firmware, media, docs, manifest, dependency provenance, `dependency_lock.json`, copied build inputs, and checksums.',
-        '`tools/verify_release_package.ps1` passes for the release ZIP.',
-        'Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.'
+        '`tools/verify_release_package.ps1 -RequireReleaseEligible ... @releaseToolchain` passes for the release ZIP.',
+        'Hardware evidence packet created with `tools/start_hardware_evidence.ps1 ... @releaseToolchain`.'
       )) {
       $lines = Set-ChecklistItemState -Lines $lines -ExactItemText $item -Checked $true
     }
@@ -449,41 +456,98 @@ function Write-EvidenceChecklist {
   $annotated | Set-Content -Path $DestinationPath -Encoding UTF8
 }
 
-$rootManifest = Get-ReleaseManifest $repoRoot
+if (-not [string]::IsNullOrWhiteSpace($PackageRoot) -and
+    -not [string]::IsNullOrWhiteSpace($PackageZip)) {
+  throw "Pass only one of -PackageZip or -PackageRoot."
+}
 
 if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
-  if ($null -ne $rootManifest) {
-    $ReleaseTag = [string]$rootManifest.version
+  if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+    $zipName = [System.IO.Path]::GetFileName($PackageZip)
+    if ($zipName -notmatch "^stackchan_alive_(.+)\.zip$") {
+      throw "Pass -ReleaseTag when -PackageZip does not match stackchan_alive_<version>.zip"
+    }
+    $ReleaseTag = $Matches[1]
   } else {
-    $ReleaseTag = Invoke-GitText @("describe", "--tags", "--always", "--dirty")
+    $ReleaseTag = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+      -c maintenance.auto=false -c core.untrackedCache=false `
+      describe --tags --always 2>$null | Out-String).Trim()
   }
 }
-
-if ([string]::IsNullOrWhiteSpace($PackageRoot) -and [string]::IsNullOrWhiteSpace($PackageZip) -and $null -ne $rootManifest) {
-  $PackageRoot = $repoRoot
+if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
+  throw "Pass -ReleaseTag because it could not be resolved from trusted Git state."
 }
 
-$packageRootManifest = $null
-if (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
-  if (-not (Test-Path -LiteralPath $PackageRoot)) {
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+  $ExpectedCommit = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    rev-parse HEAD 2>$null | Out-String).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit) -or
+    $ExpectedCommit -notmatch "^[0-9a-fA-F]{40}$") {
+  throw "Pass a 40-hex -ExpectedCommit or run from a trusted Git checkout."
+}
+$commit = $ExpectedCommit.ToLowerInvariant()
+$toolchainProcessArguments = @(
+  "-ToolchainAllowlistPath", $ToolchainAllowlistPath,
+  "-GitExecutable", $GitExecutable,
+  "-PythonExecutable", $PythonExecutable,
+  "-PlatformioExecutable", $PlatformioExecutable,
+  "-LegacyCoreDir", $LegacyCoreDir,
+  "-ReleaseCoreDir", $ReleaseCoreDir
+)
+
+$packageVerifyOutput = @()
+$packageVerifyExitCode = 0
+if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+  if (-not (Test-Path -LiteralPath $PackageZip -PathType Leaf)) {
+    throw "Missing package ZIP: $PackageZip"
+  }
+  $PackageZip = (Resolve-Path -LiteralPath $PackageZip).Path
+  $verifyArgs = @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+    "-Version", $ReleaseTag, "-ZipPath", $PackageZip,
+    "-ExpectedCommit", $commit, "-RequireReleaseEligible"
+  )
+  $verifyArgs += $toolchainProcessArguments
+  if ($AllowDirtyPackage) { $verifyArgs += "-AllowDirtyPackage" }
+  $previousErrorPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $packageVerifyOutput = @(& powershell.exe @verifyArgs 2>&1)
+    $packageVerifyExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorPreference
+  }
+} elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  if (-not (Test-Path -LiteralPath $PackageRoot -PathType Container)) {
     throw "Missing package root: $PackageRoot"
   }
-  $PackageRoot = (Resolve-Path $PackageRoot).Path
-  $packageRootManifest = Get-ReleaseManifest $PackageRoot
+  $PackageRoot = (Resolve-Path -LiteralPath $PackageRoot).Path
+  $verifyArgs = @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+    "-Version", $ReleaseTag, "-PackageRoot", $PackageRoot,
+    "-ExpectedCommit", $commit, "-RequireReleaseEligible"
+  )
+  $verifyArgs += $toolchainProcessArguments
+  if ($AllowDirtyPackage) { $verifyArgs += "-AllowDirtyPackage" }
+  $previousErrorPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $packageVerifyOutput = @(& powershell.exe @verifyArgs 2>&1)
+    $packageVerifyExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorPreference
+  }
+}
+if ($packageVerifyExitCode -ne 0) {
+  throw "Operational release package verification failed before evidence creation: $(($packageVerifyOutput | Out-String).Trim())"
 }
 
-$commit = ""
-if ($null -ne $rootManifest) {
-  $commit = [string]$rootManifest.commit
-} elseif ($null -ne $packageRootManifest) {
-  $commit = [string]$packageRootManifest.commit
-}
-if ([string]::IsNullOrWhiteSpace($commit)) {
-  $commit = Invoke-GitText @("rev-parse", "HEAD")
-}
-if ([string]::IsNullOrWhiteSpace($commit)) {
-  throw "Could not determine release commit from git or package manifest."
-}
+. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
+. (Join-Path $PSScriptRoot "release_zip_safety.ps1")
 
 if (-not $AllowIncompleteMetadata) {
   $missingMetadata = @()
@@ -532,9 +596,6 @@ $requiredLogs = @(
   "logs/soak_serial.log"
 )
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
-  if (-not (Test-Path -LiteralPath $PackageZip)) {
-    throw "Missing package ZIP: $PackageZip"
-  }
   $packageItem = Get-Item -LiteralPath $PackageZip
   $packageHash = Get-FileHash -Algorithm SHA256 -LiteralPath $packageItem.FullName
   Copy-Item -LiteralPath $packageItem.FullName -Destination $packageDir
@@ -546,28 +607,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   }
 
   $packageVerifyLog = Join-Path $logsDir "package_verify.log"
-  $verifyArgs = @(
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
-    "-Version",
-    $ReleaseTag,
-    "-ZipPath",
-    $packageItem.FullName,
-    "-ExpectedCommit",
-    $commit
-  )
-  if ($AllowDirtyPackage) {
-    $verifyArgs += "-AllowDirtyPackage"
-  }
-  $verifyOutput = & powershell.exe @verifyArgs 2>&1
-  $verifyExitCode = $LASTEXITCODE
-  $verifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
-  if ($verifyExitCode -ne 0) {
-    throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
-  }
+  $packageVerifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
   $packageVerified = $true
   Copy-AcceptanceArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
@@ -581,28 +621,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   }
 
   $packageVerifyLog = Join-Path $logsDir "package_verify.log"
-  $verifyArgs = @(
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
-    "-Version",
-    $ReleaseTag,
-    "-PackageRoot",
-    $packageRootItem.FullName,
-    "-ExpectedCommit",
-    $commit
-  )
-  if ($AllowDirtyPackage) {
-    $verifyArgs += "-AllowDirtyPackage"
-  }
-  $verifyOutput = & powershell.exe @verifyArgs 2>&1
-  $verifyExitCode = $LASTEXITCODE
-  $verifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
-  if ($verifyExitCode -ne 0) {
-    throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
-  }
+  $packageVerifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
   $packageVerified = $true
   Copy-AcceptanceArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
@@ -745,6 +764,14 @@ if (-not [string]::IsNullOrWhiteSpace($Port)) {
 
 $packageFlashArg = " -PackageZip $(Quote-PowerShellArgument '<path-to-release-zip>')"
 $verifyPackageArg = "-ZipPath $(Quote-PowerShellArgument '<path-to-release-zip>')"
+$toolchainCommandArguments = @(
+  "-ToolchainAllowlistPath $(Quote-PowerShellArgument $ToolchainAllowlistPath)",
+  "-GitExecutable $(Quote-PowerShellArgument $GitExecutable)",
+  "-PythonExecutable $(Quote-PowerShellArgument $PythonExecutable)",
+  "-PlatformioExecutable $(Quote-PowerShellArgument $PlatformioExecutable)",
+  "-LegacyCoreDir $(Quote-PowerShellArgument $LegacyCoreDir)",
+  "-ReleaseCoreDir $(Quote-PowerShellArgument $ReleaseCoreDir)"
+) -join ' '
 if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
   $packageFlashZip = Join-Path $packageDir ([System.IO.Path]::GetFileName($packageInfo["sourcePath"]))
   $packageFlashArg = " -PackageZip $(Quote-PowerShellArgument $packageFlashZip)"
@@ -767,8 +794,8 @@ $androidCompanionSoakDir = Join-Path $androidDir "screen-off-soak"
 $androidUdpBeaconProbeDir = Join-Path $androidDir "udp-beacon-probe"
 $androidLogcatDir = Join-Path $androidDir "logcat"
 $androidApkInstallDir = Join-Path $androidDir "apk-install"
-$displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath $displayLog"
-$servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath $servoLog"
+$displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor $toolchainCommandArguments 2>&1 | Tee-Object -FilePath $displayLog"
+$servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk $toolchainCommandArguments 2>&1 | Tee-Object -FilePath $servoLog"
 $speechDemoBody = "& '.\tools\send_speech_mouth_demo.ps1'$portArg"
 if ($voiceLeadInfo) {
   $leadAudioPath = Join-Path $outDir ([string]$voiceLeadInfo.referenceFile -replace "/", "\")
@@ -782,7 +809,7 @@ $speakAllCommand = "& '.\tools\send_speak_all_intents_demo.ps1'$portArg 2>&1 | T
 $bridgeReplayCommand = "& '.\tools\send_bridge_replay_demo.ps1'$portArg 2>&1 | Tee-Object -FilePath $bridgeReplayLog"
 $hardwareSimBaselineCommand = "& '.\tools\run_hardware_simulation.ps1' -OutputDir $hardwareSimBaselineDir -Json 2>&1 | Tee-Object -FilePath $hardwareSimBaselineLog"
 $simHardwareCompareCommand = "& '.\tools\compare_hardware_sim_baseline.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
-$verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit)"
+$verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit) -RequireReleaseEligible $toolchainCommandArguments"
 if ($AllowDirtyPackage) {
   $verifyCommand += " -AllowDirtyPackage"
 }
@@ -797,8 +824,8 @@ if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
 } elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
   $rolloutPackageArg = "-PackageRoot $(Quote-PowerShellArgument $PackageRoot)"
 }
-$rolloutStatusCommand = "& '.\tools\export_rollout_status.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $rolloutPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -ExpectedCommit $(Quote-PowerShellArgument $commit) -OutDir $(Quote-PowerShellArgument $outDir)"
-$consumerPromotionCommand = "& '.\tools\verify_consumer_promotion.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $consumerPromotionPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -CompanionV1EvidenceRoot $(Quote-PowerShellArgument $CompanionV1EvidenceRoot) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
+$rolloutStatusCommand = "& '.\tools\export_rollout_status.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $rolloutPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -ExpectedCommit $(Quote-PowerShellArgument $commit) -OutDir $(Quote-PowerShellArgument $outDir) $toolchainCommandArguments"
+$consumerPromotionCommand = "& '.\tools\verify_consumer_promotion.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $consumerPromotionPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -CompanionV1EvidenceRoot $(Quote-PowerShellArgument $CompanionV1EvidenceRoot) -ExpectedCommit $(Quote-PowerShellArgument $commit) $toolchainCommandArguments"
 $platformioResolver = Quote-PowerShellArgument (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 $soakCommand = ". $platformioResolver; Invoke-StackchanPlatformio device monitor --baud 115200$monitorPortArg 2>&1 | Tee-Object -FilePath $soakLog"
 $playLeadCommand = "Write-Host 'No voice playback reference was copied into this packet.'"

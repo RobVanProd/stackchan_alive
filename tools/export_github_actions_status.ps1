@@ -231,7 +231,7 @@ $nextCommand = if ($summaryStatus -eq "failed-or-incomplete" -and $runReports.Co
 } elseif ($summaryStatus -eq "missing-required-workflow" -and $missingRequiredWorkflows -contains "Release") {
   "git tag $Version; git push origin $Version"
 } elseif ($summaryStatus -eq "success") {
-  ".\tools\audit_published_release.cmd -Version $Version"
+  ""
 } else {
   ""
 }

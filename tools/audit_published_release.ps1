@@ -8,7 +8,13 @@ param(
   [string]$OutDir = "",
   [switch]$AllowNonPrerelease,
   [switch]$UploadToRelease,
-  [switch]$StrictPromotion
+  [switch]$StrictPromotion,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -152,13 +158,16 @@ if ([string]::IsNullOrWhiteSpace($OutDir)) {
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $outPath = (Resolve-Path $OutDir).Path
 
-$manifest = Read-JsonFile (Join-Path $PackageRoot "release_manifest.json")
-if ($null -ne $manifest -and [string]::IsNullOrWhiteSpace($ExpectedCommit)) {
-  $ExpectedCommit = [string]$manifest.commit
+$trustedTagCommit = (git rev-list -n 1 $Version).Trim().ToLowerInvariant()
+if ($LASTEXITCODE -ne 0 -or $trustedTagCommit -notmatch '^[0-9a-f]{40}$') {
+  throw "Unable to resolve trusted local tag $Version for published-release audit."
 }
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
-  $ExpectedCommit = (git rev-list -n 1 $Version).Trim()
+  $ExpectedCommit = $trustedTagCommit
+} elseif ($ExpectedCommit.ToLowerInvariant() -cne $trustedTagCommit) {
+  throw "Published-release audit ExpectedCommit does not match trusted local tag $Version."
 }
+$manifest = Read-JsonFile (Join-Path $PackageRoot "release_manifest.json")
 
 $publishedVerifyArgs = @(
   (Join-Path $PSScriptRoot "verify_published_release.ps1"),
@@ -167,7 +176,13 @@ $publishedVerifyArgs = @(
   "-PackageRoot", $PackageRoot,
   "-ZipPath", $ZipPath,
   "-ZipSidecarPath", $ZipSidecarPath,
-  "-ExpectedCommit", $ExpectedCommit
+  "-ExpectedCommit", $ExpectedCommit,
+  "-ToolchainAllowlistPath", $ToolchainAllowlistPath,
+  "-GitExecutable", $GitExecutable,
+  "-PythonExecutable", $PythonExecutable,
+  "-PlatformioExecutable", $PlatformioExecutable,
+  "-LegacyCoreDir", $LegacyCoreDir,
+  "-ReleaseCoreDir", $ReleaseCoreDir
 )
 if ($AllowNonPrerelease) {
   $publishedVerifyArgs += "-AllowNonPrerelease"
@@ -197,7 +212,13 @@ if ($publishedVerify.exitCode -eq 0) {
     "-Version", $Version,
     "-PackageRoot", $PackageRoot,
     "-ExpectedCommit", $ExpectedCommit,
-    "-OutDir", $rolloutDir
+    "-OutDir", $rolloutDir,
+    "-ToolchainAllowlistPath", $ToolchainAllowlistPath,
+    "-GitExecutable", $GitExecutable,
+    "-PythonExecutable", $PythonExecutable,
+    "-PlatformioExecutable", $PlatformioExecutable,
+    "-LegacyCoreDir", $LegacyCoreDir,
+    "-ReleaseCoreDir", $ReleaseCoreDir
   )
   $rollout = Read-JsonFile (Join-Path $rolloutDir "ROLLOUT_STATUS.json")
 }

@@ -4,6 +4,22 @@ Protocol: `stackchan.bridge.v1`
 
 The bridge is the P7 boundary between the real-time firmware and a LAN companion service. The firmware owns wake/listen/think/speak choreography, face, motion, earcons, and safety. The bridge owns STT, LLM text generation, memory, and dynamic TTS rendering.
 
+## Firmware Debug HTTP Containment
+
+The firmware service on port `8789` advertises
+`debug_http_control_policy=emergency_stop_only` in `/debug`. It strictly parses one HTTP/1.0 or
+HTTP/1.1 request line before dispatch. Query-free `GET /` and `GET /debug` are bounded status
+reads. Query-free `GET` or `POST` requests to the documented audio-stop and motion-stop aliases
+may only admit an emergency stop; `202 accepted:true` means the request was admitted, not that a
+physical stop is complete. A failed motion-stop publication returns `503 accepted:false`.
+
+Tone, wake-reset, Resume, recovery, reboot, and wake-PCM/WAV routes return a fixed `403` response
+before their former effects. Unknown, malformed, wrong-method, and oversized requests remain
+distinct `404`, `400`, `405`, and `414` outcomes. The two camera query families still reach their
+pre-existing parser and pairing authorizer; camera pairing is not general control authority.
+Raw request targets, queries, pairing codes, credentials, and wake PCM are not status or diagnostic
+output. Any future Resume or recovery control requires a separately preregistered authority design.
+
 Firmware bench replay uses newline-delimited UTF-8 JSON. The LAN bridge service uses
 WebSocket text frames for control, binary WebSocket frames for uploaded PCM, and optional
 binary WebSocket frames for downlinked TTS audio chunks. Current firmware has a native-tested
@@ -116,6 +132,23 @@ binary PCM frames after `utterance_start`, runs the same local runner/validator/
 `utterance_end`, and streams normalized bridge JSON text frames back to the client. Audio-only
 turns can use a configured local STT command:
 
+Host admission is fail-closed at the HTTP upgrade. The request line must be exactly
+`GET /bridge HTTP/1.1`; WebSocket upgrade/key/version-13 fields, the exact
+`X-Stackchan-Protocol: stackchan.bridge.v1` header, and one bounded nonblank
+`X-Stackchan-Device` value must be present. Security-critical duplicate headers and every
+browser `Origin` header are rejected before `101` or message dispatch. The general launcher binds
+loopback by default. A non-loopback bind requires a configured robot host; its addresses are
+resolved once at startup and the accepted TCP peer must match that frozen set before the request is
+read. The transmitted WebSocket key must be bounded ASCII Base64 with a nonempty bounded decoded
+value; it is a protocol field, not a secret or identity. Scoped and link-local IPv6 peers are not
+admitted by this IPv4-bound containment slice. Invalid attempts do not consume single-admitted-
+connection test mode. These existing headers and the configured peer are containment signals, not
+secrets or cryptographic device identity.
+Firmware sends no client application `hello`; after successful upgrade the host preserves the
+existing immediate server `hello`. `X-Stackchan-Device` is not a brain-owner endpoint ID, and a
+blank endpoint remains valid for current firmware turns only while no explicit brain owner is
+active.
+
 The Android companion uses the same `stackchan.bridge.v1` family. The target architecture is
 multi-endpoint: a PC bridge and an Android bridge may both be trusted, but only one endpoint
 is the active brain owner allowed to receive wake-gated audio and dynamic response ownership.
@@ -203,7 +236,9 @@ downlink sink.
 - `playback_complete`: firmware-confirmed speaker drain for one response sequence. The device
   sends this only after the audio stream is complete, M5Speaker is idle, and the wake microphone
   pause has been released. It is evidence for Conversation v2; v1 acknowledges it without opening
-  capture.
+  capture. This is a success-only acknowledgement: current speaker start/chunk/finish failure paths
+  can omit it, and the host currently has no bounded `SPEAKING` timeout. That terminal contract is
+  an open blocker, not successful-playback evidence.
 - `heartbeat`: bounded runtime and embodiment facts. Post-release source adds allowlisted
   `energy_state` values `unknown`, `ready`, `charging`, `low`, and `critical`. The host accepts
   only those literal values before adding the state to Gemma's short-lived embodiment context;
@@ -233,10 +268,13 @@ Example:
   bounded to 1000-30000 ms. Firmware retries while audio/wake is temporarily busy, expires at the
   deadline, and cancels on bridge loss. The frame carries no actuator or power authority. In
   `stackchan_voice_v2` and the derived full release source, an accepted reply-window capture uses
-  a local voice-activity endpoint: at least 150 ms of speech must be observed, capture remains open
-  for at least 600 ms, and 550 ms of trailing silence ends the utterance. Ambiguous or absent
-  speech falls back to the existing 4.8-second maximum. Initial wake-gated v1 capture remains
-  fixed-length.
+  a local voice-activity endpoint for both initial and follow-up capture: at least 150 ms of speech
+  must be observed, capture remains open for at least 600 ms, and 2.0 seconds of trailing silence
+  ends the utterance. The endpoint and dedicated-capture ceilings are both 12 seconds (240 50-ms
+  chunks in the release profile), and the wake-gate privacy guard is 15 seconds. The current host
+  capture commitment is only 10
+  seconds and can reject a valid later device end; that mismatch must be fixed and source/physical
+  qualified before promotion.
 - `endpoint_hello_result`: endpoint trust/capability registration result.
 - `owner_status`: active brain owner, owner kind, health state, trusted endpoint count, owner lease,
   and cumulative expiration/promotion counters. Only trusted endpoints advertising `brain_owner`

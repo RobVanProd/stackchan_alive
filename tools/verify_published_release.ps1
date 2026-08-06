@@ -5,14 +5,19 @@ param(
   [string]$ZipPath = "",
   [string]$ZipSidecarPath = "",
   [string]$ExpectedCommit = "",
-  [switch]$AllowNonPrerelease
+  [switch]$AllowNonPrerelease,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
-. (Join-Path $PSScriptRoot "release_asset_contract.ps1")
 
 function Assert-Command {
   param([string]$Name)
@@ -84,7 +89,10 @@ function Assert-Asset {
   }
 
   $expectedDigest = "sha256:$(Get-Sha256 $ExpectedPath)"
-  if (-not [string]::IsNullOrWhiteSpace([string]$asset[0].digest) -and [string]$asset[0].digest -ne $expectedDigest) {
+  if ([string]::IsNullOrWhiteSpace([string]$asset[0].digest)) {
+    throw "Release asset digest is missing for $Name"
+  }
+  if ([string]$asset[0].digest -ne $expectedDigest) {
     throw "Release asset digest mismatch for $Name"
   }
 }
@@ -124,21 +132,17 @@ function Assert-GitHubProvenanceAttestation {
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  $Version = (git describe --tags --always --dirty).Trim()
+  $Version = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    describe --tags --always | Out-String).Trim()
 }
 
 Assert-Command "git"
-Assert-Command "gh"
-
-if ([string]::IsNullOrWhiteSpace($Repo)) {
-  $Repo = (gh repo view --json nameWithOwner --jq ".nameWithOwner").Trim()
-  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Repo)) {
-    throw "Unable to infer GitHub repo. Pass -Repo owner/name."
-  }
-}
 
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
-  $tagCommit = git rev-list -n 1 $Version 2>$null
+  $tagCommit = & git -c core.hooksPath=NUL -c core.fsmonitor=false `
+    -c maintenance.auto=false -c core.untrackedCache=false `
+    rev-list -n 1 $Version 2>$null
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace(($tagCommit | Out-String).Trim())) {
     throw "Unable to resolve tag $Version. Pass -ExpectedCommit explicitly or fetch/create the tag first."
   }
@@ -160,6 +164,51 @@ if ([string]::IsNullOrWhiteSpace($ZipSidecarPath)) {
 Assert-File $PackageRoot
 Assert-File $ZipPath
 Assert-File $ZipSidecarPath
+
+$previousErrorPreference = $ErrorActionPreference
+try {
+  $ErrorActionPreference = "Continue"
+  $localVerifyOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
+    -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
+    -Version $Version -ZipPath $ZipPath -ExpectedCommit $ExpectedCommit `
+    -ToolchainAllowlistPath $ToolchainAllowlistPath -GitExecutable $GitExecutable `
+    -PythonExecutable $PythonExecutable -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir `
+    -RequireReleaseEligible 2>&1)
+  $localVerifyExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorPreference
+}
+if ($localVerifyExit -ne 0) {
+  throw "Local release package is not operationally eligible; refusing published-release I/O: $(($localVerifyOutput | Out-String).Trim())"
+}
+try {
+  $ErrorActionPreference = "Continue"
+  $localRootVerifyOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass `
+    -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
+    -Version $Version -PackageRoot $PackageRoot -ExpectedCommit $ExpectedCommit `
+    -ToolchainAllowlistPath $ToolchainAllowlistPath -GitExecutable $GitExecutable `
+    -PythonExecutable $PythonExecutable -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir `
+    -RequireReleaseEligible 2>&1)
+  $localRootVerifyExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorPreference
+}
+if ($localRootVerifyExit -ne 0) {
+  throw "Local extracted release root is not operationally eligible; refusing published-release I/O: $(($localRootVerifyOutput | Out-String).Trim())"
+}
+
+. (Join-Path $PSScriptRoot "release_asset_contract.ps1")
+. (Join-Path $PSScriptRoot "release_ota_selector_policy.ps1")
+
+Assert-Command "gh"
+if ([string]::IsNullOrWhiteSpace($Repo)) {
+  $Repo = (gh repo view --json nameWithOwner --jq ".nameWithOwner").Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Repo)) {
+    throw "Unable to infer GitHub repo. Pass -Repo owner/name."
+  }
+}
 
 $release = gh release view $Version --repo $Repo --json url,isPrerelease,assets,tagName,targetCommitish | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) {
@@ -265,6 +314,32 @@ foreach ($asset in $assets) {
 }
 
 New-Item -ItemType Directory -Force -Path $remoteDir | Out-Null
+
+$standaloneFirmwareNames = @(
+  'firmware-display-only.bin',
+  'firmware-servo-calibration.bin',
+  'bootloader.bin',
+  'partitions.bin',
+  'boot-app0.bin'
+)
+foreach ($assetName in $standaloneFirmwareNames) {
+  $localEntry = @($expectedAssetEntries | Where-Object { [string]$_.Name -ceq $assetName })
+  if ($localEntry.Count -ne 1) {
+    throw "Missing local standalone firmware contract entry: $assetName"
+  }
+  gh release download $Version --repo $Repo --pattern $assetName --dir $remoteDir --clobber
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to download published standalone firmware asset $assetName for $Version"
+  }
+  $remoteFirmwarePath = Join-Path $remoteDir $assetName
+  if ((Get-Sha256 $remoteFirmwarePath) -cne (Get-Sha256 ([string]$localEntry[0].Path))) {
+    throw "Downloaded standalone firmware asset does not match the verified package: $assetName"
+  }
+  if ($assetName -ceq 'boot-app0.bin') {
+    Assert-StackchanReleaseOtaSelectorBytes `
+      -Environment 'stackchan' -LiteralPath $remoteFirmwarePath | Out-Null
+  }
+}
 
 foreach ($assetEntry in $companionAssetEntries) {
   gh release download $Version --repo $Repo --pattern $assetEntry.Name --dir $remoteDir --clobber
@@ -392,7 +467,14 @@ if ($remoteZipHash -ne $Matches[1]) {
   throw "Published ZIP SHA256 sidecar does not match downloaded ZIP"
 }
 
-& (Join-Path $PSScriptRoot "verify_release_package.ps1") -Version $Version -ZipPath $remoteZip -ExpectedCommit $ExpectedCommit
+& (Join-Path $PSScriptRoot "verify_release_package.ps1") `
+  -Version $Version -ZipPath $remoteZip -ExpectedCommit $ExpectedCommit `
+  -ToolchainAllowlistPath $ToolchainAllowlistPath -GitExecutable $GitExecutable `
+  -PythonExecutable $PythonExecutable -PlatformioExecutable $PlatformioExecutable `
+  -LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir -RequireReleaseEligible
+if ($LASTEXITCODE -ne 0) {
+  throw "Downloaded published release package is not operationally eligible."
+}
 
 Write-Host "Published release verified:"
 Write-Host $release.url

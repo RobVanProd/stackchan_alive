@@ -187,7 +187,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
 
       - uses: actions/setup-java@v5
         with:
@@ -228,7 +228,7 @@ jobs:
         run: |
           $runtimeRoot = Join-Path "${{ github.workspace }}" "output/desktop-python-runtime/${{ matrix.platform }}"
           ./tools/prepare_desktop_python_runtime.ps1 `
-            -SourcePython (Get-Command python).Source `
+            -SourcePython (Get-Command python -CommandType Application -ErrorAction Stop).Source `
             -RuntimeRoot $runtimeRoot `
             -SourceName "github-actions-${{ runner.os }}-${{ runner.arch }}-python-3.12" `
             -Force `
@@ -572,13 +572,19 @@ jobs:
 
   release:
     needs: [companion-android-release, companion-android-emulator-smoke, companion-desktop-release, companion-windows-sign]
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, X64, stackchan-release-toolchain-20260803]
+    env:
+      STACKCHAN_RELEASE_GIT_EXECUTABLE: ${{ vars.STACKCHAN_RELEASE_GIT_EXECUTABLE }}
+      STACKCHAN_RELEASE_PYTHON_EXECUTABLE: ${{ vars.STACKCHAN_RELEASE_PYTHON_EXECUTABLE }}
+      STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE: ${{ vars.STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE }}
+      STACKCHAN_RELEASE_LEGACY_CORE_DIR: ${{ vars.STACKCHAN_RELEASE_LEGACY_CORE_DIR }}
+      STACKCHAN_RELEASE_RELEASE_CORE_DIR: ${{ vars.STACKCHAN_RELEASE_RELEASE_CORE_DIR }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
 
       - uses: actions/setup-java@v5
         with:
@@ -622,7 +628,7 @@ jobs:
           path: output/companion/release-input/windows
 
       - name: Install tooling
-        run: python -m pip install --upgrade pip platformio -r requirements-preview.txt
+        run: python -m pip install --upgrade pip -r requirements-firmware-release.txt -r requirements-preview.txt
 
       - name: Run native logic tests
         run: pio test -e native_logic
@@ -639,11 +645,42 @@ jobs:
 
       - name: Package release
         shell: pwsh
-        run: ./tools/package_release.ps1 -Version "${{ github.ref_name }}"
+        env:
+          STACKCHAN_RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          $version = [string]$env:STACKCHAN_RELEASE_VERSION
+          if ($version.Length -gt 128 -or $version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $version -in @('.', '..') -or $version.EndsWith('.')) {
+            throw "Release tag must be one safe filename component."
+          }
+          ./tools/package_release.ps1 -Version $version `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR)
 
       - name: Verify release package
         shell: pwsh
-        run: ./tools/verify_release_package.ps1 -Version "${{ github.ref_name }}" -ZipPath "output/release/stackchan_alive_${{ github.ref_name }}.zip" -ExpectedCommit "${{ github.sha }}"
+        env:
+          STACKCHAN_RELEASE_VERSION: ${{ github.ref_name }}
+          STACKCHAN_RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          $version = [string]$env:STACKCHAN_RELEASE_VERSION
+          if ($version.Length -gt 128 -or $version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $version -in @('.', '..') -or $version.EndsWith('.')) {
+            throw "Release tag must be one safe filename component."
+          }
+          ./tools/verify_release_package.ps1 `
+            -Version $version `
+            -ZipPath "output/release/stackchan_alive_$version.zip" `
+            -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR) `
+            -RequireReleaseEligible
 
       - name: Export strict companion release evidence
         shell: pwsh
@@ -676,19 +713,69 @@ jobs:
 
       - name: Stage final release assets
         shell: pwsh
+        env:
+          STACKCHAN_RELEASE_VERSION: ${{ github.ref_name }}
+          STACKCHAN_RELEASE_COMMIT: ${{ github.sha }}
         run: |
+          $version = [string]$env:STACKCHAN_RELEASE_VERSION
+          if ($version.Length -gt 128 -or $version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $version -in @('.', '..') -or $version.EndsWith('.')) {
+            throw "Release tag must be one safe filename component."
+          }
+          $sourceZipPath = "output/release/stackchan_alive_$version.zip"
+          $sourceZipSidecarPath = "$sourceZipPath.sha256"
+          if (-not (Test-Path -LiteralPath $sourceZipPath -PathType Leaf) -or -not (Test-Path -LiteralPath $sourceZipSidecarPath -PathType Leaf)) {
+            throw "The verified release ZIP and its pre-existing SHA-256 sidecar are both required."
+          }
+          ./tools/verify_release_package.ps1 `
+            -Version $version `
+            -ZipPath $sourceZipPath `
+            -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR) `
+            -RequireReleaseEligible
           . ./tools/release_asset_contract.ps1
-          $version = "${{ github.ref_name }}"
-          $packageRoot = "output/release/$version"
-          $zipPath = "output/release/stackchan_alive_$version.zip"
+          . ./tools/release_zip_safety.ps1
+
+          $releaseOutputRoot = [IO.Path]::GetFullPath("output/release").TrimEnd('\', '/')
+          $publicationRoot = [IO.Path]::GetFullPath((Join-Path $releaseOutputRoot "workflow-publication-$version"))
+          $releasePrefix = $releaseOutputRoot + [IO.Path]::DirectorySeparatorChar
+          if (-not $publicationRoot.StartsWith($releasePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Workflow publication root escapes output/release."
+          }
+          if (Test-Path -LiteralPath $publicationRoot) {
+            Remove-Item -LiteralPath $publicationRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $publicationRoot | Out-Null
+          $zipPath = Join-Path $publicationRoot "stackchan_alive_$version.zip"
           $zipSidecarPath = "$zipPath.sha256"
-          $stageDir = "output/release/workflow-assets-$version"
-          $companionStageDir = "output/release/companion-assets-$version"
-          New-Item -ItemType Directory -Force -Path $stageDir, $companionStageDir | Out-Null
+          Copy-Item -LiteralPath $sourceZipPath -Destination $zipPath
+          Copy-Item -LiteralPath $sourceZipSidecarPath -Destination $zipSidecarPath
+          ./tools/verify_release_package.ps1 `
+            -Version $version `
+            -ZipPath $zipPath `
+            -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR) `
+            -RequireReleaseEligible
+
+          $packageRoot = Join-Path $publicationRoot "package"
+          Expand-StackchanReleaseZipSafely -ZipPath $zipPath -DestinationPath $packageRoot
+          $stageDir = Join-Path $publicationRoot "firmware-assets"
+          $companionStageDir = Join-Path $publicationRoot "companion-assets"
+          New-Item -ItemType Directory -Path $stageDir, $companionStageDir | Out-Null
           Copy-Item "$packageRoot/firmware/display_only/firmware.bin" "$stageDir/firmware-display-only.bin"
           Copy-Item "$packageRoot/firmware/servo_calibration/firmware.bin" "$stageDir/firmware-servo-calibration.bin"
           Copy-Item "$packageRoot/firmware/display_only/bootloader.bin" "$stageDir/bootloader.bin"
           Copy-Item "$packageRoot/firmware/display_only/partitions.bin" "$stageDir/partitions.bin"
+          Copy-Item "$packageRoot/firmware/display_only/boot_app0.bin" "$stageDir/boot-app0.bin"
 
           function Copy-SingleCompanionArtifact([string]$Pattern, [string]$Destination, [string]$RequiredPathFragment = "") {
             $matches = @(Get-ChildItem "output/companion/release-input" -Recurse -File -Filter $Pattern | Where-Object {
@@ -720,34 +807,156 @@ jobs:
         uses: actions/attest@v4
         with:
           subject-path: |
-            output/release/stackchan_alive_${{ github.ref_name }}.zip
-            output/release/stackchan_alive_${{ github.ref_name }}.zip.sha256
-            output/release/workflow-assets-${{ github.ref_name }}/*
-            output/release/companion-assets-${{ github.ref_name }}/*
-            output/release/${{ github.ref_name }}/media/*
-            output/release/${{ github.ref_name }}/media/voice/*
-            output/release/${{ github.ref_name }}/GITHUB_ACTIONS_STATUS.md
-            output/release/${{ github.ref_name }}/github_actions_status.json
-            output/release/${{ github.ref_name }}/release_assets.json
+            output/release/workflow-publication-${{ github.ref_name }}/stackchan_alive_${{ github.ref_name }}.zip
+            output/release/workflow-publication-${{ github.ref_name }}/stackchan_alive_${{ github.ref_name }}.zip.sha256
+            output/release/workflow-publication-${{ github.ref_name }}/firmware-assets/*
+            output/release/workflow-publication-${{ github.ref_name }}/companion-assets/*
+            output/release/workflow-publication-${{ github.ref_name }}/package/media/*
+            output/release/workflow-publication-${{ github.ref_name }}/package/media/voice/*
+            output/release/workflow-publication-${{ github.ref_name }}/package/GITHUB_ACTIONS_STATUS.md
+            output/release/workflow-publication-${{ github.ref_name }}/package/github_actions_status.json
+            output/release/workflow-publication-${{ github.ref_name }}/package/release_assets.json
 
       - name: Create GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          STACKCHAN_RELEASE_VERSION: ${{ github.ref_name }}
+          STACKCHAN_RELEASE_COMMIT: ${{ github.sha }}
         run: |
-          . ./tools/release_asset_contract.ps1
-          $version = "${{ github.ref_name }}"
-          $packageRoot = "output/release/$version"
-          $zipPath = "output/release/stackchan_alive_$version.zip"
+          $version = [string]$env:STACKCHAN_RELEASE_VERSION
+          if ($version.Length -gt 128 -or $version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $version -in @('.', '..') -or $version.EndsWith('.')) {
+            throw "Release tag must be one safe filename component."
+          }
+          $releaseOutputRoot = [IO.Path]::GetFullPath("output/release").TrimEnd('\', '/')
+          $publicationRoot = [IO.Path]::GetFullPath((Join-Path $releaseOutputRoot "workflow-publication-$version"))
+          $releasePrefix = $releaseOutputRoot + [IO.Path]::DirectorySeparatorChar
+          if (-not $publicationRoot.StartsWith($releasePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Workflow publication root escapes output/release."
+          }
+          $zipPath = Join-Path $publicationRoot "stackchan_alive_$version.zip"
           $zipSidecarPath = "$zipPath.sha256"
-          $stageDir = "output/release/workflow-assets-$version"
-          $companionStageDir = "output/release/companion-assets-$version"
+          ./tools/verify_release_package.ps1 `
+            -Version $version `
+            -ZipPath $zipPath `
+            -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+            -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+            -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+            -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+            -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+            -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+            -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR) `
+            -RequireReleaseEligible
+          . ./tools/release_asset_contract.ps1
+          . ./tools/release_zip_safety.ps1
+
+          $packageRoot = Join-Path $publicationRoot "package"
+          if (Test-Path -LiteralPath $packageRoot) {
+            $resolvedPackageRoot = (Resolve-Path -LiteralPath $packageRoot).Path
+            if (-not $resolvedPackageRoot.StartsWith($releasePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Refusing to replace an unexpected workflow package extraction."
+            }
+            Remove-Item -LiteralPath $resolvedPackageRoot -Recurse -Force
+          }
+          Expand-StackchanReleaseZipSafely -ZipPath $zipPath -DestinationPath $packageRoot
+          $stageDir = Join-Path $publicationRoot "firmware-assets"
+          if (Test-Path -LiteralPath $stageDir) {
+            Remove-Item -LiteralPath $stageDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $stageDir | Out-Null
+          Copy-Item "$packageRoot/firmware/display_only/firmware.bin" "$stageDir/firmware-display-only.bin"
+          Copy-Item "$packageRoot/firmware/servo_calibration/firmware.bin" "$stageDir/firmware-servo-calibration.bin"
+          Copy-Item "$packageRoot/firmware/display_only/bootloader.bin" "$stageDir/bootloader.bin"
+          Copy-Item "$packageRoot/firmware/display_only/partitions.bin" "$stageDir/partitions.bin"
+          Copy-Item "$packageRoot/firmware/display_only/boot_app0.bin" "$stageDir/boot-app0.bin"
+          $companionStageDir = Join-Path $publicationRoot "companion-assets"
           $releaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
           $companionAssetEntries = Get-ReleaseCompanionAssetEntries -Version $version -CompanionAssetRoot $companionStageDir
           $releaseAssetPaths = @($releaseAssetEntries + $companionAssetEntries | ForEach-Object { $_.Path })
-          gh release create "${{ github.ref_name }}" `
-            @releaseAssetPaths `
-            --repo "${{ github.repository }}" `
-            --title "Stackchan Alive ${{ github.ref_name }}" `
-            --notes-file "output/release/${{ github.ref_name }}/RELEASE_NOTES.md" `
-            --prerelease
+
+          $assetLocks = New-Object System.Collections.Generic.List[System.IO.FileStream]
+          try {
+            foreach ($assetPath in $releaseAssetPaths) {
+              $assetLocks.Add([System.IO.FileStream]::new(
+                (Resolve-Path -LiteralPath $assetPath).Path,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::Read))
+            }
+            ./tools/verify_release_asset_contract.ps1 -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
+
+            $gitCommand = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+            $ghCommand = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -eq $gitCommand -or $null -eq $ghCommand) {
+              throw "Release publication requires Git and GitHub CLI application executables."
+            }
+            $tagRef = "refs/tags/$version"
+            $peeledRef = "$tagRef^{}"
+            $remoteLines = @(& $gitCommand.Source ls-remote "https://github.com/${{ github.repository }}.git" $tagRef $peeledRef)
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not resolve the triggering release tag immediately before publication."
+            }
+            $resolvedRefs = @($remoteLines | ForEach-Object {
+              if ([string]$_ -match '^([0-9a-fA-F]{40})\s+(.+)$') {
+                [pscustomobject]@{ commit = $Matches[1].ToLowerInvariant(); ref = $Matches[2] }
+              }
+            })
+            $peeled = @($resolvedRefs | Where-Object ref -CEQ $peeledRef)
+            $direct = @($resolvedRefs | Where-Object ref -CEQ $tagRef)
+            $remoteCommit = if ($peeled.Count -eq 1) {
+              [string]$peeled[0].commit
+            } elseif ($peeled.Count -eq 0 -and $direct.Count -eq 1) {
+              [string]$direct[0].commit
+            } else {
+              ''
+            }
+            if ($remoteCommit -cne ([string]$env:STACKCHAN_RELEASE_COMMIT).ToLowerInvariant()) {
+              throw "Remote release tag resolves to '$remoteCommit', not the package-verified commit $env:STACKCHAN_RELEASE_COMMIT."
+            }
+
+            & $ghCommand.Source release create $version `
+              @releaseAssetPaths `
+              --repo "${{ github.repository }}" `
+              --target $env:STACKCHAN_RELEASE_COMMIT `
+              --title "Stackchan Alive $version" `
+              --notes-file (Join-Path $packageRoot "RELEASE_NOTES.md") `
+              --prerelease
+            if ($LASTEXITCODE -ne 0) {
+              throw "GitHub release creation failed."
+            }
+            ./tools/verify_published_release.ps1 `
+              -Version $version `
+              -Repo "${{ github.repository }}" `
+              -PackageRoot $packageRoot `
+              -ZipPath $zipPath `
+              -ZipSidecarPath $zipSidecarPath `
+              -ExpectedCommit ([string]$env:STACKCHAN_RELEASE_COMMIT) `
+              -ToolchainAllowlistPath (Join-Path $PWD 'tools/release_toolchain_identity_allowlist.json') `
+              -GitExecutable ([string]$env:STACKCHAN_RELEASE_GIT_EXECUTABLE) `
+              -PythonExecutable ([string]$env:STACKCHAN_RELEASE_PYTHON_EXECUTABLE) `
+              -PlatformioExecutable ([string]$env:STACKCHAN_RELEASE_PLATFORMIO_EXECUTABLE) `
+              -LegacyCoreDir ([string]$env:STACKCHAN_RELEASE_LEGACY_CORE_DIR) `
+              -ReleaseCoreDir ([string]$env:STACKCHAN_RELEASE_RELEASE_CORE_DIR)
+          } finally {
+            foreach ($assetLock in $assetLocks) { $assetLock.Dispose() }
+          }
+
+      - name: Clean verified release publication snapshot
+        if: always()
+        shell: pwsh
+        env:
+          STACKCHAN_RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          $version = [string]$env:STACKCHAN_RELEASE_VERSION
+          if ($version.Length -gt 128 -or $version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $version -in @('.', '..') -or $version.EndsWith('.')) {
+            throw "Release tag must be one safe filename component."
+          }
+          $releaseOutputRoot = [IO.Path]::GetFullPath("output/release").TrimEnd('\', '/')
+          $publicationRoot = [IO.Path]::GetFullPath((Join-Path $releaseOutputRoot "workflow-publication-$version"))
+          $releasePrefix = $releaseOutputRoot + [IO.Path]::DirectorySeparatorChar
+          if (-not $publicationRoot.StartsWith($releasePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to clean a workflow publication root outside output/release."
+          }
+          if (Test-Path -LiteralPath $publicationRoot) {
+            Remove-Item -LiteralPath $publicationRoot -Recurse -Force
+          }

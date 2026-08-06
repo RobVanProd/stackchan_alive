@@ -35,10 +35,50 @@ param(
   [switch]$RequireFinalIntegration,
   [switch]$RequireStableCameraTarget,
   [switch]$AllowExternalImuEvents,
-  [switch]$AllowLegacyMotionTelemetry
+  [switch]$AllowLegacyMotionTelemetry,
+  [switch]$ControlPolicyContractProbe
 )
 
 $ErrorActionPreference = "Stop"
+
+function Assert-EmergencyStopOnlyMotionPolicy {
+  param([string]$Policy)
+  throw "motion_resume_unavailable: emergency_stop_only permits emergency stops only; motion resume is disabled."
+}
+
+if ($ControlPolicyContractProbe) {
+  Assert-EmergencyStopOnlyMotionPolicy -Policy "emergency_stop_only"
+}
+
+function Invoke-JsonEndpoint {
+  param([string]$Path, [int]$TimeoutSeconds = 5)
+  $url = "http://$DeviceHost`:$DevicePort$Path"
+  try {
+    return Invoke-RestMethod -Uri $url -TimeoutSec $TimeoutSeconds
+  } catch {
+    throw "Robot endpoint failed: $url :: $($_.Exception.Message)"
+  }
+}
+
+function Get-FirmwareHttpControlPolicy {
+  try {
+    $probe = Invoke-JsonEndpoint -Path "/debug" -TimeoutSeconds 5
+  } catch {
+    return "unknown"
+  }
+  $policy = $probe.debug_http_control_policy
+  if ($policy -is [string] -and $policy -ceq "emergency_stop_only") {
+    return $policy
+  }
+  return "unknown"
+}
+
+$controlPolicyPreflight = Get-FirmwareHttpControlPolicy
+Assert-EmergencyStopOnlyMotionPolicy -Policy $controlPolicyPreflight
+
+if ([string]::IsNullOrWhiteSpace($DeviceHost)) {
+  throw "DeviceHost is required before the physical soak wrapper performs any action."
+}
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
@@ -63,16 +103,6 @@ if ($workerUri.Scheme -ne "http" -or $workerUri.Host -notin @("127.0.0.1", "loca
   throw "RvcWorkerUrl must use unauthenticated local loopback HTTP."
 }
 $RvcWorkerUrl = $RvcWorkerUrl.TrimEnd("/")
-
-function Invoke-JsonEndpoint {
-  param([string]$Path, [int]$TimeoutSeconds = 5)
-  $url = "http://$DeviceHost`:$DevicePort$Path"
-  try {
-    return Invoke-RestMethod -Uri $url -TimeoutSec $TimeoutSeconds
-  } catch {
-    throw "Robot endpoint failed: $url :: $($_.Exception.Message)"
-  }
-}
 
 function Wait-ForMotionEnabled {
   param([int]$TimeoutSeconds = 12)
@@ -197,6 +227,8 @@ if (-not $SkipBridgeRestart) {
   $env:STACKCHAN_RVC_WORKER_TIMEOUT_SECONDS = "90"
   $env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "2097152"
   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 `
+    -HostName "0.0.0.0" `
+    -RobotHost $DeviceHost `
     -StopExisting `
     -Background `
     -EnableAudioDownlink `
