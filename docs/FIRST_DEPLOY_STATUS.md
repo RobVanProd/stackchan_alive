@@ -31,6 +31,14 @@ and the maximum display frame was 20,422 us. It correctly failed only because th
 tree was dirty and the preserved reset reason is panic. This validates recorder mechanics against
 the real robot; it is not P1 evidence.
 
+The exact committed follow-up at
+`output/pc-brain/passive-no-motion-diagnostic-edd519f9-20260805-203820` bound recorder and checker
+bytes to source `edd519f9faacf56d84f01fdc2a248521ef26ef85`. It recorded 10/10 real polls over
+6.058 seconds, 5.172 seconds of monotonic coverage, a maximum 1.157-second gap, zero motion breaches,
+unchanged motion/rail/write counters, and motion/rail/torque off afterward. The checker passed every
+gate except clean reset and the summary fields that truthfully carry that panic hold. This proves the
+committed recorder's real-device mechanics, not P1 or long-term stability.
+
 The dated records below remain evidence. This checkpoint supersedes their former claims that no
 replacement was installed or that the live bridge was absent. It does not transfer old qualification
 or soak evidence to the current SHA.

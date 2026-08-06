@@ -38,6 +38,13 @@ State timestamp: 2026-08-05 America/New_York
   boot minimum 4,947 mV), maximum 60.5 C, and maximum display frame 20,422 us. It correctly failed
   only `runner_source_dirty` and `reset_reason_not_clean`; it validates the recorder against the
   real robot but is not qualification evidence.
+- The committed follow-up at
+  `output/pc-brain/passive-no-motion-diagnostic-edd519f9-20260805-203820` bound the recorder and
+  checker to exact source `edd519f9faacf56d84f01fdc2a248521ef26ef85`. It recorded 10/10 real
+  polls over 6.058 seconds, 5.172 seconds of monotonic sample coverage, maximum gap 1.157 seconds,
+  zero motion breaches, unchanged counters, and motion/rail/torque off afterward. The independent
+  checker passed every gate except the preserved panic reset and the resulting summary status. This
+  validates the committed cadence/provenance path but remains a short expected-fail diagnostic.
 - The preserved `4d31de41` / `4256F2E5...B31055` image remains historical evidence only. It requests
   motion and autonomous refresh at boot and must never be used for P1.
 

@@ -61,6 +61,12 @@ reference: 6/6 successful polls, no motion breach or stop call, all motion/rail/
 zero, and a deliberate fail for dirty runner source plus panic reset. Do not promote or reuse it as
 P1 evidence.
 
+The exact-source follow-up at
+`output/pc-brain/passive-no-motion-diagnostic-edd519f9-20260805-203820` is the committed scheduler/
+provenance reference: 10/10 real polls, 5.172 seconds monotonic coverage in 6.058 seconds, maximum
+gap 1.157 seconds, zero motion breach, unchanged counters, and only the preserved panic reset plus
+its summary propagation failed. It is still a short expected-fail diagnostic, not P1 evidence.
+
 Qualification checkout authority (2026-08-05): run current M0/P0 commands only from
 `D:\CodexProjects\stackchan_alive\output\worktrees\aliveness-repository-truth` on
 `codex/aliveness-repository-truth`. Require `git status --short` to be empty and require
