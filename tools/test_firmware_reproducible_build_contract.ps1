@@ -96,6 +96,7 @@ $expectedFirmwareEnvironments = @(
   "stackchan_wake_mww_uplink_servos_m5_voiceout",
   "stackchan_voice_v2",
   "stackchan_release_forensics",
+  "stackchan_release_forensics_vision",
   "stackchan_camera_probe",
   "stackchan_camera_probe_pmic_telemetry_only",
   "stackchan_camera_probe_pmic_policy_only",
@@ -289,8 +290,8 @@ try {
     }
     if ($environment -eq "native_logic") { $nativeHookCount = $hookCount }
   }
-  Require-ReproAssertion ($firmwareEnvironments.Count -eq 22) `
-    "effective-environment-count: expected 22 Arduino firmware environments, found $($firmwareEnvironments.Count)"
+  Require-ReproAssertion ($firmwareEnvironments.Count -eq 23) `
+    "effective-environment-count: expected 23 Arduino firmware environments, found $($firmwareEnvironments.Count)"
   Require-ReproAssertion ((Compare-Object `
         ($expectedFirmwareEnvironments | Sort-Object) `
         ($firmwareEnvironments | Sort-Object)).Count -eq 0) `
@@ -954,4 +955,4 @@ if ($issues.Count -gt 0) {
   throw ("Firmware reproducible-build contract failed:`n- " + ($issues -join "`n- "))
 }
 
-Write-Host "Firmware reproducible-build contract verified for all 22 firmware environments."
+Write-Host "Firmware reproducible-build contract verified for all 23 firmware environments."

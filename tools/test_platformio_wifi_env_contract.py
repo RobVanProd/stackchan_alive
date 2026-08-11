@@ -76,7 +76,52 @@ class PlatformioWifiEnvironmentContractTests(unittest.TestCase):
             "stackchan_camera_probe_pmic_telemetry_only",
             "stackchan_camera_probe_pmic_policy_only",
             "stackchan_camera_probe_pmic_all_off",
+            "stackchan_release_forensics_vision",
         ):
+            with self.subTest(profile=profile):
+                with self.assertRaisesRegex(RuntimeError, "requires STACKCHAN_PAIRING_SHORT_CODE"):
+                    run_hook(profile)
+
+    def test_every_camera_environment_refuses_to_build_without_pairing(self):
+        # The hook matches paired-camera environments by name because it cannot
+        # see resolved build flags. Derive the real set from platformio.ini so a
+        # new camera environment cannot be added without the pairing guard: a
+        # camera image built without a pairing code serves its camera endpoints
+        # unauthenticated.
+        ini = (Path(__file__).resolve().parents[1] / "platformio.ini").read_text(encoding="utf-8")
+        blocks = {}
+        current = None
+        for line in ini.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("[env:") and stripped.endswith("]"):
+                current = stripped[5:-1]
+                blocks[current] = []
+            elif current is not None:
+                blocks[current].append(stripped)
+
+        camera_environments = {
+            name
+            for name, body in blocks.items()
+            if any(entry.startswith("-D STACKCHAN_ENABLE_CAMERA=1") for entry in body)
+        }
+        # Inheritance: an environment extending a camera environment is one too.
+        for _ in range(len(blocks)):
+            for name, body in blocks.items():
+                for entry in body:
+                    if entry.startswith("extends = env:"):
+                        if entry.split("extends = env:", 1)[1].strip() in camera_environments:
+                            camera_environments.add(name)
+
+        # stackchan_release_full also compiles the camera in, but it is the
+        # public secret-free image: it deliberately embeds no pairing code and
+        # owners provision pairing after flash. Requiring one at build time would
+        # make the public release unbuildable. Every *private* per-device camera
+        # environment must still refuse.
+        camera_environments.discard("stackchan_release_full")
+
+        self.assertIn("stackchan_camera_probe", camera_environments)
+        self.assertIn("stackchan_release_forensics_vision", camera_environments)
+        for profile in sorted(camera_environments):
             with self.subTest(profile=profile):
                 with self.assertRaisesRegex(RuntimeError, "requires STACKCHAN_PAIRING_SHORT_CODE"):
                     run_hook(profile)

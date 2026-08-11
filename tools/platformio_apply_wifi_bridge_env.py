@@ -61,8 +61,20 @@ for name in (
     if value:
         cc_flags.append(escaped_define_string(name, value))
 
+# Every environment that compiles the camera in must refuse to build without a
+# pairing code, or the camera endpoints ship unauthenticated. This is matched by
+# name because the PlatformIO hook cannot see the resolved build flags, so
+# test_platformio_wifi_env_contract.py cross-checks these prefixes against every
+# environment in platformio.ini that enables STACKCHAN_ENABLE_CAMERA, directly or
+# by inheritance. Adding a camera environment without covering it here fails that
+# contract.
+PAIRED_CAMERA_ENVIRONMENT_PREFIXES = (
+    "stackchan_camera_probe",
+    "stackchan_release_forensics_vision",
+)
+
 pairing_code = optional("STACKCHAN_PAIRING_SHORT_CODE")
-if pio_environment.startswith("stackchan_camera_probe") and not pairing_code:
+if pio_environment.startswith(PAIRED_CAMERA_ENVIRONMENT_PREFIXES) and not pairing_code:
     raise RuntimeError(
         f"{pio_environment} is a private paired-camera environment and requires "
         "STACKCHAN_PAIRING_SHORT_CODE"

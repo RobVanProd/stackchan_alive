@@ -33,6 +33,31 @@ $base = Get-EnvironmentBlock "stackchan_wake_mww_uplink_servos"
 if ($base -notmatch [regex]::Escape("-D STACKCHAN_MOTION_ENABLED_AT_BOOT=0")) {
   throw "The guarded test/rollback servo profile must remain motion-off at boot."
 }
+
+# The host-vision profile exists so presence detection never requires accepting
+# actuator motion as a side effect. It must take the camera without acquiring the
+# probe profile's boot-motion markers, directly or by inheriting an unflag.
+$visionBlock = Get-EnvironmentBlock "stackchan_release_forensics_vision"
+foreach ($marker in @(
+  "-D STACKCHAN_MOTION_ENABLED_AT_BOOT=1",
+  "-D STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT=1",
+  "build_unflags"
+)) {
+  if ($visionBlock -match [regex]::Escape($marker)) {
+    throw "stackchan_release_forensics_vision must stay motion-off at boot; found: $marker"
+  }
+}
+foreach ($marker in @(
+  "-D STACKCHAN_ENABLE_CAMERA=1",
+  "-D STACKCHAN_ENABLE_CAMERA_HOST_VISION=1"
+)) {
+  if ($visionBlock -notmatch [regex]::Escape($marker)) {
+    throw "stackchan_release_forensics_vision missing host-vision marker: $marker"
+  }
+}
+if ($visionBlock -notmatch [regex]::Escape("extends = env:stackchan_release_forensics")) {
+  throw "stackchan_release_forensics_vision must inherit the motion-off forensics profile."
+}
 foreach ($unsafeMarker in @(
   "-D STACKCHAN_MOTION_ENABLED_AT_BOOT=1",
   "-D STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT=1"
