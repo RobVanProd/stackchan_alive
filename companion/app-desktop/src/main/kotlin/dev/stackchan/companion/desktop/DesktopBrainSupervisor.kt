@@ -487,6 +487,7 @@ private val PACKAGED_BRAIN_RESOURCES = listOf(
     "bridge/stt_adapter.py",
     "bridge/stt_normalization.py",
     "bridge/stt_supervisor.py",
+    "bridge/transcript_diagnostics.py",
     "bridge/tts_adapter.py",
     "bridge/utterance_text.py",
     "bridge/whisper_server_stt.py",

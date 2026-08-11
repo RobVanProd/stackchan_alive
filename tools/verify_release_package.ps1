@@ -1798,6 +1798,8 @@ $requiredFiles = @(
   "bridge/test_stt_adapter.py",
   "bridge/test_stt_supervisor.py",
   "bridge/test_whisper_server_stt.py",
+  "bridge/transcript_diagnostics.py",
+  "bridge/test_transcript_diagnostics.py",
   "bridge/tts_adapter.py",
   "bridge/test_tts_adapter.py",
   "bridge/conversation_session.py",
