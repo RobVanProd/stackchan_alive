@@ -91,6 +91,19 @@ MODE_NAMES = {
     8: "Error",
 }
 
+# A robot that has stopped sending heartbeats is gone, whatever the last socket
+# event or retained /debug snapshot claimed. Both of those latch:
+# note_client_disconnected() only clears the flag when the peer host matches,
+# refresh_robot() only clears it while the bridge listener is down, and status()
+# re-asserts connectivity from a _debug snapshot that is never invalidated. A
+# robot absent for days therefore kept reporting as connected, in whatever mode
+# its final heartbeat carried.
+#
+# The window is deliberately far longer than the heartbeat cadence. One missed,
+# late, or unreadable sample must never be classified as a robot failure; only a
+# sustained absence counts.
+ROBOT_HEARTBEAT_PRESENCE_TIMEOUT_SECONDS = 30.0
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -544,6 +557,16 @@ class DashboardRuntime:
             robot_connected = self._robot_connected or (
                 debug.get("network_state") == "connected" and debug.get("bridge_state") == "ready"
             )
+            # Heartbeat silence outranks both latched sources above. Absent any
+            # heartbeat at all (age is None) nothing is asserted either way, so a
+            # freshly accepted socket still reads as connected until it has had a
+            # chance to report.
+            if (
+                heartbeat_age is not None
+                and heartbeat_age > ROBOT_HEARTBEAT_PRESENCE_TIMEOUT_SECONDS
+            ):
+                robot_connected = False
+                mode_name = "Unknown"
             initiative = (
                 {**self.initiative_policy.status(), "available": True}
                 if self.initiative_policy is not None
