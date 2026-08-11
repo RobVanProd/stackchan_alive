@@ -109,6 +109,46 @@ class DashboardRuntimeTests(unittest.TestCase):
         self.assertEqual(82, status["robot"]["batteryPercent"])
         self.assertNotIn("private_text", json.dumps(status))
 
+    def test_sustained_heartbeat_silence_reports_the_robot_as_gone(self) -> None:
+        # Observed on the reference robot: the console reported connected and
+        # "Thinking" on a heartbeat 4.3 days old, with no socket at the OS level.
+        self.runtime.note_client_connected("192.168.1.238", 50123)
+        self.runtime.note_heartbeat({"type": "heartbeat", "robot_mode": 4})
+        self.runtime._record_debug({"network_state": "connected", "bridge_state": "ready"})
+
+        fresh = self.runtime.status()
+        self.assertTrue(fresh["robot"]["connected"])
+        self.assertEqual("Thinking", fresh["robot"]["mode"])
+
+        # Neither latched source is cleared here: the socket never reported a
+        # disconnect and the retained /debug snapshot still says ready. Only the
+        # heartbeat gap should decide it.
+        self.runtime._last_heartbeat_at -= 10_000.0
+
+        stale = self.runtime.status()
+        self.assertFalse(stale["robot"]["connected"])
+        self.assertEqual("Unknown", stale["robot"]["mode"])
+        self.assertFalse(stale["bridge"]["connected"])
+
+    def test_brief_heartbeat_gap_is_not_treated_as_a_robot_failure(self) -> None:
+        self.runtime.note_client_connected("192.168.1.238", 50123)
+        self.runtime.note_heartbeat({"type": "heartbeat", "robot_mode": 1})
+
+        # A few missed samples must not flip the console to disconnected.
+        self.runtime._last_heartbeat_at -= 10.0
+
+        status = self.runtime.status()
+        self.assertTrue(status["robot"]["connected"])
+        self.assertEqual("Idle", status["robot"]["mode"])
+
+    def test_connected_robot_reads_connected_before_its_first_heartbeat(self) -> None:
+        self.runtime.note_client_connected("192.168.1.238", 50123)
+
+        status = self.runtime.status()
+
+        self.assertTrue(status["robot"]["connected"])
+        self.assertIsNone(status["robot"]["heartbeatAgeSeconds"])
+
     def test_pipeline_health_attributes_failures_without_turn_content(self) -> None:
         self.runtime.note_pipeline_stage(
             "researching",
