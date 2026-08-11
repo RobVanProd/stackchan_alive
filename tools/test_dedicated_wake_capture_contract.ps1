@@ -69,21 +69,31 @@ foreach ($entry in $inheritance.GetEnumerator()) {
 $releaseChunkSamples = 800
 $releaseSampleRate = 16000
 $releaseGateOpenMs = 6000
-$releaseCaptureChunks = 130
+$releaseCaptureChunks = 240
+$releaseGateMaxTurnMs = 15000
 $chunkMs = [int](($releaseChunkSamples * 1000) / $releaseSampleRate)
+$captureCeilingMs = $releaseCaptureChunks * $chunkMs
 if ($chunkMs -ne 50 -or (120 * $chunkMs) -ne $releaseGateOpenMs -or
-    ($releaseCaptureChunks * $chunkMs) -ne 6500) {
-  throw "Release boundary arithmetic changed: chunkMs=$chunkMs gate=$releaseGateOpenMs ceiling=$($releaseCaptureChunks * $chunkMs)."
+    $captureCeilingMs -ne 12000) {
+  throw "Release boundary arithmetic changed: chunkMs=$chunkMs gate=$releaseGateOpenMs ceiling=$captureCeilingMs."
+}
+# The wake gate's hard privacy guard must outlast any capture we can take, or it
+# closes the turn mid-utterance and the remaining chunks are rejected. This is
+# the PR #217 ordering that closed the F2 equal-threshold race.
+if ($captureCeilingMs -ge $releaseGateMaxTurnMs) {
+  throw "Capture ceiling ${captureCeilingMs} ms must stay below the ${releaseGateMaxTurnMs} ms wake-gate privacy guard."
 }
 
 Require-Contains $gateHeader 'constexpr uint32_t kBridgeWakeGateOpenMs = 6000;' `
   "Bridge wake-gate open duration must stay bound to the reviewed 6000 ms value."
+Require-Contains $gateHeader "constexpr uint32_t kBridgeWakeGateMaxTurnMs = $releaseGateMaxTurnMs;" `
+  "Wake-gate hard privacy guard must stay bound to the reviewed $releaseGateMaxTurnMs ms value."
 Require-Contains $gateHeader 'constexpr bool dedicatedWakeCaptureMaySubmit(' `
   "Pure dedicated-capture submission policy is missing."
 Require-Contains $gateHeader 'return gateOpen && gateTurnActive && uplinkActive;' `
   "Dedicated capture must require all wake-gate and uplink authorities."
-Require-Contains $main 'constexpr uint16_t kWakeMwwDedicatedCaptureChunks = 130;' `
-  "Dedicated capture chunk ceiling must stay bound to the reviewed 130 chunks."
+Require-Contains $main "constexpr uint16_t kWakeMwwDedicatedCaptureChunks = $releaseCaptureChunks;" `
+  "Dedicated capture chunk ceiling must stay bound to the reviewed $releaseCaptureChunks chunks."
 
 $retryStart = $main.IndexOf('DedicatedWakeCaptureSubmitResult submitDedicatedWakeCaptureChunk(')
 $retryEnd = $main.IndexOf('void finishDedicatedWakeCaptureTurn(', $retryStart)
