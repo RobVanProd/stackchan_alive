@@ -66,8 +66,11 @@ void BridgeWakeGate::applyEvent(const RobotEvent& event, uint32_t nowMs) {
     case EventType::SpeechEnded:
     case EventType::ResponseStarted:
     case EventType::ResponseEnded:
-    case EventType::Error:
       completeTurn(nowMs, "bridge_wake_gate_event_end");
+      expireGate(nowMs);
+      break;
+    case EventType::Error:
+      abortTurn(nowMs, "bridge_wake_gate_event_error");
       expireGate(nowMs);
       break;
     default:
@@ -79,15 +82,29 @@ void BridgeWakeGate::update(uint32_t nowMs) {
   if (!telemetry_.ready || !config_.enabled) {
     return;
   }
+  serviceTerminal(nowMs);
+  if (telemetry_.turnActive && uplink_ != nullptr &&
+      !uplink_->telemetry().active && !uplink_->telemetry().terminalPending &&
+      uplink_->telemetry().lastTerminal != BridgeAudioTerminalKind::None) {
+    settleTerminal(BridgeAudioTerminalServiceResult::Queued);
+  }
   if (telemetry_.gateOpen && nowMs >= telemetry_.closeAtMs) {
-    completeTurn(nowMs, "bridge_wake_gate_timeout");
+    abortTurn(nowMs, "bridge_wake_gate_timeout");
     expireGate(nowMs);
   }
   if (telemetry_.turnActive &&
       nowMs - telemetry_.turnStartedAtMs >= config_.maxTurnMs) {
-    completeTurn(nowMs, "bridge_wake_gate_max_turn");
+    abortTurn(nowMs, "bridge_wake_gate_max_turn");
     expireGate(nowMs);
   }
+}
+
+void BridgeWakeGate::cancelActiveTurn(uint32_t nowMs, const char* reason) {
+  if (!telemetry_.ready || !config_.enabled) {
+    return;
+  }
+  abortTurn(nowMs, reason != nullptr ? reason : "bridge_wake_gate_cancelled");
+  expireGate(nowMs);
 }
 
 bool BridgeWakeGate::isGateOpen(uint32_t nowMs) const {
@@ -141,6 +158,7 @@ void BridgeWakeGate::startTurnIfPossible(uint32_t nowMs) {
 }
 
 void BridgeWakeGate::completeTurn(uint32_t nowMs, const char* reason) {
+  (void)reason;
   if (!telemetry_.turnActive || uplink_ == nullptr) {
     return;
   }
@@ -148,17 +166,66 @@ void BridgeWakeGate::completeTurn(uint32_t nowMs, const char* reason) {
   if (uplink_->telemetry().active) {
     if (!uplink_->endTurn(telemetry_.lastSeq, nowMs)) {
       telemetry_.endFailures++;
-      uplink_->abort(nowMs, reason);
-      telemetry_.turnsAborted++;
-      telemetry_.turnActive = false;
       copyError(uplink_->telemetry().lastError);
       return;
     }
   }
 
-  telemetry_.turnsCompleted++;
+  if (uplink_->telemetry().terminalPending) {
+    copyError("bridge_wake_gate_terminal_pending");
+    return;
+  }
+
+  settleTerminal(BridgeAudioTerminalServiceResult::Queued);
+}
+
+void BridgeWakeGate::abortTurn(uint32_t nowMs, const char* reason) {
+  if (!telemetry_.turnActive || uplink_ == nullptr) {
+    return;
+  }
+  uplink_->abort(nowMs, reason);
+  if (uplink_->telemetry().terminalPending) {
+    copyError("bridge_wake_gate_terminal_pending");
+    return;
+  }
+  settleTerminal(BridgeAudioTerminalServiceResult::Queued);
+}
+
+void BridgeWakeGate::serviceTerminal(uint32_t nowMs) {
+  if (!telemetry_.turnActive || uplink_ == nullptr ||
+      !uplink_->telemetry().terminalPending) {
+    return;
+  }
+  const BridgeAudioTerminalServiceResult result = uplink_->servicePendingTerminal(nowMs);
+  if (result == BridgeAudioTerminalServiceResult::Pending) {
+    telemetry_.terminalRetries++;
+    copyError("bridge_wake_gate_terminal_pending");
+    return;
+  }
+  if (result == BridgeAudioTerminalServiceResult::FailedClosed) {
+    telemetry_.terminalTimeouts++;
+    telemetry_.endFailures++;
+  }
+  if (result == BridgeAudioTerminalServiceResult::Queued ||
+      result == BridgeAudioTerminalServiceResult::FailedClosed) {
+    settleTerminal(result);
+  }
+}
+
+void BridgeWakeGate::settleTerminal(BridgeAudioTerminalServiceResult result) {
+  const bool completed = result == BridgeAudioTerminalServiceResult::Queued &&
+                         uplink_ != nullptr &&
+                         uplink_->telemetry().lastTerminal == BridgeAudioTerminalKind::End;
+  if (completed) {
+    telemetry_.turnsCompleted++;
+    telemetry_.lastError[0] = '\0';
+  } else {
+    telemetry_.turnsAborted++;
+    copyError(uplink_ != nullptr ? uplink_->telemetry().lastError
+                                 : "bridge_wake_gate_terminal_failed");
+  }
+
   telemetry_.turnActive = false;
-  telemetry_.lastError[0] = '\0';
 }
 
 bool BridgeWakeGate::uplinkReadyForTurn() const {
@@ -166,7 +233,7 @@ bool BridgeWakeGate::uplinkReadyForTurn() const {
     return false;
   }
   const BridgeAudioUplinkTelemetry& uplink = uplink_->telemetry();
-  return uplink.ready && uplink.enabled && !uplink.active;
+  return uplink.ready && uplink.enabled && !uplink.active && !uplink.terminalPending;
 }
 
 void BridgeWakeGate::copyError(const char* reason) {

@@ -19,6 +19,7 @@ class BridgeWiFiClientSocket final : public BridgeNetworkSocket {
   int available() override;
   int read(uint8_t* out, size_t outSize) override;
   size_t write(const uint8_t* data, size_t length) override;
+  bool lastWriteWouldBlock() const override { return lastWriteWouldBlock_; }
   void stop() override;
 
   uint32_t connectAttempts() const { return connectAttempts_; }
@@ -38,6 +39,7 @@ class BridgeWiFiClientSocket final : public BridgeNetworkSocket {
   uint32_t maxConnectDurationMs_ = 0;
   int lastConnectErrno_ = 0;
   int lastConnectResult_ = 0;
+  bool lastWriteWouldBlock_ = false;
 };
 
 }  // namespace stackchan

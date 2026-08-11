@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "io/BridgeAudioUplink.hpp"
+#include "io/VoiceActivityEndpoint.hpp"
 #include "persona/EventBus.hpp"
 
 namespace stackchan {
@@ -31,6 +32,26 @@ constexpr bool dedicatedWakeCaptureMaySubmit(bool gateOpen,
   return gateOpen && gateTurnActive && uplinkActive;
 }
 
+constexpr bool dedicatedWakeCaptureChunkContinuous(uint32_t micCaptureUs,
+                                                    uint32_t micDeadlineUs,
+                                                    uint32_t previousChunkAtMs,
+                                                    uint32_t currentChunkAtMs,
+                                                    uint32_t gapDeadlineMs) {
+  return micCaptureUs <= micDeadlineUs &&
+         (previousChunkAtMs == 0 ||
+          currentChunkAtMs - previousChunkAtMs <= gapDeadlineMs);
+}
+
+constexpr bool dedicatedWakeCaptureMayCommit(VoiceActivityEndpointReason endpointReason,
+                                             bool endpointEnabled,
+                                             bool chunkLimitReached,
+                                             bool submitFailed,
+                                             bool captureDiscontinuity) {
+  return !submitFailed && !captureDiscontinuity &&
+         (endpointReason == VoiceActivityEndpointReason::TrailingSilence ||
+          (!endpointEnabled && chunkLimitReached));
+}
+
 struct BridgeWakeGateConfig {
   bool enabled = true;
   bool speechStartsTurn = STACKCHAN_BRIDGE_WAKE_ON_SPEECH != 0;
@@ -52,6 +73,8 @@ struct BridgeWakeGateTelemetry {
   uint32_t turnsAborted = 0;
   uint32_t beginFailures = 0;
   uint32_t endFailures = 0;
+  uint32_t terminalRetries = 0;
+  uint32_t terminalTimeouts = 0;
   uint32_t suppressedStarts = 0;
   uint32_t lastSeq = 0;
   uint32_t openedAtMs = 0;
@@ -68,6 +91,7 @@ class BridgeWakeGate {
 
   void applyEvent(const RobotEvent& event, uint32_t nowMs);
   void update(uint32_t nowMs);
+  void cancelActiveTurn(uint32_t nowMs, const char* reason);
   bool isGateOpen(uint32_t nowMs) const;
 
   const BridgeWakeGateTelemetry& telemetry() const {
@@ -80,6 +104,9 @@ class BridgeWakeGate {
   void expireGate(uint32_t nowMs);
   void startTurnIfPossible(uint32_t nowMs);
   void completeTurn(uint32_t nowMs, const char* reason);
+  void abortTurn(uint32_t nowMs, const char* reason);
+  void serviceTerminal(uint32_t nowMs);
+  void settleTerminal(BridgeAudioTerminalServiceResult result);
   bool uplinkReadyForTurn() const;
   void copyError(const char* reason);
 

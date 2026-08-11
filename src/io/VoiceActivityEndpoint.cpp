@@ -23,11 +23,15 @@ bool VoiceActivityEndpoint::begin(const VoiceActivityEndpointConfig& config, uin
   telemetry_.speechSeen = false;
   telemetry_.captureStartedAtMs = nowMs;
   telemetry_.lastSpeechAtMs = 0;
+  telemetry_.capturedAudioMs = 0;
+  telemetry_.lastSpeechAudioMs = 0;
   telemetry_.lastLevel = 0.0f;
   telemetry_.lastZeroCrossingRate = 0.0f;
   telemetry_.noiseFloor = clamp01(config_.initialNoiseFloor);
   telemetry_.lastReason = VoiceActivityEndpointReason::None;
-  consecutiveSpeechMs_ = 0;
+  capturedSamples_ = 0;
+  consecutiveSpeechSamples_ = 0;
+  lastSpeechEndSample_ = 0;
   if (telemetry_.active) {
     ++telemetry_.capturesStarted;
   }
@@ -44,8 +48,9 @@ VoiceActivityEndpointReason VoiceActivityEndpoint::process(const int16_t* sample
   ++telemetry_.chunksProcessed;
   telemetry_.lastLevel = level(samples, sampleCount);
   telemetry_.lastZeroCrossingRate = zeroCrossingRate(samples, sampleCount);
-  const uint32_t chunkMs = static_cast<uint32_t>(
-      (sampleCount * 1000u + config_.sampleRate - 1u) / config_.sampleRate);
+  capturedSamples_ += static_cast<uint64_t>(sampleCount);
+  telemetry_.capturedAudioMs = static_cast<uint32_t>(
+      (capturedSamples_ * 1000u) / config_.sampleRate);
   const float dynamicThreshold = telemetry_.noiseFloor * config_.speechNoiseMultiplier;
   const float speechThreshold = dynamicThreshold > config_.minimumSpeechLevel
                                     ? dynamicThreshold
@@ -56,13 +61,16 @@ VoiceActivityEndpointReason VoiceActivityEndpoint::process(const int16_t* sample
 
   if (speech) {
     ++telemetry_.speechChunks;
-    consecutiveSpeechMs_ += chunkMs > 0 ? chunkMs : 1u;
+    consecutiveSpeechSamples_ += static_cast<uint64_t>(sampleCount);
+    lastSpeechEndSample_ = capturedSamples_;
     telemetry_.lastSpeechAtMs = nowMs;
-    if (consecutiveSpeechMs_ >= config_.minimumSpeechMs) {
+    telemetry_.lastSpeechAudioMs = telemetry_.capturedAudioMs;
+    if (consecutiveSpeechSamples_ * 1000u >=
+        static_cast<uint64_t>(config_.minimumSpeechMs) * config_.sampleRate) {
       telemetry_.speechSeen = true;
     }
   } else {
-    consecutiveSpeechMs_ = 0;
+    consecutiveSpeechSamples_ = 0;
     if (!telemetry_.speechSeen) {
       const float adapt = telemetry_.lastLevel < telemetry_.noiseFloor ? 0.04f : 0.01f;
       telemetry_.noiseFloor += (telemetry_.lastLevel - telemetry_.noiseFloor) * adapt;
@@ -72,12 +80,17 @@ VoiceActivityEndpointReason VoiceActivityEndpoint::process(const int16_t* sample
     }
   }
 
-  const uint32_t elapsedMs = nowMs - telemetry_.captureStartedAtMs;
-  if (telemetry_.speechSeen && !speech && elapsedMs >= config_.minimumCaptureMs &&
-      nowMs - telemetry_.lastSpeechAtMs >= config_.trailingSilenceMs) {
+  const bool minimumCaptured =
+      capturedSamples_ * 1000u >=
+      static_cast<uint64_t>(config_.minimumCaptureMs) * config_.sampleRate;
+  const bool trailingSilenceCaptured =
+      (capturedSamples_ - lastSpeechEndSample_) * 1000u >=
+      static_cast<uint64_t>(config_.trailingSilenceMs) * config_.sampleRate;
+  if (telemetry_.speechSeen && !speech && minimumCaptured && trailingSilenceCaptured) {
     return finish(VoiceActivityEndpointReason::TrailingSilence, nowMs);
   }
-  if (elapsedMs >= config_.maximumCaptureMs) {
+  if (capturedSamples_ * 1000u >=
+      static_cast<uint64_t>(config_.maximumCaptureMs) * config_.sampleRate) {
     return finish(VoiceActivityEndpointReason::MaxDuration, nowMs);
   }
   return VoiceActivityEndpointReason::None;
@@ -85,7 +98,7 @@ VoiceActivityEndpointReason VoiceActivityEndpoint::process(const int16_t* sample
 
 void VoiceActivityEndpoint::cancel() {
   telemetry_.active = false;
-  consecutiveSpeechMs_ = 0;
+  consecutiveSpeechSamples_ = 0;
 }
 
 VoiceActivityEndpointReason VoiceActivityEndpoint::forceMaximum(uint32_t nowMs) {
@@ -127,7 +140,7 @@ VoiceActivityEndpointReason VoiceActivityEndpoint::finish(VoiceActivityEndpointR
   if (reason == VoiceActivityEndpointReason::MaxDuration) {
     ++telemetry_.maxDurationFallbacks;
   }
-  consecutiveSpeechMs_ = 0;
+  consecutiveSpeechSamples_ = 0;
   return reason;
 }
 

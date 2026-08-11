@@ -41,6 +41,7 @@ struct BridgeSocketWriterTelemetry {
   uint32_t binaryFramesEncoded = 0;
   uint32_t binaryFramesWritten = 0;
   uint32_t partialWrites = 0;
+  uint32_t writeDeferrals = 0;
   uint32_t writeFailures = 0;
   uint32_t textBytesQueued = 0;
   uint32_t textBytesWritten = 0;
@@ -57,6 +58,10 @@ class BridgeSocketWriterSink {
 
   virtual bool isConnected() const = 0;
   virtual size_t write(const uint8_t* data, size_t length) = 0;
+  // A zero-byte write normally means the connection failed. Network sinks may
+  // instead report transient backpressure so the retained frame is retried by
+  // a later service pass without blocking the real-time audio capture path.
+  virtual bool lastWriteWouldBlock() const { return false; }
 };
 
 class BridgeSocketWriter {
@@ -68,6 +73,16 @@ class BridgeSocketWriter {
   bool queueBinaryFrame(const uint8_t* payload, size_t length);
   BridgeSocketWriterDrainResult drainPendingFrame(uint32_t nowMs);
   BridgeSocketWriterDrainResult drainPendingTextResponse(uint32_t nowMs);
+
+  // True while binary payload bytes are still owed to the socket, either queued
+  // and not yet encoded or encoded and only partially written. The drain order
+  // in drainPending() puts queued text ahead of queued binary, so an audio
+  // terminal queued in this state would reach the host before the PCM chunk it
+  // already counted. Callers that must not overtake audio consult this first.
+  bool binaryPending() const {
+    return binaryPayloadBytes_ != 0 ||
+           (frameKind_ == PendingFrameKind::BinaryUpload && frameBytes_ != 0);
+  }
 
   const BridgeSocketWriterTelemetry& telemetry() const {
     return telemetry_;
