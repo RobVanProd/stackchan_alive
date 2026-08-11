@@ -6,6 +6,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($DeviceHost)) {
+  throw "DeviceHost is required before restoring the robot-facing bridge."
+}
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
 $DebugUrl = "http://$DeviceHost`:8789/debug"
@@ -15,6 +18,7 @@ if (-not $ProductionHealth.ready) { throw "Production RVC worker is not ready on
 
 $env:STACKCHAN_RVC_WORKER_URL = "http://127.0.0.1:5055"
 & (Join-Path $PSScriptRoot "start_pc_brain.ps1") `
+  -HostName "0.0.0.0" -RobotHost $DeviceHost `
   -StopExisting -Background -EnableAudioDownlink `
   -TtsCommand "python bridge\rvc_tts_client.py" `
   -TtsVoice "stackchan-rvc-warm-rocm" `

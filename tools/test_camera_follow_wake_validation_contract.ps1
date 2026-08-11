@@ -13,6 +13,9 @@ Add-Check "script-present" (Test-Path -LiteralPath $ScriptPath -PathType Leaf) "
 $source = if (Test-Path -LiteralPath $ScriptPath -PathType Leaf) { Get-Content -LiteralPath $ScriptPath -Raw } else { "" }
 $requiredFragments = @(
   "OperatorPresent", "BodyClear", "ConfirmServoRisk",
+  "debug_http_control_policy", "emergency_stop_only", "motion_resume_unavailable",
+  'ControlPolicyContractProbe', 'Get-FirmwareHttpControlPolicy',
+  'Assert-EmergencyStopOnlyMotionPolicy -Policy $controlPolicyPreflight',
   'Invoke-RobotEndpoint "/motion-resume"', 'Invoke-RobotEndpoint "/motion-stop"',
   "Get-NetTCPConnection", "bridge_socket_missing",
   "sourceCommit", "installedFirmwareSha256",
@@ -26,13 +29,21 @@ $requiredFragments = @(
 foreach ($fragment in $requiredFragments) {
   Add-Check "source-$($fragment -replace '[^A-Za-z0-9]+','-')" ($source.Contains($fragment)) "fragment=$fragment"
 }
+$policyIndex = $source.IndexOf('Assert-EmergencyStopOnlyMotionPolicy -Policy $controlPolicyPreflight')
+$resumeIndex = $source.IndexOf('Invoke-RobotEndpoint "/motion-resume"')
+$evidenceIndex = $source.IndexOf('New-Item -ItemType Directory -Force -Path $EvidenceRoot')
+Add-Check "policy-before-resume-and-evidence" ($policyIndex -ge 0 -and $resumeIndex -ge 0 -and
+  $evidenceIndex -ge 0 -and $policyIndex -lt $resumeIndex -and $policyIndex -lt $evidenceIndex) "policy=$policyIndex resume=$resumeIndex evidence=$evidenceIndex"
+$refusalBranch = [regex]::Match($source, 'throw\s+"motion_resume_unavailable[^"\r\n]*"')
+Add-Check "policy-refusal-throws" $refusalBranch.Success "throw=motion_resume_unavailable"
 
 $savedErrorAction = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-$refusalOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath 2>&1 | Out-String
+$refusalOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -ControlPolicyContractProbe 2>&1 | Out-String
 $refusalExit = $LASTEXITCODE
 $ErrorActionPreference = $savedErrorAction
-Add-Check "missing-attestation-refused" ($refusalExit -ne 0 -and $refusalOutput.Contains("Refusing camera-follow motor validation")) "exit=$refusalExit"
+Add-Check "contained-policy-refused-before-attestation" ($refusalExit -ne 0 -and
+  $refusalOutput.Contains("motion_resume_unavailable")) "exit=$refusalExit"
 
 $failed = @($checks | Where-Object { $_.status -eq "fail" }).Count
 $result = [ordered]@{

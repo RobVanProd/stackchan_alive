@@ -2,7 +2,7 @@
 
 The PC bridge can serve a local browser dashboard at `http://127.0.0.1:8766/`. It shows the
 bridge and robot link state, a square Stackchan face, bounded robot telemetry, recent dashboard
-events, and verified motion stop/resume controls.
+events, and a verified emergency motion-stop control. Resume is visibly contained.
 
 The connection badge represents operational bridge readiness, not only the robot socket. If the
 resident speech recognizer fails, the badge changes to **SPEECH RECOVERING** or **SPEECH
@@ -61,16 +61,17 @@ The dashboard does not write servo state directly. It calls the firmware-owned d
 on port `8789`:
 
 - Production DirectML startup always verifies a motion stop after bridge reconnect. Motion never
-  remains enabled when the launcher reports ready; the operator must use the guarded control
-  below to resume it.
+  remains enabled when the launcher reports ready.
 - **Stop motion** calls `/motion-stop`, then requires `/debug` to report motion, servo rail, and
   servo torque all off before showing a verified stop.
-- **Resume motion** stays disabled until the operator checks **Robot is upright and clear**. It
-  calls `/motion-resume`, then requires `/debug` to report motion, servo rail, and servo torque
-  enabled with no power or thermal suppression before showing success.
+- **Resume motion** remains disabled. Fresh `/debug` capability
+  `debug_http_control_policy=emergency_stop_only`, missing capability, malformed capability, and a
+  sample older than 15 seconds all fail closed. The dashboard projects only
+  `motionResumeAvailable:false` and `motionResumePolicy:emergency_stop_only|unknown`.
 
 A command timeout, rejected command, or mismatched `/debug` state is shown as unverified. The
-dashboard never converts transport success into a motion-success claim.
+dashboard never converts transport success into a motion-success claim. A `202 accepted:true`
+stop response is followed by independent `/debug` rail-and-torque verification.
 
 ## Security And Load
 
@@ -94,8 +95,9 @@ The base launcher also supports explicit dashboard options:
 
 ```powershell
 .\tools\start_pc_brain.ps1 -Background -EnableDashboard `
+  -HostName 0.0.0.0 -RobotHost 192.168.1.238 `
   -DashboardHost 127.0.0.1 -DashboardPort 8766 `
-  -RobotHost 192.168.1.238 -EnableAudioDownlink
+  -EnableAudioDownlink
 ```
 
 For a supervised qualification that starts semantic room observation immediately:
@@ -103,9 +105,10 @@ For a supervised qualification that starts semantic room observation immediately
 ```powershell
 $env:STACKCHAN_OLLAMA_VISION_MODEL = "your-local-vision-model"
 .\tools\start_pc_brain.ps1 -Background -EnableDashboard -EnableAudioDownlink `
+  -HostName 0.0.0.0 -RobotHost 192.168.1.238 `
   -EnableConversationV2 -EnableInitiative -EnableRoomObservation `
   -CameraPairingCodeFile "$env:USERPROFILE\.stackchan\camera-pairing-code.txt" `
-  -RobotHost 192.168.1.238
+  -RoomObservationIntervalSeconds 300
 ```
 
 The dashboard runs inside that bridge process and receives robot heartbeat summaries directly.

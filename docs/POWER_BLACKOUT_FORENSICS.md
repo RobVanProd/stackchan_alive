@@ -6,6 +6,22 @@ completed the full all-feature actuator soak for `28807 s` with `5643/5643` succ
 `77/77` formal checker result; bounded final stop evidence verified motion, servo rail, torque, and
 motion power authority off. Historical full-off root cause remains unidentified.
 
+## Qualification Power Topology
+
+The operator's bench experience adds a hard separation between the next two physical gates. P1
+exact-image no-motion qualification may run from PC USB because motion request, servo rail, and
+torque must remain off throughout. P2 supervised emergency-stop proof must use the validated
+dedicated 5 V / 3 A BASE supply for the robot and servo load. Where the hardware path permits it,
+USB may remain attached only for data with its power conductor safely isolated; record the exact
+topology and prevent backfeed.
+
+Start voltage, reset, rail, torque, motion-session, and host-presence capture before P2 arms the
+minimum motion authority. If the robot blacks out or telemetry ends during the stop experiment,
+the result is inconclusive until evidence separates power loss from stop-path behavior. Loss of
+power is not an emergency-stop pass. It is also not, by itself, a firmware failure or proof that
+servo load caused the event. Follow the mandatory stop/runner-termination/post-return snapshot
+sequence and preserve the original state before changing cables or power sources.
+
 ## What The Evidence Says
 
 The intermittent shutdown is a release blocker, but the current evidence does not identify one

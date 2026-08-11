@@ -200,7 +200,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_rvc_worker.ps1
 $env:STACKCHAN_RVC_WORKER_URL = "http://127.0.0.1:5055"
 $env:STACKCHAN_RVC_WORKER_TIMEOUT_SECONDS = "90"
 $env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "65536"
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts_client.py" -TtsVoice "stackchan-rvc-warm-rocm" -DownlinkBinaryFrameDelayMs 80
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -HostName 0.0.0.0 -RobotHost <robot-lan-ip> -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts_client.py" -TtsVoice "stackchan-rvc-warm-rocm" -DownlinkBinaryFrameDelayMs 80
 ```
 
 The physically validated Windows DirectML path is documented in
@@ -284,10 +284,10 @@ listener progressively less patient. The bridge rejects values outside the firmw
 acoustic-tail and reply-window bounds instead of silently correcting them. Sessions remain bounded
 to 24 user turns by default.
 Reply-window capture uses a deterministic local endpoint with sustained-speech and trailing-silence
-hysteresis. The accepted firmware currently ends a reply after 550 ms of trailing silence and
-always stops by 4.8 seconds. Those device-owned endpoint values can truncate a thoughtful pause or
-long sentence even though the host lease remains open; changing them requires a separately
-qualified firmware candidate. Initial v1 capture remains fixed-length. Exit phrases, turn limits,
+hysteresis. The currently installed diagnostic image was physically observed ending a turn after
+only 1.2 seconds of trailing silence and has an independent 6.5-second capture ceiling. The current
+qualification source instead waits 2.0 seconds and aligns both endpoint and dedicated capture at
+12 seconds; it remains unqualified until exact-image supervised evidence passes. Exit phrases, turn limits,
 bridge loss, cancellation, TTS failure, and model failure close through a typed cooldown.
 Host/companion cancellation is implemented; physical over-speaker barge-in and exact-image
 hardware qualification remain promotion gates.
@@ -299,10 +299,11 @@ Host initiative and room context are also explicit, default-off features:
 ```powershell
 $env:STACKCHAN_OLLAMA_VISION_MODEL = "your-local-vision-model"
 .\tools\start_pc_brain.ps1 -Background -EnableAudioDownlink -StreamTtsPhrases `
+  -HostName 0.0.0.0 -RobotHost <robot-lan-ip> `
   -EnableConversationV2 -EnableInitiative -EnableRoomObservation `
   -RoomObservationIntervalSeconds 300 `
   -CameraPairingCodeFile "$env:USERPROFILE\.stackchan\camera-pairing-code.txt" `
-  -RobotHost 192.168.1.238 -EnableDashboard
+  -EnableDashboard
 ```
 
 The initiative policy requires a fresh person-presence observation, waits at least ten minutes

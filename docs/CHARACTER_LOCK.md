@@ -145,7 +145,13 @@ Restating the gates already codified in `data/voice_persona.yaml`:
 
 ## 6. Bridge Output Format
 
-Every model response from the P7 bridge is structured JSON. `mode` and `earcon` are exact string matches for the firmware enums in `src/persona/StateMatrix.hpp`, so the device applies responses with zero translation. The `emotion` block nudges `EmotionModel` so the words and face stay coupled.
+Every model response from the P7 bridge is structured JSON. `mode` and `earcon` use validated
+vocabularies matching firmware concepts, but they are not both applied with zero translation:
+`earcon` is retained by host validation yet absent from `BridgeTurn` and the response wire. Firmware
+currently derives local response earcons from intent, and streamed Wi-Fi audio can cancel local
+prompt/earcon playback. Phrase streaming also currently clamps device-bound negative valence to
+zero while TTS retains signed valence. These are open cross-modal contract gaps; do not claim the
+words, cue, voice, and face are coupled until fixed and qualified.
 
 ```json
 {

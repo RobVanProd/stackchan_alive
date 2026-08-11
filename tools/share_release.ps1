@@ -1,5 +1,6 @@
 param(
   [string]$Version,
+  [string]$ExpectedCommit = "",
   [int]$Port = 8787,
   [string]$BindAddress = "127.0.0.1",
   [switch]$Lan,
@@ -10,20 +11,101 @@ param(
   [int]$PublicUrlReadyPollSeconds = 2,
   [switch]$StopAfterUrl,
   [switch]$OpenLocal,
-  [switch]$NoServe
+  [switch]$NoServe,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-Set-Location $repoRoot
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$shareRepoRoot = $repoRoot
+$shareGitCommand = Get-Command -Name git -CommandType Application -ErrorAction SilentlyContinue |
+  Select-Object -First 1
+if ($null -eq $shareGitCommand) {
+  throw 'Release sharing requires a Git application executable; functions, aliases, and scripts are refused.'
+}
+$shareGitExecutable = (Resolve-Path -LiteralPath ([string]$shareGitCommand.Source)).Path
+$sharePowerShellCommand = Get-Command -Name powershell.exe -CommandType Application -ErrorAction SilentlyContinue |
+  Select-Object -First 1
+if ($null -eq $sharePowerShellCommand) {
+  throw 'Release sharing requires a Windows PowerShell application executable; functions, aliases, and scripts are refused.'
+}
+$sharePowerShellExecutable = (
+  Resolve-Path -LiteralPath ([string]$sharePowerShellCommand.Source)).Path
+$shareGitDisabledHooksPath = Join-Path $repoRoot (
+  "output/private/disabled-share-git-hooks-$PID-" + [guid]::NewGuid().ToString('N'))
+$shareNullAttributesPath = if ($env:OS -eq 'Windows_NT') { 'NUL' } else { '/dev/null' }
+if (Test-Path -LiteralPath $shareGitDisabledHooksPath) {
+  throw "Share Git disabled-hooks sentinel unexpectedly exists: $shareGitDisabledHooksPath"
+}
 
-function Assert-Command {
-  param([string]$Name)
-  $command = Get-Command $Name -ErrorAction SilentlyContinue
-  if ($null -eq $command) {
-    throw "Required command is not available on PATH: $Name"
+function Invoke-ShareTrustedGit {
+  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+  if (Test-Path -LiteralPath $script:shareGitDisabledHooksPath) {
+    throw "Share Git disabled-hooks path must not exist: $script:shareGitDisabledHooksPath"
   }
+  $gitTrustArguments = @(
+    '-c', "core.hooksPath=$script:shareGitDisabledHooksPath",
+    '-c', 'core.fsmonitor=false',
+    '-c', 'core.untrackedCache=false',
+    '-c', 'core.useBuiltinFSMonitor=false',
+    '-c', 'maintenance.auto=false',
+    '-c', 'core.autocrlf=true',
+    '-c', "core.attributesFile=$script:shareNullAttributesPath",
+    '-c', 'filter.lfs.process=',
+    '-c', 'filter.lfs.clean=',
+    '-c', 'filter.lfs.smudge=',
+    '-c', 'filter.lfs.required=false',
+    '-C', $script:shareRepoRoot
+  )
+  $gitTrustArguments += $Arguments
+
+  $previousNoReplaceObjects = $env:GIT_NO_REPLACE_OBJECTS
+  $previousNoSystemAttributes = $env:GIT_ATTR_NOSYSTEM
+  try {
+    [Environment]::SetEnvironmentVariable(
+      'GIT_NO_REPLACE_OBJECTS', '1', [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable(
+      'GIT_ATTR_NOSYSTEM', '1', [EnvironmentVariableTarget]::Process)
+    & $script:shareGitExecutable @gitTrustArguments
+  } finally {
+    [Environment]::SetEnvironmentVariable(
+      'GIT_NO_REPLACE_OBJECTS', $previousNoReplaceObjects, [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable(
+      'GIT_ATTR_NOSYSTEM', $previousNoSystemAttributes, [EnvironmentVariableTarget]::Process)
+  }
+}
+
+function Assert-SafeReleaseVersionLeaf {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  if ($Value.Length -gt 128 -or
+      $Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
+      $Value -in @('.', '..') -or
+      $Value.EndsWith('.', [System.StringComparison]::Ordinal)) {
+    throw "Version must be one safe filename component containing only letters, digits, '.', '_', or '-'."
+  }
+}
+
+function Get-SafeReleaseChildPath {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$RelativePath
+  )
+
+  $resolvedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+  $resolvedChild = [System.IO.Path]::GetFullPath((Join-Path $resolvedRoot $RelativePath))
+  $expectedPrefix = $resolvedRoot + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $resolvedChild.StartsWith($expectedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Release path escapes its trusted root: $resolvedChild"
+  }
+  return $resolvedChild
 }
 
 function Assert-File {
@@ -48,7 +130,7 @@ function Invoke-GitText {
   param([string[]]$Arguments)
 
   try {
-    $output = & git @Arguments 2>$null
+    $output = Invoke-ShareTrustedGit -Arguments $Arguments 2>$null
   } catch {
     return ""
   }
@@ -56,6 +138,86 @@ function Invoke-GitText {
     return ""
   }
   return ($output | Out-String).Trim()
+}
+
+function Invoke-OperationalPackageVerification {
+  param(
+    [Parameter(Mandatory = $true)][string]$Version,
+    [Parameter(Mandatory = $true)][string]$ZipPath,
+    [Parameter(Mandatory = $true)][string]$ExpectedCommit
+  )
+
+  & (Join-Path $PSScriptRoot "verify_release_package.ps1") `
+    -Version $Version `
+    -ZipPath $ZipPath `
+    -ExpectedCommit $ExpectedCommit `
+    -ToolchainAllowlistPath $ToolchainAllowlistPath `
+    -GitExecutable $GitExecutable `
+    -PythonExecutable $PythonExecutable `
+    -PlatformioExecutable $PlatformioExecutable `
+    -LegacyCoreDir $LegacyCoreDir `
+    -ReleaseCoreDir $ReleaseCoreDir `
+    -RequireReleaseEligible
+  if ($LASTEXITCODE -ne 0) {
+    throw "Operational release package verification failed with exit code $LASTEXITCODE."
+  }
+}
+
+function New-VerifiedShareSnapshot {
+  param(
+    [Parameter(Mandatory = $true)][string]$Version,
+    [Parameter(Mandatory = $true)][string]$ZipPath,
+    [Parameter(Mandatory = $true)][string]$ZipSidecarPath,
+    [Parameter(Mandatory = $true)][string]$ExpectedCommit
+  )
+
+  $tempBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\', '/')
+  $snapshotRoot = Join-Path $tempBase ("stackchan-share-$PID-" + [guid]::NewGuid().ToString('N'))
+  $snapshotZip = Join-Path $snapshotRoot "stackchan_alive_$Version.zip"
+  $snapshotSidecar = "$snapshotZip.sha256"
+  $snapshotPackage = Join-Path $snapshotRoot "package"
+  try {
+    New-Item -ItemType Directory -Path $snapshotRoot | Out-Null
+    Copy-Item -LiteralPath $ZipPath -Destination $snapshotZip
+    Copy-Item -LiteralPath $ZipSidecarPath -Destination $snapshotSidecar
+    Invoke-OperationalPackageVerification `
+      -Version $Version `
+      -ZipPath $snapshotZip `
+      -ExpectedCommit $ExpectedCommit | Out-Host
+    Expand-StackchanReleaseZipSafely -ZipPath $snapshotZip -DestinationPath $snapshotPackage
+    return [pscustomobject]@{
+      Root = $snapshotRoot
+      ZipPath = $snapshotZip
+      ZipSidecarPath = $snapshotSidecar
+      PackageRoot = $snapshotPackage
+    }
+  } catch {
+    if (Test-Path -LiteralPath $snapshotRoot) {
+      $resolvedSnapshot = (Resolve-Path -LiteralPath $snapshotRoot).Path
+      $tempPrefix = $tempBase + [System.IO.Path]::DirectorySeparatorChar
+      if (-not $resolvedSnapshot.StartsWith($tempPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clean unexpected share snapshot: $resolvedSnapshot"
+      }
+      Remove-Item -LiteralPath $resolvedSnapshot -Recurse -Force
+    }
+    throw
+  }
+}
+
+function Remove-VerifiedShareSnapshot {
+  param([Parameter(Mandatory = $true)][string]$SnapshotRoot)
+
+  if (-not (Test-Path -LiteralPath $SnapshotRoot)) {
+    return
+  }
+  $tempBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\', '/')
+  $resolvedSnapshot = (Resolve-Path -LiteralPath $SnapshotRoot).Path
+  $tempPrefix = $tempBase + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $resolvedSnapshot.StartsWith($tempPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+      (Split-Path -Leaf $resolvedSnapshot) -notmatch '^stackchan-share-[0-9]+-[0-9a-f]{32}$') {
+    throw "Refusing to clean unexpected share snapshot: $resolvedSnapshot"
+  }
+  Remove-Item -LiteralPath $resolvedSnapshot -Recurse -Force
 }
 
 function Write-ShareStatus {
@@ -524,10 +686,9 @@ function Write-StopHelper {
   param([int[]]$ProcessIds)
 
   $stopScript = Join-Path $PSScriptRoot "stop_share.ps1"
-  $stopCommand = "& '$stopScript' -ShareRoot '$shareRoot'"
   @(
     "@echo off",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"$stopCommand`""
+    "`"$script:sharePowerShellExecutable`" -NoProfile -ExecutionPolicy Bypass -File `"$stopScript`" -ShareRoot `"$shareRoot`""
   ) | Set-Content -Path (Join-Path $shareRoot "STOP_SHARING.cmd") -Encoding ASCII
 
   if ($ProcessIds.Count -gt 0) {
@@ -576,7 +737,8 @@ function Stop-ExistingShare {
   }
 
   try {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopScript -ShareRoot $ExistingShareRoot | Out-Null
+    & $script:sharePowerShellExecutable -NoProfile -ExecutionPolicy Bypass `
+      -File $stopScript -ShareRoot $ExistingShareRoot | Out-Null
   } catch {
     Write-Warning "Existing share stop helper reported a problem: $($_.Exception.Message)"
   }
@@ -728,52 +890,74 @@ function Find-AvailableTcpPort {
   throw "No available TCP port found for $Address between $StartPort and $maxPort."
 }
 
-$rootManifest = Get-ReleaseManifest $repoRoot
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  $Version = Invoke-GitText @("describe", "--tags", "--always", "--dirty")
+}
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  if ($null -ne $rootManifest) {
-    $Version = [string]$rootManifest.version
-  } else {
-    $Version = Invoke-GitText @("describe", "--tags", "--always", "--dirty")
+  throw "Version is required when it cannot be inferred from the trusted source checkout."
+}
+Assert-SafeReleaseVersionLeaf -Value $Version
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+  $ExpectedCommit = Invoke-GitText @("rev-parse", "HEAD")
+}
+if ($ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
+  throw "ExpectedCommit must be a full 40-character hexadecimal Git commit."
+}
+$ExpectedCommit = $ExpectedCommit.ToLowerInvariant()
+
+$releaseOutputRoot = Get-SafeReleaseChildPath -Root $repoRoot -RelativePath "output/release"
+$sourceZipPath = Get-SafeReleaseChildPath -Root $releaseOutputRoot -RelativePath "stackchan_alive_$Version.zip"
+$sourceZipSidecarPath = Get-SafeReleaseChildPath -Root $releaseOutputRoot -RelativePath "stackchan_alive_$Version.zip.sha256"
+if (-not (Test-Path -LiteralPath $sourceZipPath -PathType Leaf)) {
+  throw "Missing release ZIP: $sourceZipPath"
+}
+if (-not (Test-Path -LiteralPath $sourceZipSidecarPath -PathType Leaf)) {
+  throw "Missing release ZIP SHA-256 sidecar: $sourceZipSidecarPath. Rebuild the package; sharing will not create evidence for an unverified ZIP."
+}
+
+# Verify before creating, replacing, or serving any Version-derived share path. The copied
+# snapshot is verified again and safely extracted so no share asset comes from output/release/<version>.
+Invoke-OperationalPackageVerification `
+  -Version $Version `
+  -ZipPath $sourceZipPath `
+  -ExpectedCommit $ExpectedCommit
+. (Join-Path $PSScriptRoot "release_zip_safety.ps1")
+$snapshot = New-VerifiedShareSnapshot `
+  -Version $Version `
+  -ZipPath $sourceZipPath `
+  -ZipSidecarPath $sourceZipSidecarPath `
+  -ExpectedCommit $ExpectedCommit
+try {
+  $packageRoot = $snapshot.PackageRoot
+  $zipPath = $snapshot.ZipPath
+  $zipSidecarPath = $snapshot.ZipSidecarPath
+  $snapshotZipName = Split-Path -Leaf $zipPath
+  $snapshotZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
+  $snapshotSidecar = (Get-Content -LiteralPath $zipSidecarPath -Raw).Trim()
+  if ($snapshotSidecar -cne "$snapshotZipHash  $snapshotZipName") {
+    throw 'Verified share snapshot sidecar does not bind its exact ZIP; existing share state remains untouched.'
   }
-}
 
-if ([string]::IsNullOrWhiteSpace($Version)) {
-  throw "Version is required when it cannot be inferred from git or release_manifest.json."
-}
+  if ($Lan) {
+    $BindAddress = "0.0.0.0"
+  }
 
-if ($Lan) {
-  $BindAddress = "0.0.0.0"
-}
+  Assert-BindAddressAvailable -Address $BindAddress
+  $script:ShareProbeUrl = if ($BindAddress -eq "0.0.0.0") { "http://127.0.0.1`:$Port/" } else { "http://$BindAddress`:$Port/" }
+  $script:ShareLanUrls = @()
 
-Assert-BindAddressAvailable -Address $BindAddress
-$script:ShareProbeUrl = if ($BindAddress -eq "0.0.0.0") { "http://127.0.0.1`:$Port/" } else { "http://$BindAddress`:$Port/" }
-$script:ShareLanUrls = @()
-
-$shareRoot = Join-Path $repoRoot "output/share/$Version"
-if (Test-Path -LiteralPath $shareRoot) {
-  Stop-ExistingShare -ExistingShareRoot $shareRoot
-  Remove-ShareRoot -ExistingShareRoot $shareRoot
-}
-New-Item -ItemType Directory -Force -Path $shareRoot | Out-Null
-
-if ($null -ne $rootManifest) {
-  $packageRoot = $repoRoot
-  $zipPath = Join-Path $shareRoot "stackchan_alive_$Version.zip"
-  $zipItems = Get-ChildItem -LiteralPath $packageRoot -Force |
-    Where-Object { $_.Name -ne "output" } |
-    Select-Object -ExpandProperty FullName
-  Compress-Archive -LiteralPath $zipItems -DestinationPath $zipPath -Force
-} else {
-  $packageRoot = Join-Path $repoRoot "output/release/$Version"
-  $zipPath = Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
-}
-
-Assert-File $packageRoot
-Assert-File $zipPath
+  $shareOutputRoot = Get-SafeReleaseChildPath -Root $repoRoot -RelativePath "output/share"
+  $shareRoot = Get-SafeReleaseChildPath -Root $shareOutputRoot -RelativePath $Version
+  if (Test-Path -LiteralPath $shareRoot) {
+    Stop-ExistingShare -ExistingShareRoot $shareRoot
+    Remove-ShareRoot -ExistingShareRoot $shareRoot
+  }
+  New-Item -ItemType Directory -Force -Path $shareRoot | Out-Null
 
 $files = @(
   @{ Source = $zipPath; Name = "stackchan_alive_$Version.zip" },
+  @{ Source = $zipSidecarPath; Name = "stackchan_alive_$Version.zip.sha256" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.png"); Name = "stackchan_alive_preview.png" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_expression_sheet.png"); Name = "stackchan_alive_expression_sheet.png" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.mp4"); Name = "stackchan_alive_preview.mp4" },
@@ -842,70 +1026,32 @@ $dependencyLock = Get-Content -LiteralPath (Join-Path $packageRoot "dependency_l
 $voiceSourceStatus = Get-Content -LiteralPath (Join-Path $packageRoot "voice_source_status.json") -Raw | ConvertFrom-Json
 $rvcBaseStatus = Get-Content -LiteralPath (Join-Path $packageRoot "rvc_voice_base_status.json") -Raw | ConvertFrom-Json
 
-$preflightRoot = Join-Path $repoRoot "output/preflight/$Version"
-$preflightReportMarkdown = Join-Path $preflightRoot "preflight_report.md"
-$preflightReportJson = Join-Path $preflightRoot "preflight_report.json"
-$preflightReportAvailable = (Test-Path -LiteralPath $preflightReportMarkdown) -and (Test-Path -LiteralPath $preflightReportJson)
 $preflightStatus = "pending"
 $preflightStatusPillClass = "pending"
 $preflightSection = @"
   <h2>Preflight Evidence</h2>
-  <p>No-hardware device preflight has not been attached to this share yet. Run <code>.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_$Version.zip -Version $Version -ExpectedCommit $($manifest.commit)</code>, then re-run this share command to publish the pass/fail report.</p>
+  <p>No-hardware device preflight is not embedded in this verified release ZIP. Run <code>.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_$Version.zip -Version $Version -ExpectedCommit $($manifest.commit)</code> and review that separately; this page does not attach unbound local evidence.</p>
 "@
 $preflightDownloadItems = ""
-
-if ($preflightReportAvailable) {
-  Copy-Item -LiteralPath $preflightReportMarkdown -Destination (Join-Path $shareRoot "preflight_report.md")
-  Copy-Item -LiteralPath $preflightReportJson -Destination (Join-Path $shareRoot "preflight_report.json")
-  $preflightReport = Get-Content -LiteralPath $preflightReportJson -Raw | ConvertFrom-Json
-  $preflightStatus = [string]$preflightReport.status
-  $preflightStatusPillClass = if ($preflightStatus -eq "pass") { "pass" } else { "pending" }
-  $preflightPassedSteps = @($preflightReport.steps | Where-Object { $_.status -eq "pass" }).Count
-  $preflightFailedSteps = @($preflightReport.steps | Where-Object { $_.status -eq "fail" }).Count
-  $preflightSection = @"
-  <h2>Preflight Evidence</h2>
-  <p>No-hardware device preflight report for this package is attached. It covers required commands, dependency pins, flash-helper safety gates, architecture boundaries, preview media, hardware-evidence verifier gates, native tests, embedded test firmware compile, firmware builds, release package verification, and release flash-helper checks.</p>
-  <div class="status">
-    <span class="pill $preflightStatusPillClass">Preflight: $preflightStatus</span>
-    <span class="pill pass">Passed steps: $preflightPassedSteps</span>
-    <span class="pill pending">Failed steps: $preflightFailedSteps</span>
-  </div>
-  <p><a href="preflight_report.md">Read preflight report</a> or <a href="preflight_report.json">download preflight JSON</a>.</p>
-"@
-  $preflightDownloadItems = @"
-    <div class="item"><a href="preflight_report.md">Preflight Report</a></div>
-    <div class="item"><a href="preflight_report.json">Preflight JSON</a></div>
-"@
-}
 
 $sharedZipName = "stackchan_alive_$Version.zip"
 $sharedZipPath = Join-Path $shareRoot $sharedZipName
 Assert-File $sharedZipPath
 $sharedZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sharedZipPath).Hash.ToLowerInvariant()
-"$sharedZipHash  $sharedZipName" | Set-Content -Path (Join-Path $shareRoot "$sharedZipName.sha256") -Encoding ASCII
+$sharedZipSidecarPath = Join-Path $shareRoot "$sharedZipName.sha256"
+Assert-File $sharedZipSidecarPath
+$sharedZipSidecar = (Get-Content -LiteralPath $sharedZipSidecarPath -Raw).Trim()
+if ($sharedZipSidecar -cne "$sharedZipHash  $sharedZipName") {
+  throw "Shared ZIP sidecar does not bind the exact copied and reverified ZIP."
+}
 
-$actionsStatusScript = Join-Path $packageRoot "tools/export_github_actions_status.ps1"
-if ((Get-Command "gh" -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath $actionsStatusScript)) {
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $actionsStatusScript -Version $Version -Commit $manifest.commit -OutputDir $shareRoot
-  if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Unable to refresh GitHub Actions status for share; using packaged status artifacts."
-  }
-}
+# Do not overwrite the packaged Actions evidence in the share root. It is a standalone release
+# asset and must remain byte-for-byte sourced from the safely extracted, release-eligible ZIP.
 $actionsStatus = Get-Content -LiteralPath (Join-Path $shareRoot "github_actions_status.json") -Raw | ConvertFrom-Json
-$rolloutStatusScript = Join-Path $packageRoot "tools/export_rollout_status.ps1"
-if (Test-Path -LiteralPath $rolloutStatusScript) {
-  $oldErrorActionPreference = $ErrorActionPreference
-  $ErrorActionPreference = "Continue"
-  try {
-    $rolloutOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $rolloutStatusScript -Version $Version -PackageRoot $packageRoot -OutDir $shareRoot -ActionsStatusPath (Join-Path $shareRoot "github_actions_status.json") -ExpectedCommit $manifest.commit 2>&1
-    $rolloutExitCode = $LASTEXITCODE
-  } finally {
-    $ErrorActionPreference = $oldErrorActionPreference
-  }
-  if ($rolloutExitCode -ne 0 -and $rolloutExitCode -ne 2) {
-    Write-Warning "Unable to export rollout status for share; continuing without rollout next-action details. Output:$([Environment]::NewLine)$(($rolloutOutput | Out-String).Trim())"
-  }
-}
+# Rollout status is hardware-evidence output, not release content. Never execute the local
+# exporter into the served root: doing so would mix mutable workstation state with verified ZIP
+# authority. A release share therefore reports the packaged readiness state and directs the
+# operator to generate rollout evidence separately.
 $rolloutStatusPath = Join-Path $shareRoot "ROLLOUT_STATUS.json"
 $rolloutStatus = if (Test-Path -LiteralPath $rolloutStatusPath) {
   Get-Content -LiteralPath $rolloutStatusPath -Raw | ConvertFrom-Json
@@ -913,9 +1059,9 @@ $rolloutStatus = if (Test-Path -LiteralPath $rolloutStatusPath) {
   [pscustomobject]@{
     status = "blocked-or-pending"
     nextOwner = "hardware"
-    nextAction = "Create the arrival-day evidence packet and run the progress check."
-    nextCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
-    nextReason = "ROLLOUT_STATUS.json was not available in this share."
+    nextAction = "Return to the exact clean trusted source checkout, define its six exact-host authority values, and create the arrival-day evidence packet there."
+    nextCommand = $null
+    nextReason = "ROLLOUT_STATUS.json was not available in this share, and a shared archive does not confer release authority."
   }
 }
 $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -925,6 +1071,11 @@ $consumerRollout = [string]$readiness.consumerRollout
 $rolloutNextOwner = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextOwner)
 $rolloutNextAction = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextAction)
 $rolloutNextCommand = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextCommand)
+$rolloutNextCommandHtml = if ([string]::IsNullOrWhiteSpace([string]$rolloutStatus.nextCommand)) {
+  '<em>No command is emitted by the shared archive. Return to the exact trusted source checkout.</em>'
+} else {
+  "<code>$rolloutNextCommand</code>"
+}
 $rolloutNextReason = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextReason)
 $voiceSourceGateStatus = [System.Net.WebUtility]::HtmlEncode([string]$voiceSourceStatus.status)
 $voiceSourceBlockedGateCount = [int]$voiceSourceStatus.blockedGateCount
@@ -989,9 +1140,9 @@ $promotionGateItems = (@($readiness.hardwareGates) | ForEach-Object {
     <span class="pill pending">Next owner: $rolloutNextOwner</span>
   </div>
   <p><strong>Action:</strong> $rolloutNextAction</p>
-  <p><strong>Command:</strong> <code>$rolloutNextCommand</code></p>
+  <p><strong>Command:</strong> $rolloutNextCommandHtml</p>
   <p><strong>Reason:</strong> $rolloutNextReason</p>
-  <p><a href="ROLLOUT_STATUS.md">Read rollout status</a> or <a href="ROLLOUT_STATUS.json">download rollout JSON</a>.</p>
+  <p>Rollout status is intentionally not generated into this release share. Run the packaged arrival-day evidence command separately so mutable hardware state cannot be mistaken for verified release content.</p>
 
 $preflightSection
 
@@ -1160,8 +1311,6 @@ $promotionGateItems
     <div class="item"><a href="release_acceptance.json">Acceptance JSON</a></div>
     <div class="item"><a href="GITHUB_ACTIONS_STATUS.md">GitHub Actions Status</a></div>
     <div class="item"><a href="github_actions_status.json">Actions Status JSON</a></div>
-    <div class="item"><a href="ROLLOUT_STATUS.md">Rollout Status</a></div>
-    <div class="item"><a href="ROLLOUT_STATUS.json">Rollout Status JSON</a></div>
     <div class="item"><a href="DEPENDENCIES.md">Dependency Provenance</a></div>
     <div class="item"><a href="dependency_lock.json">Dependency Lock JSON</a></div>
     <div class="item"><a href="RELEASE_NOTES.md">Release Notes</a></div>
@@ -1174,9 +1323,8 @@ $preflightDownloadItems
 
   <h2>Device Arrival Quickstart</h2>
   <p>Bench operator runbook: <a href="ARRIVAL_DAY_RUNBOOK.md">ARRIVAL_DAY_RUNBOOK.md</a></p>
-  <p>After downloading and extracting the release ZIP, run this from inside the extracted folder:</p>
-  <pre><code>.\tools\prepare_device_arrival.cmd -Port COM3 -Operator &quot;Your Name&quot; -DeviceId STACKCHAN-001</code></pre>
-  <p>This verifies the package, dry-runs the display-only flash command, and creates a hardware evidence packet with runnable <code>RUN_*.cmd</code> files.</p>
+  <p>This page and the downloaded archive do not confer release authority. Return to the exact clean trusted source checkout, define the six-value <code>releaseToolchain</code> splat from <code>docs/RELEASE_PROCESS.md</code>, and pass the downloaded ZIP to the source-side <code>tools/prepare_device_arrival.ps1</code>.</p>
+  <p>The trusted source-side flow independently verifies the package, dry-runs the display-only flash command, and creates a hardware evidence packet with authority-bound <code>RUN_*.cmd</code> files.</p>
   <h3>Arrival-Day Evidence Loop</h3>
   <ol>
     <li>Run <code>RUN_DISPLAY_ONLY.cmd</code> and confirm the face appears with dry-run servo logs.</li>
@@ -1350,4 +1498,7 @@ if ($CloudflareTunnel) {
   Write-Host "Stop-Process -Id $($server.Id),$($tunnel.Id)"
 } else {
   Write-Host "Stop-Process -Id $($server.Id)"
+}
+} finally {
+  Remove-VerifiedShareSnapshot -SnapshotRoot $snapshot.Root
 }

@@ -1,6 +1,9 @@
 function Get-StackchanPythonCandidates {
   $candidates = @()
-  $candidates += @(Get-Command "python" -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
+  $candidates += @(
+    Get-Command "python" -All -CommandType Application -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty Source
+  )
 
   if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
     $pythonRoots = Join-Path $env:LOCALAPPDATA "Programs/Python"
@@ -25,16 +28,34 @@ function Get-StackchanPythonCandidates {
   )
 }
 
+function Resolve-StackchanExactPreviewPythonExecutable {
+  param([Parameter(Mandatory = $true)][string]$Candidate)
+
+  if ([string]::IsNullOrWhiteSpace($Candidate) -or
+      -not (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
+    return $null
+  }
+  $item = Get-Item -LiteralPath $Candidate -Force -ErrorAction SilentlyContinue
+  if ($null -eq $item -or
+      ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+      ($env:OS -eq 'Windows_NT' -and [string]$item.Extension -cne '.exe')) {
+    return $null
+  }
+  return [System.IO.Path]::GetFullPath($item.FullName)
+}
+
 function Get-StackchanPreviewPython {
   foreach ($path in Get-StackchanPythonCandidates) {
-    if (-not (Test-Path -LiteralPath $path) -or $path -match "\\WindowsApps\\python\.exe$") {
+    if ($path -match "\\WindowsApps\\python\.exe$") {
       continue
     }
+    $pythonExecutable = Resolve-StackchanExactPreviewPythonExecutable -Candidate $path
+    if ($null -eq $pythonExecutable) { continue }
 
     try {
-      $probe = & $path -c "import PIL, imageio, imageio_ffmpeg; print('preview-media-ok')" 2>$null
+      $probe = & $pythonExecutable -c "import PIL, imageio, imageio_ffmpeg; print('preview-media-ok')" 2>$null
       if ($LASTEXITCODE -eq 0 -and (($probe | Out-String) -match "preview-media-ok")) {
-        return (Resolve-Path $path).Path
+        return $pythonExecutable
       }
     } catch {
       continue

@@ -14,8 +14,10 @@ no face sprite sheets or character-image assets in the runtime.
 
 ## Project Status
 
-Status as of July 13, 2026: **public v0.2 release candidate, physically validated on the
-reference Stackchan**.
+Status as of August 2, 2026: a private paired candidate built from source `ce66f8a0` has historical
+owner-accepted exact-image physical evidence on the reference Stackchan. Public v0.2, current
+`main`, and the currently installed live image do not inherit that evidence; the installed SHA is
+presently unknown.
 
 What is working in the repository now:
 
@@ -37,12 +39,13 @@ What is working in the repository now:
   guides, native and host tests, exact-binary soak evidence, private recovery archives, and
   secret-free public packaging checks.
 - PC and Android companion contracts for local brain ownership, endpoint handoff, settings, and
-  trusted-endpoint removal. Continuous two-way conversation remains an explicitly post-release
-  v2 feature.
+  trusted-endpoint removal. Conversation v2 exists in source and the dashboard launcher enables it,
+  but it remains unpromoted and physically unqualified.
 
 Release notes:
 
-- The corrected exact paired candidate completed the full all-feature actuator soak for `28807 s`
+- That private corrected exact paired candidate completed the full all-feature actuator soak for
+  `28807 s`
   with `5643/5643` successful polls and a `77/77` formal checker result. Motion, servo rail,
   torque, and motion power authority were verified off after its bounded final stop.
 - The public build and release package contain no Wi-Fi credentials, OTA token, or camera pairing
@@ -52,13 +55,13 @@ Release notes:
   under `media/voice/rvc/` through Git LFS.
 - Release artifacts are generated and checksum-verified from the published commit.
 
-Start with [AGENTS.md](AGENTS.md) when using a coding agent. The authoritative current evidence is
+Start with [AGENTS.md](AGENTS.md) when using a coding agent. The authoritative evidence history is
 in [docs/FIRST_DEPLOY_STATUS.md](docs/FIRST_DEPLOY_STATUS.md), the exact hardware workflow is in
 [docs/ARRIVAL_DAY_RUNBOOK.md](docs/ARRIVAL_DAY_RUNBOOK.md), and promotion gates are in
 [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md). See
 [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
-[docs/CONVERSATION_V2_ROADMAP.md](docs/CONVERSATION_V2_ROADMAP.md) for the deliberately
-post-release natural-conversation plan. Passive visitor-sensor measurement is documented in
+[docs/CONVERSATION_V2_ROADMAP.md](docs/CONVERSATION_V2_ROADMAP.md) for the unpromoted
+natural-conversation plan. Passive visitor-sensor measurement is documented in
 [docs/LTR553_CALIBRATION.md](docs/LTR553_CALIBRATION.md), and authenticated updates plus the
 stable/beta manifest contract are in [docs/LAN_OTA.md](docs/LAN_OTA.md).
 
@@ -325,32 +328,37 @@ Designing a face is a YAML edit plus a re-render; see
 
 ## Release And Evidence Flow
 
+Run every release-authorizing command below from the exact clean trusted source checkout. Define
+the six-value `$releaseToolchain` splat in `docs/RELEASE_PROCESS.md`; a downloaded or extracted
+archive does not confer release authority.
+
 Create a verified prerelease package:
 
 ```powershell
-.\tools\package_release.cmd -Version <version>
-.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip
+# Define the six reviewed authority values shown in docs/RELEASE_PROCESS.md first.
+.\tools\package_release.ps1 -Version <version> @releaseToolchain
+.\tools\verify_release_package.ps1 -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -RequireReleaseEligible @releaseToolchain
 ```
 
 Share the package locally or through a tunnel:
 
 ```powershell
-.\tools\share_release.cmd -Version <version> -OpenLocal
-.\tools\share_release.cmd -Version <version> -Lan
-.\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
+.\tools\share_release.ps1 -Version <version> -OpenLocal @releaseToolchain
+.\tools\share_release.ps1 -Version <version> -Lan @releaseToolchain
+.\tools\share_release.ps1 -Version <version> -CloudflareTunnel -DownloadCloudflared @releaseToolchain
 ```
 
 Publish a verified prerelease manually when hosted Actions cannot run:
 
 ```powershell
-.\tools\publish_release.cmd -Version <version> -CreateTag -PushCurrentBranch -PushTag
-.\tools\audit_published_release.cmd -Version <version>
+.\tools\publish_release.ps1 -Version <version> -Repo RobVanProd/stackchan_alive -CreateTag -PushCurrentBranch -PushTag @releaseToolchain
+.\tools\audit_published_release.ps1 -Version <version> @releaseToolchain
 ```
 
 Start a hardware evidence packet when the device is connected:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\start_hardware_evidence.ps1 -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
 Evidence packets include `RUN_HARDWARE_SIM_BASELINE.cmd` for the pre-arrival virtual
@@ -361,7 +369,7 @@ Verify completed evidence before promotion:
 
 ```powershell
 .\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
-.\tools\verify_consumer_promotion.cmd `
+.\tools\verify_consumer_promotion.ps1 `
   -Version <version> `
   -PackageZip output\release\stackchan_alive_<version>.zip `
   -EvidenceRoot output\hardware-evidence\<packet-folder> `
@@ -370,7 +378,8 @@ Verify completed evidence before promotion:
   -CameraFollowSummaryPath <camera-summary.json> `
   -BodySensorReportPath <body-sensor-report.json> `
   -FullSystemSoakSummaryPath <full-soak-summary.json> `
-  -MinFinalSoakDurationSeconds 28800
+  -MinFinalSoakDurationSeconds 28800 `
+  @releaseToolchain
 ```
 
 The release commit and tested firmware source commit are normally identical. Keep them separate

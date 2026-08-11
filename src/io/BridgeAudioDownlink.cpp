@@ -125,24 +125,42 @@ void BridgeAudioDownlink::update(uint32_t nowMs) {
   completePlayback();
 }
 
-void BridgeAudioDownlink::abort(uint32_t nowMs, uint32_t reasonCode) {
+void BridgeAudioDownlink::abort(uint32_t nowMs,
+                                uint32_t reasonCode,
+                                bool signalPlaybackTerminal) {
   (void)nowMs;
+  const bool preserveCompletion = signalPlaybackTerminal && telemetry_.playbackCompletionPending;
+  const bool interruptPlayback =
+      signalPlaybackTerminal && !preserveCompletion && telemetry_.lastSeq != 0 &&
+      (telemetry_.active || telemetry_.playbackActive || telemetry_.playbackAwaitingDrain);
+  const uint32_t interruptedSeq = telemetry_.lastSeq;
   if (telemetry_.active) {
     telemetry_.streamsAborted++;
   }
   stopPlayback(nowMs);
   clearActive();
-  telemetry_.playbackCompletionPending = false;
-  telemetry_.playbackCompletionSeq = 0;
+  if (interruptPlayback) {
+    telemetry_.playbackCompletionPending = true;
+    telemetry_.playbackCompletionInterrupted = true;
+    telemetry_.playbackCompletionSeq = interruptedSeq;
+    telemetry_.playbackInterruptions++;
+  } else if (!preserveCompletion) {
+    telemetry_.playbackCompletionPending = false;
+    telemetry_.playbackCompletionInterrupted = false;
+    telemetry_.playbackCompletionSeq = 0;
+  }
   telemetry_.lastErrorCode = reasonCode;
 }
 
-bool BridgeAudioDownlink::peekPlaybackCompletion(uint32_t* seqOut) const {
+bool BridgeAudioDownlink::peekPlaybackCompletion(uint32_t* seqOut, bool* interruptedOut) const {
   if (!telemetry_.playbackCompletionPending) {
     return false;
   }
   if (seqOut != nullptr) {
     *seqOut = telemetry_.playbackCompletionSeq;
+  }
+  if (interruptedOut != nullptr) {
+    *interruptedOut = telemetry_.playbackCompletionInterrupted;
   }
   return true;
 }
@@ -152,6 +170,7 @@ bool BridgeAudioDownlink::consumePlaybackCompletion() {
     return false;
   }
   telemetry_.playbackCompletionPending = false;
+  telemetry_.playbackCompletionInterrupted = false;
   telemetry_.playbackCompletionSignals++;
   return true;
 }
@@ -241,6 +260,7 @@ void BridgeAudioDownlink::completePlayback() {
   telemetry_.playbackStops++;
   telemetry_.playbackCompletions++;
   telemetry_.playbackCompletionPending = true;
+  telemetry_.playbackCompletionInterrupted = false;
   telemetry_.playbackCompletionSeq = telemetry_.lastSeq;
 }
 

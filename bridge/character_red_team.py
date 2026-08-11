@@ -5,9 +5,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+# Release packaging runs Python with PYTHONSAFEPATH=1, which intentionally
+# removes the script directory from sys.path. Bind sibling imports to this
+# exact tracked bridge directory instead of relying on the caller's cwd or an
+# ambient PYTHONPATH.
+BRIDGE_MODULE_DIR = Path(__file__).resolve().parent
+if str(BRIDGE_MODULE_DIR) not in sys.path:
+    sys.path.insert(0, str(BRIDGE_MODULE_DIR))
 
 from character_harness import (
     RED_TEAM_SUITE,

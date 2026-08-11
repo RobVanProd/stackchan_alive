@@ -2,15 +2,19 @@ param(
   [string]$ManifestPath = "data/voice_rvc_base.yaml",
   [string]$MetadataPath = "data/voice_rvc_base_metadata.json",
   [string]$ZipPath = "",
-  [string]$OutputDir = "."
+  [string]$OutputDir = ".",
+  [string]$VoiceRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-& (Join-Path $PSScriptRoot "verify_tracked_rvc_assets.ps1") *> $null
+if ([string]::IsNullOrWhiteSpace($VoiceRoot)) {
+  $VoiceRoot = Join-Path $repoRoot "media/voice/rvc"
+}
+& (Join-Path $PSScriptRoot "verify_tracked_rvc_assets.ps1") -VoiceRoot $VoiceRoot *> $null
 
-$modelPath = Join-Path $repoRoot "media/voice/rvc/model.pth"
-$indexPath = Join-Path $repoRoot "media/voice/rvc/model.index"
+$modelPath = Join-Path $VoiceRoot "model.pth"
+$indexPath = Join-Path $VoiceRoot "model.index"
 $model = Get-Item -LiteralPath $modelPath
 $index = Get-Item -LiteralPath $indexPath
 $modelHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $modelPath).Hash.ToUpperInvariant()

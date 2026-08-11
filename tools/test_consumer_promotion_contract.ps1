@@ -28,7 +28,9 @@ foreach ($fragment in $required) {
 }
 
 $identityBindings = @(
-  '& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage -Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit',
+  '-RequireReleaseEligible -ToolchainAllowlistPath $ToolchainAllowlistPath',
+  '-GitExecutable $GitExecutable -PythonExecutable $PythonExecutable',
+  '-LegacyCoreDir $LegacyCoreDir -ReleaseCoreDir $ReleaseCoreDir',
   '$cameraEvidence = Assert-CameraFollowReady $CameraFollowSummaryPath $ExpectedFirmwareSourceCommit',
   '$bodyEvidence = Assert-BodySensorReady $BodySensorReportPath $ExpectedFirmwareSourceCommit',
   '$soakEvidence = Assert-FinalSoakReady $FullSystemSoakSummaryPath $ExpectedFirmwareSourceCommit $MinFinalSoakDurationSeconds',
@@ -48,17 +50,79 @@ $packageVerifierSource = Get-Content -LiteralPath (Join-Path $RepoRoot "tools\ve
 $actionsExporterSource = Get-Content -LiteralPath (Join-Path $RepoRoot "tools\export_github_actions_status.ps1") -Raw
 
 foreach ($fragment in @(
-    'status = "test-ready prerelease; hardware validation pending"',
-    'status = "test-ready-prerelease"',
-    'consumerRollout = "blocked-pending-hardware-validation"',
-    'releaseClass = "test-ready-prerelease"',
-    'currentDecision = "test-ready-for-device-arrival"',
-    'consumerRolloutDecision = "blocked-pending-hardware-validation"',
+    'Assert-StackchanReleaseToolchainIdentity',
+    'pre-Git byte authority mismatch',
+    'release_toolchain_identity_allowlist.json',
+    'if ($SkipBuild -and -not $AllowDirty) {',
+    'if ($AllowDirty -and -not $SkipBuild) {',
+    'if ($SkipBuild -and $ObserveCandidateActions) {',
+    '"diagnostic-only; reproducibility not proven; release and hardware validation forbidden"',
+    '"test-ready prerelease; hardware validation pending"',
+    'diagnosticPackage = [bool]$SkipBuild',
+    'releaseEligible = ($releaseToolchainEligible -and (-not $SkipBuild))',
+    'hardwareValidationEligible = ($releaseToolchainEligible -and (-not $SkipBuild))',
+    'distributionEligible = ($releaseToolchainEligible -and (-not $SkipBuild))',
+    'flashEligible = ($releaseToolchainEligible -and (-not $SkipBuild))',
+    'status = if ($SkipBuild) { "diagnostic-only-unqualified" } else { "test-ready-prerelease" }',
+    'consumerRollout = if ($SkipBuild) { "forbidden-diagnostic-package" } else { "blocked-pending-hardware-validation" }',
+    'releaseClass = if ($SkipBuild) { "diagnostic-only-unqualified" } else { "test-ready-prerelease" }',
+    'currentDecision = if ($SkipBuild) { "release-and-hardware-use-forbidden" } else { "test-ready-for-device-arrival" }',
+    'consumerRolloutDecision = if ($SkipBuild) { "forbidden-diagnostic-package" } else { "blocked-pending-hardware-validation" }',
     "Owner approval has not been recorded for this candidate"
   )) {
   if (-not $packageSource.Contains($fragment)) {
     throw "Release package candidate-state contract missing fragment: $fragment"
   }
+}
+
+foreach ($fragment in @(
+    '-ExpectedCommit $ExpectedCommit -RequireReleaseEligible',
+    'Operational release ZIP verification failed before consumer-promotion extraction.',
+    'Expand-StackchanReleaseZipSafely',
+    '-PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit',
+    '-RequireReleaseEligible -ToolchainAllowlistPath $ToolchainAllowlistPath'
+  )) {
+  if (-not $source.Contains($fragment)) {
+    throw "Consumer promotion release-eligibility boundary missing fragment: $fragment"
+  }
+}
+
+$packageFailClosedGuardIndex = $packageSource.IndexOf('if (-not $SkipBuild) {')
+$packageFailClosedMessageIndex = $packageSource.IndexOf('Assert-StackchanReleaseToolchainIdentity')
+$packageFirstGitResolutionIndex = $packageSource.IndexOf('$releaseBootstrapGitCommand = Get-Command -Name git')
+if ($packageFailClosedGuardIndex -lt 0 -or
+    $packageFailClosedMessageIndex -lt $packageFailClosedGuardIndex -or
+    $packageFirstGitResolutionIndex -lt $packageFailClosedMessageIndex) {
+  throw "Release package fail-closed guard must precede Git and build-tool resolution."
+}
+
+foreach ($fragment in @(
+    '[switch]$RequireReleaseEligible',
+    'Assert-StackchanReleaseToolchainIdentity',
+    'Release verifier pre-Git byte authority mismatch:',
+    'Operational release verification refuses diagnostic packages.',
+    '$manifest.releaseEligible -ne $false',
+    '$manifest.hardwareValidationEligible -ne $false',
+    '$manifest.distributionEligible -ne $false',
+    '$manifest.flashEligible -ne $false',
+    'if ($RequireReleaseEligible -and',
+    '$manifest.releaseEligible -ne $true',
+    '$manifest.hardwareValidationEligible -ne $true',
+    '$manifest.distributionEligible -ne $true',
+    '$manifest.flashEligible -ne $true'
+  )) {
+  if (-not $packageVerifierSource.Contains($fragment)) {
+    throw "Release package verifier fail-closed eligibility contract missing fragment: $fragment"
+  }
+}
+
+$verifierFailClosedGuardIndex = $packageVerifierSource.IndexOf('if ($RequireReleaseEligible) {')
+$verifierFailClosedMessageIndex = $packageVerifierSource.IndexOf('Assert-StackchanReleaseToolchainIdentity')
+$verifierAmbientProcessingIndex = $packageVerifierSource.IndexOf('$trustedGitDisabledHooksPath = Join-Path')
+if ($verifierFailClosedGuardIndex -lt 0 -or
+    $verifierFailClosedMessageIndex -lt $verifierFailClosedGuardIndex -or
+    $verifierAmbientProcessingIndex -lt $verifierFailClosedMessageIndex) {
+  throw "Release package verifier identity guard must precede trusted Git, tool, and package processing."
 }
 
 foreach ($fragment in @(
@@ -70,6 +134,19 @@ foreach ($fragment in @(
   if (-not $packageSource.Contains($fragment)) {
     throw "Release package observed candidate Actions contract missing fragment: $fragment"
   }
+}
+
+$zipEligibilityVerifyIndex = $source.IndexOf('-ExpectedCommit $ExpectedCommit -RequireReleaseEligible')
+$zipVerificationFailureIndex = $source.IndexOf('Operational release ZIP verification failed before consumer-promotion extraction.')
+$safeExtractionIndex = $source.IndexOf('Expand-StackchanReleaseZipSafely')
+$rootEligibilityVerifyIndex = $source.IndexOf('-Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit')
+$firstEvidenceCheckIndex = $source.IndexOf('if ([string]::IsNullOrWhiteSpace($EvidenceRoot))')
+if ($zipEligibilityVerifyIndex -lt 0 -or
+    $zipVerificationFailureIndex -lt $zipEligibilityVerifyIndex -or
+    $safeExtractionIndex -lt $zipVerificationFailureIndex -or
+    $rootEligibilityVerifyIndex -lt $safeExtractionIndex -or
+    $firstEvidenceCheckIndex -lt $rootEligibilityVerifyIndex) {
+  throw "Consumer promotion must verify release eligibility before safe extraction and again before evidence checks."
 }
 
 foreach ($fragment in @(

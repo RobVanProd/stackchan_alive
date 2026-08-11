@@ -12,6 +12,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+. (Join-Path $PSScriptRoot "release_zip_safety.ps1")
 
 function Quote-PowerShellArgument {
   param([string]$Value)
@@ -43,7 +44,7 @@ function Copy-AcceptanceArtifactsFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     Copy-AcceptanceArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -152,7 +153,7 @@ function Copy-VoiceLeadArtifactsFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     return Copy-VoiceLeadArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -208,7 +209,7 @@ function Copy-VoiceGateStatusFromZip {
   $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
   try {
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Expand-StackchanReleaseZipSafely -ZipPath $ZipPath -DestinationPath $extractDir
     return Copy-VoiceGateStatusFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
   } finally {
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -433,7 +434,7 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
   "9. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
   "10. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
   "11. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
-  "12. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
+  "12. ``RUN_ROLLOUT_STATUS.cmd`` is intentionally non-authorizing in a synthetic packet. Generate rollout status only from the exact trusted source checkout with all six exact-host toolchain authorities.",
   "13. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
   "14. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
   "",
@@ -442,7 +443,7 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
   "- Hardware validation remains pending until this packet has real display, servo, soak, calibration, photo/video, and speaker evidence.",
   "- Production voice-source provenance remains pending until the owned or licensed source record is completed.",
   "- RVC voice-base evidence remains review-only until consumer and distribution approvals are explicitly recorded.",
-  "- GitHub Actions may still be externally blocked; use ``RUN_ROLLOUT_STATUS.cmd`` for the current CI/account state.",
+  "- The current CI/account state is unavailable from this synthetic packet. Generate it only from the exact trusted source checkout with all six exact-host toolchain authorities.",
   "- Hosted media or synthetic diagnostic packets are review aids only. They do not replace real-device evidence.",
   "",
   "## Hard Stops",
@@ -664,7 +665,7 @@ if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
 if ($AllowDirtyPackage) {
   $verifyPackageCommand += " -AllowDirtyPackage"
 }
-$rolloutStatusCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\export_rollout_status.ps1`" -Version $Version $rolloutPackageArg -EvidenceRoot `"%~dp0.`" -ExpectedCommit $ExpectedCommit -OutDir `"%~dp0.`""
+$rolloutStatusCommand = "echo Diagnostic-only synthetic packet: rollout-status generation requires the exact trusted source checkout and six exact-host toolchain authorities. The archive does not confer release authority."
 
 $commandFiles = @{
   "RUN_PLAY_LEAD_VOICE.cmd" = "echo Synthetic diagnostic packet. Use a real hardware packet for target speaker playback."

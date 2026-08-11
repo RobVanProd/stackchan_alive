@@ -132,7 +132,7 @@ The physical pass still needs visible evidence that a real human face is acquire
 sound-aware selection chooses the current speaker. Advancing counters alone cannot prove the
 behavior looks correct.
 
-## Current Physical Evidence (2026-07-11)
+## Historical Physical Evidence — 2026-07-11; Not Current Installation
 
 The physical GC0308 initializes on its first attempt with sensor PID `155`. The host worker has
 completed hundreds of authenticated frame fetches and target updates without pairing or frame
@@ -158,8 +158,8 @@ seconds and stopped camera gaze updates. Capture is now incremental: one chunk i
 intent cycle while camera events, gaze, RGB, and character state continue to advance. Debug exposes
 the incremental active flag, attempted/submitted chunks, service calls, and maximum service time.
 
-Native logic passes `239/239`, the complete bridge/vision suite passes `205/205`, and the installed
-private OTA candidate SHA-256 is
+At that checkpoint, native logic passed `239/239`, the complete bridge/vision suite passed `205/205`,
+and the installed-at-that-checkpoint private OTA candidate SHA-256 was
 `890ae99a55ca89bae3694d60287359d9f2a21814d1ad1b15e99a1e98e6df8ac2`. Final visual
 camera-follow through wake, listening, and reply remains pending. The latest attempt correctly held
 motion off because the local worker had no fresh face lock; it must not be counted as a behavioral

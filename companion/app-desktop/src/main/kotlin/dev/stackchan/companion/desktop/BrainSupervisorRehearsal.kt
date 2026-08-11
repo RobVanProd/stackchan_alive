@@ -280,7 +280,7 @@ internal fun DesktopManagedPythonRuntimeStatus.toBrainSupervisorEvidenceJson() =
     }
 
 internal fun driveBrainSupervisorTextTurn(port: Int, deviceId: String, seq: Int): BrainTurnEvidence {
-    BrainRehearsalClient.connectWithRetry("ws://127.0.0.1:$port/bridge").use { client ->
+    BrainRehearsalClient.connectWithRetry("ws://127.0.0.1:$port/bridge", deviceId).use { client ->
         val startedAt = System.nanoTime()
         val sessionHello = decodeControlMessage(client.nextText()) as BridgeHello
         client.send(encodeControlMessage(DeviceHello(deviceId = deviceId, capabilities = listOf("diagnostics"))))
@@ -337,12 +337,12 @@ private class BrainRehearsalClient private constructor(
     }
 
     companion object {
-        fun connectWithRetry(uri: String): BrainRehearsalClient {
+        fun connectWithRetry(uri: String, deviceId: String): BrainRehearsalClient {
             val deadline = System.nanoTime() + Duration.ofSeconds(8).toNanos()
             var lastError: Throwable? = null
             while (System.nanoTime() < deadline) {
                 try {
-                    return connect(uri)
+                    return connect(uri, deviceId)
                 } catch (error: Throwable) {
                     lastError = error
                     if (!isRetryableConnectError(error)) {
@@ -354,7 +354,7 @@ private class BrainRehearsalClient private constructor(
             throw IllegalStateException("timed out connecting to $uri", lastError)
         }
 
-        private fun connect(uri: String): BrainRehearsalClient {
+        private fun connect(uri: String, deviceId: String): BrainRehearsalClient {
             val messages = LinkedBlockingQueue<String>()
             val listener = object : WebSocket.Listener {
                 override fun onText(
@@ -381,6 +381,8 @@ private class BrainRehearsalClient private constructor(
             val socket = HttpClient
                 .newHttpClient()
                 .newWebSocketBuilder()
+                .header("X-Stackchan-Protocol", CompanionIdentity.protocol)
+                .header("X-Stackchan-Device", deviceId)
                 .connectTimeout(Duration.ofSeconds(2))
                 .buildAsync(URI.create(uri), listener)
                 .get(Duration.ofSeconds(2).toMillis(), TimeUnit.MILLISECONDS)

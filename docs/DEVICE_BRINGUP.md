@@ -2,6 +2,10 @@
 
 Use this when the Stack-chan hardware arrives.
 
+Run release-authorizing commands from the exact clean trusted source checkout after defining the
+six-value `$releaseToolchain` splat in `docs/RELEASE_PROCESS.md`. A downloaded or extracted archive
+does not confer release authority.
+
 ## Preflight
 
 1. Confirm battery is charged or USB-C power is stable.
@@ -9,7 +13,7 @@ Use this when the Stack-chan hardware arrives.
 3. Start an evidence packet for the release under test from the source checkout:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\start_hardware_evidence.ps1 -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
@@ -151,25 +155,26 @@ contract before a real LiteRT-LM engine is available.
 Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\prepare_device_arrival.ps1 -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
-If you only have the extracted release ZIP, run the same helper from inside the extracted folder:
+If the release ZIP was downloaded elsewhere, remain in the trusted source checkout and pass its
+absolute path:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+.\tools\prepare_device_arrival.ps1 -ReleaseTag <version> -PackageZip <absolute-path-to-downloaded-zip> -ExpectedCommit <release-commit> -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001 @releaseToolchain
 ```
 
 4. Check the exact release-binary flash command without touching the device:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -DryRun -Monitor -Port COM3
+.\tools\flash_release_firmware.ps1 -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware display_only -DryRun -Monitor -Port COM3 @releaseToolchain
 ```
 
 5. Flash the display-only binary from the verified release package first:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -Monitor -Port COM3
+.\tools\flash_release_firmware.ps1 -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware display_only -Monitor -Port COM3 @releaseToolchain
 ```
 
 Expected result: the CoreS3 display shows the procedural face and serial logs include dry-run servo mode.
@@ -289,13 +294,13 @@ Servos are disabled by default in `platformio.ini`:
 Use the default display-only environment first:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -Monitor -Port COM3
+.\tools\flash_release_firmware.ps1 -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware display_only -Monitor -Port COM3 @releaseToolchain
 ```
 
 Check the servo upload command without touching the device:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware servo_calibration -ConfirmServoRisk -DryRun -Monitor -Port COM3
+.\tools\flash_release_firmware.ps1 -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware servo_calibration -ConfirmServoRisk -DryRun -Monitor -Port COM3 @releaseToolchain
 ```
 
 Only use the servo calibration environment after the display-only build runs and the body is on a clear surface:
@@ -303,10 +308,15 @@ Only use the servo calibration environment after the display-only build runs and
 The servo-calibration firmware keeps `STACKCHAN_ENABLE_SPEAKER=0` so calibration and motion-risk checks do not produce speaker output. The display-only firmware keeps speaker output enabled and should report `audio_out_hw_ready=1` if the M5 speaker path initializes.
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware servo_calibration -ConfirmServoRisk -Monitor -Port COM3
+.\tools\flash_release_firmware.ps1 -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware servo_calibration -ConfirmServoRisk -Monitor -Port COM3 @releaseToolchain
 ```
 
-For development builds from source, use `tools/flash_device.cmd`; for release evidence, use `tools/flash_release_firmware.cmd` so the tested device matches the verified package. Use `tools\flash_device.cmd -Environment stackchan_wifi` only for source-side lab bring-up where the robot must host the Wi-Fi bridge runtime code before release-package evidence exists; credentials still enter through serial provisioning, not build flags.
+For development builds from source, use `tools/flash_device.cmd`; for release evidence, use the
+trusted-checkout `tools/flash_release_firmware.ps1 ... @releaseToolchain` path so the tested device
+matches the verified package. Use `tools\flash_device.cmd -Environment stackchan_wifi` only for
+source-side lab bring-up where the robot must host the Wi-Fi bridge runtime code before
+release-package evidence exists; credentials still enter through serial provisioning,
+not build flags.
 
 For the physical M5StackChan body used in the first live bring-up, the proven M5 SCS servo UART mapping is CoreS3 host `RX=GPIO7`, `TX=GPIO6`. Do not change this back to the generic CoreS3 `GPIO1/GPIO2` assumption; that mapping failed attach discovery on this body. The guarded source-side lead environment is currently `stackchan_wake_mww_uplink_servos_m5_voiceout`, with servo hardware compiled in, motion disabled at boot, actuator writes rate-limited, speaker downlink enabled, recovery/debug endpoints on port `8789`, and session auto-stop enabled.
 

@@ -31,11 +31,13 @@ function Write-JsonFile {
 }
 
 function New-TestPackageRoot {
+  param([string]$ManifestCommit = $testCommit)
+
   $root = New-TempRoot -Prefix "stackchan-rollout-package-contract"
 
   Write-JsonFile -Path (Join-Path $root "release_manifest.json") -Value ([ordered]@{
       version = $testVersion
-      commit = $testCommit
+      commit = $ManifestCommit
     })
   Write-JsonFile -Path (Join-Path $root "readiness_report.json") -Value ([ordered]@{
       schema = "stackchan.readiness-report.v1"
@@ -146,20 +148,26 @@ function New-TestEvidenceRoot {
 function Invoke-RolloutStatus {
   param(
     [string]$PackageRoot,
-    [string]$EvidenceRoot
+    [string]$EvidenceRoot,
+    [string]$ExpectedCommit = $testCommit,
+    [switch]$OmitExpectedCommit
   )
 
   $outDir = New-TempRoot -Prefix "stackchan-rollout-out-contract"
   $powerShellExe = (Get-Process -Id $PID).Path
-  $output = & $powerShellExe `
-    -NoProfile `
-    -ExecutionPolicy Bypass `
-    -File $rolloutScript `
-    -Version $testVersion `
-    -ExpectedCommit $testCommit `
-    -PackageRoot $PackageRoot `
-    -EvidenceRoot $EvidenceRoot `
-    -OutDir $outDir 2>&1
+  $arguments = @(
+    '-NoProfile',
+    '-ExecutionPolicy', 'Bypass',
+    '-File', $rolloutScript,
+    '-Version', $testVersion,
+    '-PackageRoot', $PackageRoot,
+    '-EvidenceRoot', $EvidenceRoot,
+    '-OutDir', $outDir
+  )
+  if (-not $OmitExpectedCommit) {
+    $arguments += @('-ExpectedCommit', $ExpectedCommit)
+  }
+  $output = & $powerShellExe @arguments 2>&1
 
   if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 2) {
     throw "Rollout status export exited with $LASTEXITCODE.`n$($output | Out-String)"
@@ -179,6 +187,19 @@ function Get-AndroidCompanionGate {
   $matches = @($Report.gates | Where-Object { [string]$_.gate -eq "android-companion-probes" })
   if ($matches.Count -ne 1) {
     throw "Expected one android-companion-probes gate, found $($matches.Count)."
+  }
+  return $matches[0]
+}
+
+function Get-RolloutGate {
+  param(
+    [object]$Report,
+    [string]$Name
+  )
+
+  $matches = @($Report.gates | Where-Object { [string]$_.gate -eq $Name })
+  if ($matches.Count -ne 1) {
+    throw "Expected one $Name gate, found $($matches.Count)."
   }
   return $matches[0]
 }
@@ -264,6 +285,43 @@ try {
   Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android screen-off soak status pass"
   Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android UDP beacon probe status pass"
   Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android companion logcat capture status captured"
+
+  $eligibilityGate = Get-RolloutGate -Report $validProbeResult -Name 'release-package-eligibility'
+  if ([string]$eligibilityGate.status -ne 'blocked' -or [bool]$validProbeResult.consumerReady) {
+    throw 'An unverified package produced rollout readiness despite the eligibility gate'
+  }
+
+  $authorityPackageRoot = New-TestPackageRoot -ManifestCommit ("d" * 40)
+  $authorityEvidenceRoot = New-TestEvidenceRoot `
+    -ApkInstallReport (New-ApkInstallReport) -ProbeReports (New-ValidProbeReports)
+  $authorityResult = Invoke-RolloutStatus `
+    -PackageRoot $authorityPackageRoot -EvidenceRoot $authorityEvidenceRoot -ExpectedCommit $testCommit
+  $manifestGate = Get-RolloutGate -Report $authorityResult -Name 'release-package-manifest'
+  if ([string]$authorityResult.commit -cne $testCommit -or
+      [string]$manifestGate.status -ne 'blocked' -or
+      [bool]$authorityResult.consumerReady) {
+    throw 'Package manifest replaced rollout commit authority or escaped the manifest mismatch gate'
+  }
+
+  $trustedCheckoutCommit = (& git -C $repoRoot rev-parse HEAD).Trim().ToLowerInvariant()
+  if ($trustedCheckoutCommit -notmatch '^[0-9a-f]{40}$') {
+    throw 'Could not resolve the trusted checkout authority for the omitted-commit contract case'
+  }
+  $omittedAuthorityPackage = New-TestPackageRoot -ManifestCommit ("e" * 40)
+  $omittedAuthorityEvidence = New-TestEvidenceRoot `
+    -ApkInstallReport (New-ApkInstallReport) -ProbeReports (New-ValidProbeReports)
+  $omittedAuthorityResult = Invoke-RolloutStatus `
+    -PackageRoot $omittedAuthorityPackage `
+    -EvidenceRoot $omittedAuthorityEvidence `
+    -OmitExpectedCommit
+  $omittedManifestGate = Get-RolloutGate `
+    -Report $omittedAuthorityResult -Name 'release-package-manifest'
+  if ([string]$omittedAuthorityResult.commit -cne $trustedCheckoutCommit -or
+      [string]$omittedAuthorityResult.commit -ceq ("e" * 40) -or
+      [string]$omittedManifestGate.status -ne 'blocked' -or
+      [bool]$omittedAuthorityResult.consumerReady) {
+    throw 'Omitting ExpectedCommit let package content become rollout commit authority'
+  }
 
   Write-Host "Android rollout status evidence contract tests passed."
 } finally {

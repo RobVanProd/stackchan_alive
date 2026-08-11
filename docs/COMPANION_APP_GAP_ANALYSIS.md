@@ -313,5 +313,9 @@ current v1 companion branch.
 7. Assemble the Android v1 evidence bundle and run `tools\check_android_v1_evidence_bundle.cmd -RequireReady -Json`.
 8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, the deploy evidence collector, and the strict 600-second quiet soak.
 9. Use the tag matrix's native managed-runtime reports to assemble the Desktop v1 evidence bundle and run `tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json`.
-10. Verify the prerelease with `tools\verify_published_release.cmd -Version <version>` and retain its exact-commit companion evidence.
+10. From the exact clean trusted source checkout, define `$releaseToolchain` as documented in
+    `docs/RELEASE_PROCESS.md`, then verify the prerelease with
+    `tools\verify_published_release.ps1 -Version <version> @releaseToolchain` and retain its
+    exact-commit companion evidence. A downloaded or extracted archive does not confer release
+    authority.
 11. Assemble the final Companion v1 evidence bundle and run `tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -RequireReady -Json` before calling v1 release-ready.

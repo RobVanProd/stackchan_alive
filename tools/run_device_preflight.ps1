@@ -3,12 +3,68 @@ param(
   [string]$Version = "",
   [string]$ExpectedCommit = "",
   [string]$ReportDir = "",
-  [switch]$AllowDirty
+  [switch]$AllowDirty,
+  [string]$ToolchainAllowlistPath = "",
+  [string]$GitExecutable = "",
+  [string]$PythonExecutable = "",
+  [string]$PlatformioExecutable = "",
+  [string]$LegacyCoreDir = "",
+  [string]$ReleaseCoreDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $physicalRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$preflightToolchainProcessArgs = @(
+  "-ToolchainAllowlistPath", $ToolchainAllowlistPath,
+  "-GitExecutable", $GitExecutable,
+  "-PythonExecutable", $PythonExecutable,
+  "-PlatformioExecutable", $PlatformioExecutable,
+  "-LegacyCoreDir", $LegacyCoreDir,
+  "-ReleaseCoreDir", $ReleaseCoreDir
+)
+$preflightToolchainSplat = @{
+  ToolchainAllowlistPath = $ToolchainAllowlistPath
+  GitExecutable = $GitExecutable
+  PythonExecutable = $PythonExecutable
+  PlatformioExecutable = $PlatformioExecutable
+  LegacyCoreDir = $LegacyCoreDir
+  ReleaseCoreDir = $ReleaseCoreDir
+}
+if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
+  if ([string]::IsNullOrWhiteSpace($Version)) {
+    $zipName = [System.IO.Path]::GetFileName($PackageZip)
+    if ($zipName -notmatch "^stackchan_alive_(.+)\.zip$") {
+      throw "Pass -Version when -PackageZip does not match stackchan_alive_<version>.zip"
+    }
+    $Version = $Matches[1]
+  }
+  if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+    $ExpectedCommit = (& git -c core.hooksPath=NUL -c core.fsmonitor=false `
+      -c maintenance.auto=false -c core.untrackedCache=false `
+      -C $physicalRepoRoot rev-parse HEAD).Trim()
+  }
+  if ($ExpectedCommit -notmatch "^[0-9a-fA-F]{40}$") {
+    throw "Pass a 40-hex -ExpectedCommit or run from a trusted Git checkout."
+  }
+  if (-not (Test-Path -LiteralPath $PackageZip -PathType Leaf)) {
+    throw "Missing package ZIP: $PackageZip"
+  }
+  $PackageZip = (Resolve-Path -LiteralPath $PackageZip).Path
+  $earlyVerifyArgs = @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+    "-Version", $Version, "-ZipPath", $PackageZip,
+    "-ExpectedCommit", $ExpectedCommit, "-RequireReleaseEligible"
+  )
+  $earlyVerifyArgs += $preflightToolchainProcessArgs
+  if ($AllowDirty) { $earlyVerifyArgs += "-AllowDirtyPackage" }
+  & powershell.exe @earlyVerifyArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Operational release ZIP verification failed before device-preflight helpers or reports."
+  }
+}
+
 if (
   $env:OS -eq "Windows_NT" -and
   -not $env:STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE -and
@@ -38,6 +94,7 @@ if (
     if ($ExpectedCommit) { $childArgs += @("-ExpectedCommit", $ExpectedCommit) }
     if ($ReportDir) { $childArgs += @("-ReportDir", $ReportDir) }
     if ($AllowDirty) { $childArgs += "-AllowDirty" }
+    $childArgs += $preflightToolchainProcessArgs
     & powershell.exe @childArgs
     $childExit = $LASTEXITCODE
   } finally {
@@ -880,6 +937,7 @@ function Assert-RolloutStatusActionsOverrideGate {
       "-OutDir", $outRoot,
       "-ActionsStatusPath", $overridePath,
       "-ExpectedCommit", $fixtureCommit
+      $preflightToolchainProcessArgs
     )
     if ($result.ExitCode -ne 2) {
       throw "Rollout status fixture should remain blocked because no hardware evidence was supplied. Exit code: $($result.ExitCode). Output:$([Environment]::NewLine)$($result.Text)"
@@ -1262,7 +1320,7 @@ function Assert-ReleaseFlashHelperSafety {
     "-Firmware", "servo_calibration",
     "-DryRun"
   )
-  $blockedServo = Invoke-ToolText ($blockedArgs + $dirtyPackageArg)
+  $blockedServo = Invoke-ToolText ($blockedArgs + $dirtyPackageArg + $preflightToolchainProcessArgs)
   if ($blockedServo.ExitCode -eq 0) {
     throw "Servo calibration package dry-run succeeded without -ConfirmServoRisk"
   }
@@ -1276,7 +1334,7 @@ function Assert-ReleaseFlashHelperSafety {
     "-Monitor",
     "-Port", "COM_TEST"
   )
-  $displayDryRun = Invoke-ToolText ($displayArgs + $dirtyPackageArg)
+  $displayDryRun = Invoke-ToolText ($displayArgs + $dirtyPackageArg + $preflightToolchainProcessArgs)
   if ($displayDryRun.ExitCode -ne 0) {
     throw "Display package dry-run failed unexpectedly:$([Environment]::NewLine)$($displayDryRun.Text)"
   }
@@ -1294,7 +1352,7 @@ function Assert-ReleaseFlashHelperSafety {
     "-DryRun",
     "-Port", "COM_TEST"
   )
-  $servoDryRun = Invoke-ToolText ($servoArgs + $dirtyPackageArg)
+  $servoDryRun = Invoke-ToolText ($servoArgs + $dirtyPackageArg + $preflightToolchainProcessArgs)
   if ($servoDryRun.ExitCode -ne 0) {
     throw "Servo package dry-run failed unexpectedly:$([Environment]::NewLine)$($servoDryRun.Text)"
   }
@@ -1322,7 +1380,7 @@ function Assert-ReleasePublishBranchGuard {
     $publishArgs += "-AllowDirtyPackage"
   }
 
-  $publishDryRun = Invoke-ToolText $publishArgs
+  $publishDryRun = Invoke-ToolText ($publishArgs + $preflightToolchainProcessArgs)
   if ($publishDryRun.ExitCode -ne 0) {
     throw "Publish dry-run failed unexpectedly:$([Environment]::NewLine)$($publishDryRun.Text)"
   }
@@ -1750,9 +1808,9 @@ function Assert-ArrivalPacketScaffoldGate {
   $startScript = Join-Path $PSScriptRoot "start_hardware_evidence.ps1"
   try {
     if ($AllowDirtyPackage) {
-      $createdOutput = & $startScript -ReleaseTag $Version -PackageZip $ZipPath -Port "COM_TEST" -Operator "preflight" -DeviceId "SELFTEST" -AllowDirtyPackage 2>&1
+      $createdOutput = & $startScript -ReleaseTag $Version -PackageZip $ZipPath -Port "COM_TEST" -Operator "preflight" -DeviceId "SELFTEST" -AllowDirtyPackage @preflightToolchainSplat 2>&1
     } else {
-      $createdOutput = & $startScript -ReleaseTag $Version -PackageZip $ZipPath -Port "COM_TEST" -Operator "preflight" -DeviceId "SELFTEST" 2>&1
+      $createdOutput = & $startScript -ReleaseTag $Version -PackageZip $ZipPath -Port "COM_TEST" -Operator "preflight" -DeviceId "SELFTEST" @preflightToolchainSplat 2>&1
     }
     $createdText = ($createdOutput | Out-String)
   } catch {
@@ -1912,7 +1970,7 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $checklist 'Pre-marked no-hardware gates were proven by the matching preflight report'
     Assert-TextContains $checklist '- [x] `pio run -e stackchan` passes.'
     Assert-TextContains $checklist '- [x] `tools/run_device_preflight.ps1` passes.'
-    Assert-TextContains $checklist '- [x] `tools/verify_release_package.ps1` passes for the release ZIP.'
+    Assert-TextContains $checklist '- [x] `tools/verify_release_package.ps1 -RequireReleaseEligible ... @releaseToolchain` passes for the release ZIP.'
     Assert-TextContains $checklist '- [ ] GitHub Actions `Firmware` workflow is green on `main`.'
     Assert-TextContains $checklist '- [x] Production RVC model and index hashes match the released files.'
     Assert-TextContains $checklist '- [ ] Live robot speech through the verified DirectML RVC path is recorded and reviewed on the target speaker.'
@@ -2264,9 +2322,11 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   Invoke-Step "Verify release package" {
     $verifyScript = Join-Path $PSScriptRoot "verify_release_package.ps1"
     if ($AllowDirty) {
-      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit -AllowDirtyPackage
+      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit `
+        -AllowDirtyPackage -RequireReleaseEligible @preflightToolchainSplat
     } else {
-      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit
+      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit `
+        -RequireReleaseEligible @preflightToolchainSplat
     }
   }
 

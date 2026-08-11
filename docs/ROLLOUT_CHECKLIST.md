@@ -2,6 +2,10 @@
 
 Use this as the arrival-day test record. Do not promote a release from prerelease until every gate has explicit evidence.
 
+Run every release-authorizing command from the exact clean trusted source checkout after defining
+the six-value `$releaseToolchain` splat in `docs/RELEASE_PROCESS.md`. A downloaded or extracted
+archive does not confer release authority.
+
 When completing `OBSERVATIONS.md`, use promotion-verifiable values: `Result: pass`, reset/heat/brownout/stall/jitter observed fields as `no`, `Procedural face visible: yes`, `Dry-run servo log observed: yes`, `Yaw classification: angle`, `velocity`, or `disabled`, soak `Duration` of at least `30 minutes`, and `USB power-cycle recovery: pass`.
 Promotion evidence must include at least one real photo or video under `photos/`: `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp4`, `.mov`, or `.webm`. Text placeholders do not count.
 Promotion evidence must include `AUDIO_REVIEW.md` plus at least one real-device speaker recording under `audio/`: `.wav`, `.mp3`, `.m4a`, `.aac`, `.mp4`, `.mov`, or `.webm`. Text placeholders or generated source WAVs alone do not count as target-speaker evidence.
@@ -18,22 +22,22 @@ Speech-mouth evidence must include `logs/speech_mouth_demo_serial.log` with stre
 - [ ] `tools/run_device_preflight.ps1` passes.
 - [ ] GitHub Actions `Firmware` workflow is green on `main`.
 - [ ] Release package ZIP contains firmware, media, docs, manifest, dependency provenance, `dependency_lock.json`, copied build inputs, and checksums.
-- [ ] `tools/verify_release_package.ps1` passes for the release ZIP.
+- [ ] `tools/verify_release_package.ps1 -RequireReleaseEligible ... @releaseToolchain` passes for the release ZIP.
 - [x] Production RVC model and index hashes match the released files.
-- [ ] `tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor` passes for the release ZIP.
-- [ ] Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.
+- [ ] `tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor @releaseToolchain` passes for the release ZIP.
+- [ ] Hardware evidence packet created with `tools/start_hardware_evidence.ps1 ... @releaseToolchain`.
 - [ ] Evidence packet includes the tested ZIP and `logs/package_verify.log`, or records a verified extracted package root.
 - [ ] Photo/video and speaker recordings imported with `RUN_ADD_MEDIA.cmd`, producing `media_manifest.json`.
 - [ ] Evidence packet includes completed `AUDIO_REVIEW.md` and a real-device speaker recording under `audio/`.
 - [ ] `RUN_PROGRESS_CHECK.cmd` has no remaining missing evidence items.
-- [ ] If testing from an extracted release package, `tools/prepare_device_arrival.ps1 -Port <COM> -Operator <name> -DeviceId <id>` passes from inside that package root.
+- [ ] If the ZIP was downloaded, the trusted checkout's `tools/prepare_device_arrival.ps1 -PackageZip <absolute-zip> ... @releaseToolchain` passes; no packaged helper is treated as authority.
 
 ## Display-Only Flash
 
 Command:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -Monitor
+.\tools\flash_release_firmware.ps1 -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware display_only -Monitor @releaseToolchain
 ```
 
 Pass criteria:
@@ -54,7 +58,7 @@ Pass criteria:
 Command:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware servo_calibration -ConfirmServoRisk -Monitor
+.\tools\flash_release_firmware.ps1 -PackageZip output\release\stackchan_alive_<version>.zip -Version <version> -ExpectedCommit <release-commit> -Firmware servo_calibration -ConfirmServoRisk -Monitor @releaseToolchain
 ```
 
 Pass criteria:
@@ -84,7 +88,7 @@ Pass criteria:
 Only after all checks pass:
 
 - [ ] `tools/verify_hardware_evidence.ps1` passes for the completed evidence packet.
-- [ ] `tools/verify_consumer_promotion.ps1` passes for the release package and evidence packet.
+- [ ] `tools/verify_consumer_promotion.ps1 ... @releaseToolchain` passes for the release package and evidence packet.
 - [ ] Create a hardware-validated release tag.
 - [ ] Mark GitHub release as non-prerelease.
 - [ ] Attach updated release notes with test evidence.

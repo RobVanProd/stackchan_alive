@@ -1,3 +1,6 @@
 companion/gradlew text eol=lf
+tools/release_toolchain_identity_allowlist.json text eol=lf
+tools/release_toolchain_identity.ps1 text eol=lf
+tools/verify_git_pack_semantics.py text eol=lf
 media/voice/rvc/model.pth filter=lfs diff=lfs merge=lfs -text
 media/voice/rvc/model.index filter=lfs diff=lfs merge=lfs -text

@@ -145,6 +145,8 @@ def make_handshake(host: str, port: int) -> bytes:
         "Connection: Upgrade\r\n"
         "Sec-WebSocket-Key: ZGV2LWxhbi1zbW9rZS1rZXk=\r\n"
         "Sec-WebSocket-Version: 13\r\n"
+        f"X-Stackchan-Protocol: {PROTOCOL}\r\n"
+        "X-Stackchan-Device: stackchan\r\n"
         "\r\n"
     ).encode("ascii")
 

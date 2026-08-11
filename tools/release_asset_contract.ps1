@@ -32,6 +32,7 @@ function Get-ReleaseFirmwareAssetEntries {
       New-ReleaseAssetEntry -Name "firmware-servo-calibration.bin" -Path (Join-Path $FirmwareAssetRoot "firmware-servo-calibration.bin") -Phase $Phase
       New-ReleaseAssetEntry -Name "bootloader.bin" -Path (Join-Path $FirmwareAssetRoot "bootloader.bin") -Phase $Phase
       New-ReleaseAssetEntry -Name "partitions.bin" -Path (Join-Path $FirmwareAssetRoot "partitions.bin") -Phase $Phase
+      New-ReleaseAssetEntry -Name "boot-app0.bin" -Path (Join-Path $FirmwareAssetRoot "boot-app0.bin") -Phase $Phase
     )
   }
 
@@ -40,6 +41,7 @@ function Get-ReleaseFirmwareAssetEntries {
     New-ReleaseAssetEntry -Name "firmware-servo-calibration.bin" -Path (Join-Path $PackageRoot "firmware/servo_calibration/firmware.bin") -Phase $Phase
     New-ReleaseAssetEntry -Name "bootloader.bin" -Path (Join-Path $PackageRoot "firmware/display_only/bootloader.bin") -Phase $Phase
     New-ReleaseAssetEntry -Name "partitions.bin" -Path (Join-Path $PackageRoot "firmware/display_only/partitions.bin") -Phase $Phase
+    New-ReleaseAssetEntry -Name "boot-app0.bin" -Path (Join-Path $PackageRoot "firmware/display_only/boot_app0.bin") -Phase $Phase
   )
 }
 
