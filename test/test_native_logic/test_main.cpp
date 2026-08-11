@@ -7165,6 +7165,128 @@ void test_bridge_audio_uplink_retries_retained_end_after_writer_drains() {
   TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"audio_bytes\":8"));
 }
 
+// Regression: the socket writer drains queued text ahead of queued binary, so
+// an end terminal queued while PCM is still owed to the socket reaches the host
+// in front of a chunk it already counted. Observed on hardware as the host
+// rejecting a real turn with audio_count_mismatch (declared 59 chunks / 94400
+// bytes, received 58 / 92800) and then recording the orphaned 1600-byte chunk
+// as audio_without_utterance.
+void test_bridge_audio_uplink_end_never_overtakes_queued_pcm() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 980);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+  TEST_ASSERT_TRUE(uplink.beginTurn(31, 1000, true));
+  session.update(1001);
+  socket.clearOutgoing();
+
+  // Queue a chunk and deliberately leave it undrained. The writer now owes the
+  // socket one binary frame that this turn has already counted.
+  const int16_t samples[] = {11, -22, 33, -44};
+  TEST_ASSERT_TRUE(uplink.submitPcmChunk(31, samples, 4, 1002));
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().activeChunks);
+  TEST_ASSERT_EQUAL_UINT32(8, uplink.telemetry().activeBytes);
+
+  // Ending here must hold the terminal rather than overtake the chunk.
+  TEST_ASSERT_TRUE(uplink.endTurn(31, 1003));
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_TRUE(uplink.telemetry().terminalPending);
+  TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().terminalAudioDeferrals);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeAudioTerminalServiceResult::Pending),
+                    static_cast<int>(uplink.servicePendingTerminal(1004)));
+
+  // The first frame on the wire must be the audio, not the terminal.
+  session.update(1005);
+  std::vector<uint8_t> decodedAudio;
+  TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(socket.outgoing, decodedAudio));
+  TEST_ASSERT_EQUAL_UINT32(8, static_cast<uint32_t>(decodedAudio.size()));
+  socket.clearOutgoing();
+
+  // With the audio gone the terminal may go, declaring exactly what the host
+  // has now received.
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeAudioTerminalServiceResult::Queued),
+                    static_cast<int>(uplink.servicePendingTerminal(1006)));
+  TEST_ASSERT_FALSE(uplink.telemetry().terminalPending);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().turnsCompleted);
+
+  session.update(1007);
+  char decodedEnd[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedEnd, sizeof(decodedEnd)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"type\":\"utterance_end\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"chunks\":1"));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"audio_bytes\":8"));
+}
+
+// Cancel keeps pre-empting queued audio on purpose: cancelling is meant to beat
+// the remaining chunks out, and the host discards partial PCM on cancel.
+void test_bridge_audio_uplink_cancel_still_preempts_queued_pcm() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 985);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+  TEST_ASSERT_TRUE(uplink.beginTurn(32, 1200, true));
+  session.update(1201);
+  socket.clearOutgoing();
+
+  const int16_t samples[] = {55, -66};
+  TEST_ASSERT_TRUE(uplink.submitPcmChunk(32, samples, 2, 1202));
+  uplink.abort(1203, "wake_gate_closed");
+
+  TEST_ASSERT_FALSE(uplink.telemetry().terminalPending);
+  TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().terminalAudioDeferrals);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeAudioTerminalKind::Cancel),
+                    static_cast<int>(uplink.telemetry().lastTerminal));
+
+  session.update(1204);
+  char decodedCancel[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedCancel, sizeof(decodedCancel)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "\"type\":\"utterance_cancel\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedCancel, "wake_gate_closed"));
+}
+
+// The hold is bounded. Audio that never drains must fail the turn closed rather
+// than leave an unterminated upload open forever.
+void test_bridge_audio_uplink_end_held_by_audio_fails_closed_on_timeout() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 990);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  config.terminalRetryMs = 50;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+  TEST_ASSERT_TRUE(uplink.beginTurn(33, 1300, true));
+  session.update(1301);
+
+  const int16_t samples[] = {77, -88};
+  TEST_ASSERT_TRUE(uplink.submitPcmChunk(33, samples, 2, 1302));
+  TEST_ASSERT_TRUE(uplink.endTurn(33, 1303));
+  TEST_ASSERT_TRUE(uplink.telemetry().terminalPending);
+
+  // Never drain the writer; the chunk stays owed past the retry bound.
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeAudioTerminalServiceResult::Pending),
+                    static_cast<int>(uplink.servicePendingTerminal(1340)));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeAudioTerminalServiceResult::FailedClosed),
+                    static_cast<int>(uplink.servicePendingTerminal(1360)));
+  TEST_ASSERT_FALSE(uplink.telemetry().terminalPending);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().terminalTimeouts);
+  TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().turnsAborted);
+}
+
 void test_bridge_audio_uplink_abort_queues_explicit_cancel() {
   BridgeClient bridge;
   FakeBridgeNetworkSocket socket;
@@ -9506,6 +9628,9 @@ int main() {
   RUN_TEST(test_bridge_audio_uplink_queues_start_chunk_and_end_frames);
   RUN_TEST(test_bridge_audio_uplink_rejects_bad_sequence_and_limits);
   RUN_TEST(test_bridge_audio_uplink_retries_retained_end_after_writer_drains);
+  RUN_TEST(test_bridge_audio_uplink_end_never_overtakes_queued_pcm);
+  RUN_TEST(test_bridge_audio_uplink_cancel_still_preempts_queued_pcm);
+  RUN_TEST(test_bridge_audio_uplink_end_held_by_audio_fails_closed_on_timeout);
   RUN_TEST(test_bridge_audio_uplink_abort_queues_explicit_cancel);
   RUN_TEST(test_bridge_audio_uplink_terminal_timeout_closes_socket_fail_closed);
   RUN_TEST(test_bridge_wake_gate_suppresses_turn_when_uplink_disabled);

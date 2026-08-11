@@ -60,6 +60,10 @@ struct BridgeAudioUplinkTelemetry {
   uint32_t activeChunks = 0;
   uint32_t terminalAttempts = 0;
   uint32_t terminalRetries = 0;
+  // End terminals held back because PCM this turn already counted was still
+  // owed to the socket. Distinct from terminalRetries, which counts a writer
+  // slot that refused the frame outright.
+  uint32_t terminalAudioDeferrals = 0;
   uint32_t terminalTimeouts = 0;
   uint32_t cancelFramesQueued = 0;
   uint32_t terminalRequestedAtMs = 0;
@@ -87,6 +91,8 @@ class BridgeAudioUplink {
 
  private:
   bool configured() const;
+  bool binaryPending() const;
+  BridgeAudioTerminalServiceResult failTerminalTimeout(uint32_t nowMs);
   bool queueText(const char* payload);
   bool queueBinary(const uint8_t* payload, size_t length);
   bool writeStartFrame(uint32_t seq, char* out, size_t outSize) const;

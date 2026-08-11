@@ -74,6 +74,16 @@ class BridgeSocketWriter {
   BridgeSocketWriterDrainResult drainPendingFrame(uint32_t nowMs);
   BridgeSocketWriterDrainResult drainPendingTextResponse(uint32_t nowMs);
 
+  // True while binary payload bytes are still owed to the socket, either queued
+  // and not yet encoded or encoded and only partially written. The drain order
+  // in drainPending() puts queued text ahead of queued binary, so an audio
+  // terminal queued in this state would reach the host before the PCM chunk it
+  // already counted. Callers that must not overtake audio consult this first.
+  bool binaryPending() const {
+    return binaryPayloadBytes_ != 0 ||
+           (frameKind_ == PendingFrameKind::BinaryUpload && frameBytes_ != 0);
+  }
+
   const BridgeSocketWriterTelemetry& telemetry() const {
     return telemetry_;
   }

@@ -168,6 +168,24 @@ BridgeAudioTerminalServiceResult BridgeAudioUplink::servicePendingTerminal(uint3
     return BridgeAudioTerminalServiceResult::Idle;
   }
 
+  // An End terminal declares the chunk count this turn queued, but the socket
+  // writer drains queued text ahead of queued binary. Queueing it while PCM is
+  // still owed to the socket puts utterance_end on the wire in front of a chunk
+  // it already counted, and the host correctly rejects the turn on the count
+  // mismatch then records the late chunk as a protocol error. Hold the terminal
+  // until the audio has left the writer.
+  //
+  // Cancel terminals deliberately keep pre-empting: cancelling is meant to beat
+  // the remaining audio out, and the host discards partial PCM on cancel.
+  if (telemetry_.pendingTerminal == BridgeAudioTerminalKind::End && binaryPending()) {
+    telemetry_.terminalAudioDeferrals++;
+    if (nowMs - telemetry_.terminalRequestedAtMs < config_.terminalRetryMs) {
+      copyError("utterance_terminal_audio_pending");
+      return BridgeAudioTerminalServiceResult::Pending;
+    }
+    return failTerminalTimeout(nowMs);
+  }
+
   char frame[kBridgeEndpointControlResponseMax] = {};
   const bool encoded = telemetry_.pendingTerminal == BridgeAudioTerminalKind::End
                            ? writeEndFrame(pendingTerminalSeq_, frame, sizeof(frame))
@@ -200,6 +218,10 @@ BridgeAudioTerminalServiceResult BridgeAudioUplink::servicePendingTerminal(uint3
     return BridgeAudioTerminalServiceResult::Pending;
   }
 
+  return failTerminalTimeout(nowMs);
+}
+
+BridgeAudioTerminalServiceResult BridgeAudioUplink::failTerminalTimeout(uint32_t nowMs) {
   if (session_ != nullptr) {
     session_->stop(nowMs);
   }
@@ -210,6 +232,10 @@ BridgeAudioTerminalServiceResult BridgeAudioUplink::servicePendingTerminal(uint3
   telemetry_.lastTerminal = BridgeAudioTerminalKind::Cancel;
   fail("utterance_terminal_delivery_timeout");
   return BridgeAudioTerminalServiceResult::FailedClosed;
+}
+
+bool BridgeAudioUplink::binaryPending() const {
+  return session_ != nullptr && session_->writer().binaryPending();
 }
 
 bool BridgeAudioUplink::configured() const {

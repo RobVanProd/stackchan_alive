@@ -4714,8 +4714,17 @@ void finishDedicatedWakeCaptureTurn(uint32_t seq, uint32_t nowMs) {
   if (gBridgeAudioUplink.telemetry().active) {
     gBridgeAudioUplink.endTurn(seq, nowMs);
   }
+  // endTurn withholds the terminal while the final PCM chunk is still queued,
+  // because the socket writer drains text ahead of binary. Drive the writer and
+  // retry the terminal in the same loop so utterance_end lands immediately
+  // behind the last chunk rather than in front of it. If it is still pending
+  // when this loop ends, the main-loop retry pass carries it to delivery or to
+  // the bounded fail-closed timeout.
   for (uint8_t i = 0; i < 12; ++i) {
     gBridgeNetworkSession.update(millis());
+    if (gBridgeAudioUplink.telemetry().terminalPending) {
+      gBridgeAudioUplink.servicePendingTerminal(millis());
+    }
     vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
@@ -9595,6 +9604,13 @@ void IntentTask(void* pv) {
 #if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
     serviceConversationReplyWindow(millis());
     serviceDedicatedWakeCapture(millis());
+    // An end terminal is held back while queued PCM is still owed to the socket,
+    // so it needs a retry pass that outlives the capture itself. The uplink
+    // bounds the wait with terminalRetryMs and stops the session on expiry, so
+    // this can never spin: it either delivers the terminal or fails closed.
+    if (gBridgeAudioUplink.telemetry().terminalPending) {
+      gBridgeAudioUplink.servicePendingTerminal(millis());
+    }
 #endif
 
     const ServoPowerTelemetry intentServoPower = gServo.powerTelemetry();
