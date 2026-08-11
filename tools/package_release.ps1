@@ -2070,6 +2070,8 @@ $bridgePackageFiles = @(
   "test_stt_adapter.py",
   "test_stt_supervisor.py",
   "test_whisper_server_stt.py",
+  "transcript_diagnostics.py",
+  "test_transcript_diagnostics.py",
   "tts_adapter.py",
   "test_tts_adapter.py",
   "conversation_session.py",

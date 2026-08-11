@@ -152,6 +152,7 @@ tasks.processResources {
             "stt_adapter.py",
             "stt_normalization.py",
             "stt_supervisor.py",
+            "transcript_diagnostics.py",
             "tts_adapter.py",
             "utterance_text.py",
             "whisper_server_stt.py",
