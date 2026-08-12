@@ -63,8 +63,12 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   Completed turns no longer make the listener progressively less patient. The unchanged main
   firmware rejects out-of-range values rather than silently clamping them. The feature remains
   explicit and still needs exact-image hardware qualification before promotion. The host's
-  10-second capture commitment is currently shorter than the firmware's 12-second endpoint ceiling
-  and can reject a valid long utterance; this is an open source-level blocker.
+  capture commitment is no longer derived from the reply window: it is its own `capture_commit_ms`,
+  defaulting to 13.5 s and validated to sit above the firmware's 12-second endpoint ceiling and at or
+  below the host's 14.5 s absolute capture lease. The reply window bounds how long to wait for
+  someone to start speaking; once they have started, the device owns the ending. This closes the
+  source-level blocker but changes live conversation timing, so it needs a supervised run with a
+  deliberately long utterance before promotion.
 - `bridge/initiative_policy.py` implements the ten-minute hard floor, intended fresh-person requirement,
   circadian suppression, busy/safety gates, curiosity decay, and two-ignored-opener backoff.
   Initiative generation uses the normal Character Lock and TTS path but never opens a microphone

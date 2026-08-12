@@ -22,6 +22,15 @@ class ConversationConfig:
     reply_window_ms: int = 10_000
     reply_window_min_ms: int = 1_000
     reply_window_step_ms: int = 0
+    # How long a capture already in progress may outlive the reply window.
+    #
+    # The reply window bounds how long we wait for someone to *start* speaking.
+    # Once they have started, the device owns the ending: firmware's dedicated
+    # capture ceiling is 12 s and the terminal plus final chunks still have to
+    # reach us afterwards. Sizing this from reply_window_ms tied an unrelated
+    # number to that ceiling and left a long but perfectly valid utterance able
+    # to be closed out from under itself.
+    capture_commit_ms: int = 13_500
     acoustic_tail_ms: int = 250
     cooldown_ms: int = 300
     max_turns: int = 24
@@ -46,6 +55,12 @@ class ConversationConfig:
             raise ValueError("reply_window_min_ms must be between 1000 and reply_window_ms")
         if self.reply_window_step_ms < 0:
             raise ValueError("reply_window_step_ms cannot be negative")
+        # Must outlast the firmware's 12 s dedicated capture ceiling so a capture
+        # that runs to that ceiling can still deliver its terminal, and must stay
+        # within the host's 14.5 s absolute capture lease so this can never be the
+        # control that keeps an abandoned capture alive.
+        if not 12_000 < self.capture_commit_ms <= 14_500:
+            raise ValueError("capture_commit_ms must be above 12000 and at most 14500")
         if not 0 <= self.acoustic_tail_ms <= 2_000:
             raise ValueError("acoustic_tail_ms must be between 0 and 2000")
         if self.cooldown_ms < 0:
@@ -237,7 +252,7 @@ class ConversationSession:
         self.capture_in_progress = True
         # The device starts its bounded capture inside the reply window, but the
         # final audio chunks can arrive after that listening lease expires.
-        self.capture_commit_until_ms = now + self.config.reply_window_ms
+        self.capture_commit_until_ms = now + self.config.capture_commit_ms
         return self._transition("utterance_accepted", reason="listening")
 
     def utterance_committed(self, now_ms: int, text: str) -> ConversationTransition:
