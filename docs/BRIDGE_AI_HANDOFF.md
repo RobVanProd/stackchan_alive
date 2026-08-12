@@ -202,6 +202,17 @@ during TTS, so the error path is the likely culprit.
 failure, owner-loss, and long-running physical conversation cases; the qualification must report
 `host-response-wire-clean` with no unrecovered events.
 
+**Live observation 2026-08-11** on installed firmware
+`d631da56c004cc9c2263cbc8c01cf7a27fd0dfca5861c5461f2292681386d129`: ten completed turns each ran the
+full `response_started` → `response_end_deferred` → `reply_pending` →
+`response_end_after_playback_complete` sequence, with the end gated on real `playback_complete`
+rather than estimated speech duration. Ten replies played; `bridge_downlink_playback_starts` reached
+10 with no response left open and no 90-second stall observed.
+
+This is favourable evidence, **not** F1 closure. The stated gate is a qualification reporting
+`host-response-wire-clean` across cancellation, model/TTS failure, and owner-loss paths; those error
+paths were not exercised here, and no such report was produced. F1 stays open.
+
 ## F2. Long-capture wake-gate race (source fixed, physical validation pending)
 
 **Observed after PR #216:** two captures produced 118 and 113 accepted chunks. The host received
@@ -223,6 +234,21 @@ closed. Do not hide or reset the error counter; exact-image physical evidence is
 **Bridge-side status:** late audio is rejected and counted after the immutable utterance snapshot.
 The supervised run must show zero `bridge_uplink_errors` delta across completed turns; do not reset
 the counter to manufacture that result. A nonzero robot counter remains a firmware-owner finding.
+
+**Live observation 2026-08-11** on installed firmware `d631da56...`: `bridge_uplink_errors` stayed at
+**0** across twelve captures and ten completed turns over 66 minutes, alongside
+`bridge_uplink_queue_failures: 0`, `mww_uplink_submit_failed: 0`, `wake_capture_discontinuities: 0`,
+and `wake_capture_timeouts: 0`. The counter was never reset; it has read zero since the OTA
+(`boot_count: 1`, `reset_reason: software`).
+
+Ten of ten utterances matched their declared byte and chunk totals exactly, longest 217 chunks
+(10.85 s), with zero `audio_count_mismatch` and zero orphaned `audio_without_utterance`. That last
+part matters because this image also carries the fix for a separate ordering defect found while
+qualifying it: `utterance_end` could be queued ahead of a PCM chunk it had already counted, because
+the socket writer drains queued text before queued binary.
+
+Treat this as the zero-delta evidence F2 asks for on this specific image. It does not transfer to any
+other SHA-256.
 
 ## F3. Vision delivers nothing at all
 
