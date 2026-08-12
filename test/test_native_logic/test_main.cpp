@@ -912,6 +912,7 @@ void test_intent_engine_emits_deduped_speech_cue_on_external_event() {
 void test_intent_engine_demo_can_be_disabled_and_resumed() {
   IntentEngine engine;
   engine.begin();
+  engine.setDemoEnabled(true, 0);
   TEST_ASSERT_TRUE(engine.isDemoEnabled());
 
   engine.setDemoEnabled(false, 0);
@@ -1279,6 +1280,32 @@ CharacterMode runUntilAsleep(IntentEngine& engine, uint32_t limitMs, uint32_t* a
   }
   return mode;
 }
+
+// Demo mode injects a synthetic event every 2.5-6 s, and every injected event is
+// stimulus, so with it on the robot can never accumulate sleep pressure. Shipping
+// it enabled meant the documented drowsiness ladder could not run on a real
+// robot: one observed device stayed awake for 5.9 days.
+void test_intent_engine_boots_with_demo_off_so_the_character_can_sleep() {
+  IntentEngine engine;
+  engine.begin();
+  TEST_ASSERT_FALSE(engine.isDemoEnabled());
+
+  // Left alone, nothing injects a mode change. With demo mode on this loop sees
+  // Think/Attend/React appear within the first few seconds.
+  for (uint32_t nowMs = 1000; nowMs <= 30000; nowMs += 1000) {
+    const RobotFrame frame = engine.update(nowMs);
+    TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(frame.mode));
+  }
+
+  // And drowsiness accumulates instead of being reset by injected stimulus, so
+  // he reaches sleep the way the character design describes. Every other sleep
+  // test has to call setDemoEnabled(false) first to get here; this one must not
+  // need to, because that is now the boot state.
+  uint32_t asleepAtMs = 0;
+  runUntilAsleep(engine, 900000u, &asleepAtMs);
+  TEST_ASSERT_TRUE(engine.isAsleep());
+}
+
 
 }  // namespace
 
@@ -9418,6 +9445,7 @@ int main() {
   RUN_TEST(test_robot_frame_carries_character_mode_for_renderer);
   RUN_TEST(test_robot_frame_carries_speech_cue_for_output_adapters);
   RUN_TEST(test_intent_engine_emits_deduped_speech_cue_on_external_event);
+  RUN_TEST(test_intent_engine_boots_with_demo_off_so_the_character_can_sleep);
   RUN_TEST(test_intent_engine_demo_can_be_disabled_and_resumed);
   RUN_TEST(test_idle_life_breathing_moves_face_and_body_together);
   RUN_TEST(test_persona_behavior_codegen_exposes_idle_life_tuning);
