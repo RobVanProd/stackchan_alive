@@ -309,11 +309,47 @@ class ConversationSessionTests(unittest.TestCase):
         self.assertEqual("capture_in_progress", session.tick(1_060).reason)
         snapshot = session.snapshot(1_100)
         self.assertEqual(0, snapshot["conversation_reply_window_remaining_ms"])
-        self.assertEqual(1_800, snapshot["conversation_capture_commit_remaining_ms"])
+        # The commitment is sized from the firmware capture ceiling, not from the
+        # reply window, so a two-second window does not cap how long a capture
+        # that already started is allowed to finish.
+        self.assertEqual(13_300, snapshot["conversation_capture_commit_remaining_ms"])
 
         committed = session.utterance_committed(2_000, "third")
         self.assertEqual(("close_capture", "begin_generation"), committed.actions)
         self.assertEqual(ConversationPhase.THINKING, session.phase)
+
+    def test_capture_running_to_the_firmware_ceiling_still_commits(self) -> None:
+        # Firmware's dedicated capture ceiling is 12 s and its terminal plus final
+        # chunks arrive after that. With the commitment sized from reply_window_ms
+        # the session closed the capture out from under a valid long utterance.
+        session = ConversationSession(ConversationConfig(acoustic_tail_ms=0))
+        session.wake(0)
+        session.utterance_started(0)
+
+        # Reply window is long gone; the capture is still running.
+        self.assertEqual("capture_in_progress", session.tick(10_500).reason)
+        self.assertEqual("capture_in_progress", session.tick(12_400).reason)
+
+        committed = session.utterance_committed(12_600, "a genuinely long question")
+        self.assertEqual(("close_capture", "begin_generation"), committed.actions)
+        self.assertEqual(ConversationPhase.THINKING, session.phase)
+
+    def test_capture_commitment_still_expires_so_it_cannot_hold_a_session_open(self) -> None:
+        session = ConversationSession(ConversationConfig(acoustic_tail_ms=0))
+        session.wake(0)
+        session.utterance_started(0)
+
+        # Past the commitment with nothing delivered, the session must close
+        # rather than wait on a capture that is never going to finish.
+        self.assertEqual("reply_timeout", session.tick(13_600).reason)
+        self.assertEqual(ConversationPhase.COOLDOWN, session.phase)
+
+    def test_capture_commitment_must_outlast_the_firmware_capture_ceiling(self) -> None:
+        with self.assertRaises(ValueError):
+            ConversationConfig(capture_commit_ms=12_000)
+        with self.assertRaises(ValueError):
+            ConversationConfig(capture_commit_ms=14_501)
+        self.assertEqual(13_500, ConversationConfig().capture_commit_ms)
 
     def test_invalid_config_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
