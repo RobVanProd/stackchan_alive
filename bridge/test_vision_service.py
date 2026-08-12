@@ -83,7 +83,7 @@ class VisionServiceTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 verify_yunet_model(bad_model)
 
-    def test_preflight_validates_local_runtime_without_fetching_or_leaking_pairing_code(self) -> None:
+    def _run_preflight(self, debug_payload):
         with tempfile.TemporaryDirectory() as directory:
             pairing = Path(directory) / "pairing.txt"
             pairing.write_text("123456\n", encoding="ascii")
@@ -95,14 +95,51 @@ class VisionServiceTests(unittest.TestCase):
                 str(pairing),
                 "--preflight",
             ]
-            with patch.object(sys, "argv", argv), patch("builtins.print") as emit:
+            with patch.object(sys, "argv", argv), patch("builtins.print") as emit, patch.object(
+                CameraVisionService, "_get", **debug_payload
+            ):
                 result = main()
+        return result, json.loads(emit.call_args.args[0])
 
-        payload = json.loads(emit.call_args.args[0])
+    def test_preflight_reports_ready_without_leaking_pairing_code(self) -> None:
+        result, payload = self._run_preflight(
+            {"return_value": b'{"compiled_enable_camera":1,"compiled_enable_camera_host_vision":1}'}
+        )
+
         self.assertEqual(0, result)
         self.assertTrue(payload["ready"])
         self.assertFalse(payload["raw_frame_persistence"])
         self.assertNotIn("123456", json.dumps(payload))
+
+    def test_preflight_refuses_a_camera_less_image(self) -> None:
+        # F3's signature failure: the worker runs happily against firmware with the
+        # camera compiled out and returns zero detections forever, which is
+        # indistinguishable from a detector that simply sees nobody.
+        result, payload = self._run_preflight(
+            {"return_value": b'{"compiled_enable_camera":0,"compiled_enable_camera_host_vision":0}'}
+        )
+
+        self.assertEqual(2, result)
+        self.assertFalse(payload["ready"])
+        self.assertIn("firmware-camera-disabled", payload["reason"])
+        self.assertIn("compiled_enable_camera", payload["reason"])
+
+    def test_preflight_refuses_an_unreachable_robot(self) -> None:
+        result, payload = self._run_preflight(
+            {"side_effect": urllib.error.URLError("offline")}
+        )
+
+        self.assertEqual(2, result)
+        self.assertFalse(payload["ready"])
+        self.assertIn("robot-unreachable", payload["reason"])
+
+    def test_preflight_treats_a_truncated_debug_response_as_unknown_not_disabled(self) -> None:
+        # /debug truncates by omitting fields rather than zeroing them, so an
+        # absent flag must not be read as "camera disabled".
+        result, payload = self._run_preflight({"return_value": b'{"bridge_state":"ready"}'})
+
+        self.assertEqual(0, result)
+        self.assertTrue(payload["ready"])
 
     def test_camera_service_retries_one_transport_miss_and_records_recovery(self) -> None:
         class Detector:

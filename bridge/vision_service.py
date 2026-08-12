@@ -132,6 +132,16 @@ def encode_face_targets(pairing_code: str, faces: list[FaceTarget]) -> str:
     return f"/vision-target?p={pairing_code}&f={';'.join(encoded)}"
 
 
+def _truthy_flag(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return False
+
+
 def verify_yunet_model(path: str | Path) -> Path:
     model_path = Path(path).resolve()
     try:
@@ -215,6 +225,36 @@ class CameraVisionService:
                 time.sleep(0.05)
         raise RuntimeError("vision transport retry exhausted")
 
+    def camera_capability(self, timeout: float = 4.0) -> tuple[bool, str]:
+        """Report whether the installed firmware can serve host vision at all.
+
+        F3 is that vision delivers nothing, and the failure is silent: a worker
+        started against a camera-less image polls forever and returns zero
+        detections, which looks identical to a detector that cannot see anyone.
+        The compiled flags distinguish those two cases immediately, and /debug is
+        the unauthenticated surface, so this needs no pairing code.
+        """
+        try:
+            payload = self._get("/debug", timeout)
+        except (OSError, RuntimeError, urllib.error.URLError) as exc:
+            return False, f"robot-unreachable: {type(exc).__name__}"
+        try:
+            debug = json.loads(payload.decode("utf-8", "replace"))
+        except (UnicodeDecodeError, ValueError):
+            return False, "robot-debug-unparsable"
+        if not isinstance(debug, dict):
+            return False, "robot-debug-not-an-object"
+        missing = [
+            flag
+            for flag in ("compiled_enable_camera", "compiled_enable_camera_host_vision")
+            # A truncated /debug response omits fields rather than zeroing them, so
+            # an absent flag is unknown, not disabled. Only an explicit 0 disables.
+            if flag in debug and not _truthy_flag(debug[flag])
+        ]
+        if missing:
+            return False, "firmware-camera-disabled: " + ",".join(missing)
+        return True, "ok"
+
     def step(self, timeout: float = 4.0) -> list[FaceTarget]:
         try:
             started = time.perf_counter()
@@ -262,11 +302,13 @@ def main() -> int:
     )
     service = CameraVisionService(args.robot_url, pairing_code, OpenCvYuNetDetector(args.model_path))
     if args.preflight:
+        capable, reason = service.camera_capability()
         print(
             json.dumps(
                 {
                     "schema": "stackchan.local-vision-preflight.v1",
-                    "ready": True,
+                    "ready": capable,
+                    "reason": reason,
                     "robot_url": service.robot_url,
                     "model_sha256": YUNET_MODEL_SHA256,
                     "raw_frame_persistence": False,
@@ -274,7 +316,7 @@ def main() -> int:
                 separators=(",", ":"),
             )
         )
-        return 0
+        return 0 if capable else 2
     started = time.monotonic()
     exit_code = 0
     try:
