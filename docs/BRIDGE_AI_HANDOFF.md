@@ -250,6 +250,29 @@ vision worker and refuses a vision-enabled ready result until both authenticated
 target updates advance with no new frame/auth failures. Physical qualification additionally
 requires advancing face batches, observed faces, and camera events.
 
+**Blocker found 2026-08-11, and what changed.** The installed release candidate reports
+`compiled_enable_camera: 0` and `compiled_enable_camera_host_vision: 0`, so F3 could not be worked at
+all on that image regardless of host state. The only camera-enabled profile was
+`stackchan_camera_probe`, which also sets `STACKCHAN_MOTION_ENABLED_AT_BOOT=1` and
+`STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT=1` — so the only way to get eyes was to accept autonomous
+actuator motion at boot as a side effect. Presence detection must not carry that price.
+
+`stackchan_release_forensics_vision` now provides the camera and the authenticated host-vision
+endpoints while inheriting the motion-off-at-boot posture untouched: no `build_unflags`, no motion
+markers. `tools/test_release_boot_motion_contract.ps1` asserts that directly, so the profile cannot
+silently acquire motion later. `STACKCHAN_CAMERA_CAPTURE_PROBE_ONLY` is deliberately not set —
+`serveCameraGrayFrame()` captures on demand per authenticated request, so the periodic capture probe
+is a separate diagnostic rather than a prerequisite.
+
+The host side is ready as of 2026-08-11: `C:\stackchan_vision_venv` exists with the pinned
+`numpy==2.2.6` and `opencv-python-headless==4.13.0.92` from `bridge/requirements-vision.txt`, and
+`test_vision_service` passes 8/8 in it. Before that the venv did not exist, so no vision worker could
+have run on this host whatever the firmware did.
+
+What remains is physical: build `stackchan_release_forensics_vision` with the private per-device
+configuration, flash it, start the worker with `tools/start_local_vision.ps1`, and require the
+authenticated frame and target counters to advance. Nothing in Part 3 can be qualified until they do.
+
 ## F4. Speech is subtly choppy
 
 **Observed:** the operator heard slight choppiness while the bridge used 4096-byte, 16 kHz PCM
