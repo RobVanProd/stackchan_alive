@@ -28,7 +28,7 @@ void IntentEngine::begin() {
   activeSpeechUntilMs_ = 0;
   soundOrientUntilMs_ = 0;
   lastEventAtMs_ = lastUpdateMs_;
-  demoEnabled_ = true;
+  demoEnabled_ = STACKCHAN_DEMO_ENABLED_AT_BOOT != 0;
   reducedMotion_ = false;
   soundAzimuthNorm_ = 0.0f;
   lastEventStrength_ = 0.0f;

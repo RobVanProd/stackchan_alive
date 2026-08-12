@@ -9,6 +9,22 @@
 #include "persona/SpeechPlanner.hpp"
 #include "persona/StateMatrix.hpp"
 
+// Demo mode injects a random mode change and a synthetic event every 2.5-6 s.
+// That is useful on a bench when showing the face off, and actively harmful the
+// rest of the time: it makes the character look random rather than responsive,
+// and because every injected event counts as stimulus the robot can never
+// accumulate enough drowsiness to fall asleep. The character design has him
+// getting heavy-lidded at fatigue 0.45, yawning at 0.62 and asleep at 0.80 after
+// roughly 8.5 idle minutes, and none of that can happen while demo mode runs.
+//
+// Every native test covering sleep, idle life, or character behaviour calls
+// setDemoEnabled(false) first for exactly this reason, so the behaviour under
+// test was never the shipped default. Boot with it off; `demo on` over serial
+// still turns it on for a bench demonstration.
+#ifndef STACKCHAN_DEMO_ENABLED_AT_BOOT
+#define STACKCHAN_DEMO_ENABLED_AT_BOOT 0
+#endif
+
 namespace stackchan {
 
 class IntentEngine {
@@ -74,7 +90,7 @@ class IntentEngine {
   uint32_t activeSpeechUntilMs_ = 0;
   uint32_t soundOrientUntilMs_ = 0;
   uint32_t lastEventAtMs_ = 0;
-  bool demoEnabled_ = true;
+  bool demoEnabled_ = STACKCHAN_DEMO_ENABLED_AT_BOOT != 0;
   bool reducedMotion_ = false;
   float soundAzimuthNorm_ = 0.0f;
   float lastEventStrength_ = 0.0f;
