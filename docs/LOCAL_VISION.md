@@ -2,9 +2,13 @@
 
 Stackchan's first camera path is paired, local, host-assisted vision. It keeps face detection on
 the owner's PC while the CoreS3 performs bounded capture and the firmware tracker owns attention
-selection. The same path is available in the secret-free `stackchan_release_full` image; the
-`stackchan_camera_probe` profile remains the token-enabled lab/OTA variant. This avoids an
-Arduino-to-ESP-IDF framework migration during the release-stability gate.
+selection. The same path is available in the secret-free `stackchan_release_full` image. For a private
+per-device image there are two profiles, and the difference matters: `stackchan_release_forensics_vision`
+adds the camera while keeping the inherited motion-off-at-boot posture, and `stackchan_camera_probe`
+additionally sets `STACKCHAN_MOTION_ENABLED_AT_BOOT=1` and `STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT=1`.
+Prefer the former unless you specifically want autonomous motion; vision work should not require
+accepting actuator motion as a side effect. This avoids an Arduino-to-ESP-IDF framework migration
+during the release-stability gate.
 
 ## Data Boundary
 
@@ -72,12 +76,17 @@ visual strain. Resume only after the operator feels recovered, with softer light
 motion-off acquisition check before any servo test.
 
 1. Stop motion and confirm servo rail and torque are off.
-2. Use `stackchan_release_full` for a public serial install or `stackchan_camera_probe` for a
-   private token-enabled OTA lab image, only after the shorter integration check passes.
+2. Use `stackchan_release_full` for a public serial install, or
+   `stackchan_release_forensics_vision` for a private token-enabled OTA image, only after the
+   shorter integration check passes. Do not reach for `stackchan_camera_probe` here: step 1 has you
+   confirm motion, rail, and torque are off, and that profile turns motion and autonomous motion
+   back on at boot. Use it only when autonomous motion is itself what you are testing.
 3. Set a temporary digits-only pairing code. The serial bench path accepts
    `pairing code 123456`. For an OTA-only diagnostic build, set the private build
    environment variable `STACKCHAN_PAIRING_SHORT_CODE` to a new six-digit code before
-   building `stackchan_camera_probe`; remove it before rebuilding production firmware.
+   building the private camera profile; remove it before rebuilding production firmware. Every
+   camera-enabled environment refuses to build without it, so an unauthenticated camera image
+   cannot be produced by omission.
    Never commit or archive the temporary code.
 4. Start the worker from the repository root:
 
