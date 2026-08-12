@@ -6288,6 +6288,8 @@ void printRuntimeStatus() {
   Serial.print(uplink.terminalRetries);
   Serial.print(F(" bridge_uplink_terminal_timeouts="));
   Serial.print(uplink.terminalTimeouts);
+  Serial.print(F(" bridge_uplink_terminal_audio_deferrals="));
+  Serial.print(uplink.terminalAudioDeferrals);
   Serial.print(F(" bridge_uplink_cancel_frames="));
   Serial.print(uplink.cancelFramesQueued);
 #if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK
@@ -8522,6 +8524,12 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          static_cast<unsigned long>(uplink.terminalRetries));
   append(",\"bridge_uplink_terminal_timeouts\":%lu",
          static_cast<unsigned long>(uplink.terminalTimeouts));
+  // End terminals held back because PCM this turn already counted was still owed
+  // to the socket. Without this the hold that keeps utterance_end from
+  // overtaking its own audio is invisible from the robot, so qualification can
+  // only observe the absence of the failure rather than the fix engaging.
+  append(",\"bridge_uplink_terminal_audio_deferrals\":%lu",
+         static_cast<unsigned long>(uplink.terminalAudioDeferrals));
   append(",\"bridge_uplink_cancel_frames\":%lu",
          static_cast<unsigned long>(uplink.cancelFramesQueued));
   append(",\"bridge_network_write_deferrals\":%lu",
