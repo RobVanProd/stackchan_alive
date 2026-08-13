@@ -85,6 +85,12 @@ from local_facts import resolve_local_fact
 from robot_embodiment import RobotEmbodimentState
 from conversation_latency import build_conversation_latency_record
 from conversation_harness import ConversationTurnPlan, weather_result_matches
+from affect_state import (
+    affect_prompt_lines,
+    load_affect_state,
+    observe_turn,
+    save_affect_state,
+)
 from conversation_session import ConversationConfig, ConversationPhase, ConversationSession
 from initiative_policy import (
     MIN_UNPROMPTED_INTERVAL_MS,
@@ -1597,6 +1603,12 @@ class LanBridgeSession:
         self.audio_last_reject_code = ""
         self._rejected_audio_turns: dict[int, str] = {}
         self._stt_diagnostic_pending = bool(config.stt_diagnostic_expected_text)
+        # Bounded cross-session mood/rapport, stored beside the memory file.
+        # Device character state, not user memory; see bridge/affect_state.py.
+        self._affect_state_file: Path | None = (
+            config.memory_file.with_name("affect_state.json") if config.memory_file else None
+        )
+        self.affect_state = load_affect_state(self._affect_state_file)
         saved_initiative = self.memory.fact_value("user.initiative_enabled")
         if self.initiative_policy is not None and saved_initiative == "false":
             self.initiative_policy.set_enabled(False)
@@ -1682,6 +1694,20 @@ class LanBridgeSession:
             status = self.room_context.status()
             return str(status.get("lastError") or "observation_failed")
         return ""
+
+    def _affect_lines(self) -> tuple[str, ...]:
+        return affect_prompt_lines(self.affect_state)
+
+    def _observe_affect(self, turn, tts_error: str) -> None:
+        # Mood and rapport drift only on completed exchanges; failures decay
+        # rapport with time but add nothing.
+        self.affect_state = observe_turn(
+            self.affect_state,
+            arousal=float(getattr(turn, "arousal", 0.0) or 0.0),
+            valence=float(getattr(turn, "valence", 0.0) or 0.0),
+            turn_ok=not tts_error,
+        )
+        save_affect_state(self._affect_state_file, self.affect_state)
 
     def _relationship_card(self, query: str, *, suppress_session_context: bool = False) -> RelationshipCard:
         session_turns = self.conversation.turns if self.conversation is not None else 0
@@ -2764,6 +2790,10 @@ class LanBridgeSession:
             seq = self.next_seq
             self.next_seq += 1
             embodiment_lines = self._embodiment_context_lines()
+            # A proactive line without memory can only be generic. Give it the
+            # same bounded relationship card an answered turn gets (the card
+            # already strips personal lines in a shared room).
+            relationship_card = self._relationship_card(decision.prompt)
             runner = run_runner_profile(
                 self.config.runner_profile,
                 case_name="question",
@@ -2774,8 +2804,8 @@ class LanBridgeSession:
                 user_text=decision.prompt,
                 research_tools_enabled=False,
                 embodiment_lines=embodiment_lines,
-                memory_lines=(),
-                conversation_lines=(),
+                memory_lines=(*relationship_card.lines, *self._affect_lines()),
+                conversation_lines=self._conversation_context_lines(),
                 cancellation=cancellation,
                 persona_id=active_persona.pack_id,
             )
@@ -2804,6 +2834,20 @@ class LanBridgeSession:
                 self.initiative_policy.note_attempt_failed(now_ms=now_ms())
             else:
                 self.initiative_policy.note_spoken(now_ms=now_ms())
+                reply_window_opened = False
+                if (
+                    self.conversation is not None
+                    and self.conversation.phase == ConversationPhase.IDLE
+                ):
+                    # A robot that speaks first must be able to hear the
+                    # answer: open a bounded conversation lease so the user can
+                    # reply without re-saying the wake phrase. The firmware
+                    # mic stays echo-guarded while its speaker is live, and the
+                    # lease closes itself on silence like any other session.
+                    frames.append(
+                        self._conversation_heartbeat(self.conversation.wake(now_ms()))
+                    )
+                    reply_window_opened = True
                 self._append_turn_log(
                     {
                         "schema": "stackchan.initiative-turn.v1",
@@ -2814,6 +2858,7 @@ class LanBridgeSession:
                         "persona_id": active_persona.pack_id,
                         "validation_issues": list(validation.issues),
                         "tts_first_audio_ms": tts_summary.get("tts_first_audio_ms", 0),
+                        "reply_window_opened": reply_window_opened,
                     }
                 )
             return frames
@@ -3556,7 +3601,7 @@ class LanBridgeSession:
                             and not conversation_plan.clarification
                         ),
                         embodiment_lines=embodiment_lines,
-                        memory_lines=relationship_card.lines,
+                        memory_lines=(*relationship_card.lines, *self._affect_lines()),
                         conversation_lines=self._conversation_context_lines(),
                         task_lines=conversation_plan.trusted_task_lines(),
                         cancellation=cancellation,
@@ -3741,7 +3786,7 @@ class LanBridgeSession:
                                 user_text=evidence_user_text,
                                 research_tools_enabled=False,
                                 embodiment_lines=embodiment_lines,
-                                memory_lines=relationship_card.lines,
+                                memory_lines=(*relationship_card.lines, *self._affect_lines()),
                                 conversation_lines=self._conversation_context_lines(),
                                 task_lines=conversation_plan.trusted_task_lines(),
                                 cancellation=cancellation,
@@ -3859,6 +3904,7 @@ class LanBridgeSession:
                     conversation_plan,
                     research_succeeded=research_result_succeeded(research_result),
                 )
+            self._observe_affect(turn, tts_error)
             self._append_completed_turn_log(
                 seq=seq,
                 has_audio=has_audio,
@@ -3989,6 +4035,7 @@ class LanBridgeSession:
             failure_frame = error_frame("tts_error", tts_error)
             failure_frame.update(failure_payload)
             prefix_errors.append(failure_frame)
+        self._observe_affect(turn, tts_error)
         self._append_completed_turn_log(
             seq=seq,
             has_audio=has_audio,

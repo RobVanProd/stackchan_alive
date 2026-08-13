@@ -4512,7 +4512,7 @@ class LanServiceTests(unittest.TestCase):
             response["text"],
         )
 
-    def test_initiative_uses_character_path_without_opening_conversation_capture(self):
+    def test_initiative_opens_reply_window_after_speaking(self):
         policy = InitiativePolicy(InitiativeConfig(enabled=True), now_ms=0)
         policy.observe_presence(True, face_count=1, now_ms=599_999)
         session = LanBridgeSession(
@@ -4555,8 +4555,15 @@ class LanServiceTests(unittest.TestCase):
             frames = session.run_initiative(decision)
 
         self.assertEqual("response_start", frames[0]["type"])
-        self.assertEqual(ConversationPhase.IDLE, session.conversation.phase)
-        self.assertFalse(session.conversation.capture_open)
+        # A robot that speaks first must be able to hear the answer: a spoken
+        # initiative line now opens a bounded conversation lease so the user
+        # can reply without re-saying the wake phrase.
+        self.assertEqual(ConversationPhase.ENGAGED, session.conversation.phase)
+        self.assertTrue(session.conversation.capture_open)
+        wake_frame = frames[-1]
+        self.assertEqual("heartbeat", wake_frame["type"])
+        self.assertIn("session_started", wake_frame["conversation_actions"])
+        self.assertIn("open_capture", wake_frame["conversation_actions"])
         self.assertTrue(policy.status(now_ms=600_001)["pendingReply"])
 
 
