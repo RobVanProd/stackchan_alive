@@ -73,8 +73,8 @@ float HeadGaze::signedUnit(uint32_t hash) {
 }
 
 void HeadGaze::chooseTarget(float yawSpanDeg, float pitchSpanDeg, float focus) {
-  const uint32_t h = hash32(shifts_ * 0x9e3779b9UL + 0x85ebca6bUL);
-  const uint32_t h2 = hash32(shifts_ * 0x27d4eb2fUL + 0x165667b1UL);
+  const uint32_t h = hash32((shifts_ ^ seed_) * 0x9e3779b9UL + 0x85ebca6bUL);
+  const uint32_t h2 = hash32((shifts_ ^ seed_) * 0x27d4eb2fUL + 0x165667b1UL);
 
   // A focused character keeps its head near centre; an unfocused one ranges.
   const float reach = 0.35f + (1.0f - focus) * 0.65f;
@@ -123,7 +123,7 @@ void HeadGaze::update(uint32_t nowMs,
     const bool wandering = safeFocus < 0.55f;
     const uint32_t minMs = wandering ? kHoldWanderingMinMs : kHoldFocusedMinMs;
     const uint32_t spanMs = wandering ? kHoldWanderingSpanMs : kHoldFocusedSpanMs;
-    const uint32_t jitter = hash32(shifts_ * 0x2545f491UL) % (spanMs > 0 ? spanMs : 1);
+    const uint32_t jitter = hash32((shifts_ ^ seed_) * 0x2545f491UL) % (spanMs > 0 ? spanMs : 1);
     // An alert character shifts sooner than a calm one.
     holdMs_ = static_cast<uint32_t>((minMs + jitter) * (1.0f - safeArousal * 0.35f));
     if (holdMs_ < 350) {

@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 
-#include "persona/BreathRhythm.hpp"
 #include "persona/StateMatrix.hpp"
 
 namespace stackchan {
@@ -26,6 +25,9 @@ enum class SpeechViseme : uint8_t {
 
 struct FaceAutonomicTelemetry {
   float blinkOpen = 1.0f;
+  // Vertical life offset supplied by the persona layer (breath, yawn, gaze),
+  // as passed through to the rendered face. The animator no longer runs its
+  // own breath generator; IdleLife owns the one shared rhythm.
   float breathY = 0.0f;
   float gazeX = 0.0f;
   float gazeY = 0.0f;
@@ -52,6 +54,8 @@ class FaceAnimator {
  public:
   FaceTargets composeFrame(const RobotFrame& frame, uint32_t nowMs);
   void reset(const FaceTargets& face, uint32_t nowMs);
+  // Hardware entropy at boot; zero keeps the deterministic default for tests.
+  void seedRandom(uint32_t seed);
   void setReducedMotion(bool enabled);
   void setSpeechEnvelope(float envelope, SpeechViseme viseme, uint32_t nowMs);
   void clearSpeechEnvelope(uint32_t nowMs);
@@ -134,7 +138,6 @@ class FaceAnimator {
   FaceTargets current_;
   BlinkState blink_;
   SaccadeState saccade_;
-  BreathRhythm breath_;
   FidgetState fidget_;
   GestureState gesture_;
   SpeechState speech_;

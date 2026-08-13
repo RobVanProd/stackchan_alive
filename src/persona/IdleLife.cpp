@@ -19,6 +19,11 @@ void IdleLife::reset(uint32_t nowMs) {
   nextMicroExpressionMs_ = nowMs + 1800;
   nextYawnMs_ = nowMs + 4200;
   microKind_ = 0;
+  driftPhase_ = 0.0f;
+  driftPeriodMs_ = 0;
+  driftCycle_ = 0;
+  lastDriftMs_ = nowMs;
+  hasLastDriftMs_ = false;
   breath_.reset(nowMs);
 }
 
@@ -33,7 +38,9 @@ void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
                                   : clampValue(generated_persona::kIdleBreathingHz - 0.04f + arousal * 0.10f -
                                                    fatigue * 0.04f,
                                                0.10f, 0.28f);
-  const float breathAmp = (sleeping ? generated_persona::kIdleBreathingPx * 0.77f
+  // Sleeping breath is the deep slow one the whole face shows; this is the only
+  // breath generator, so its sleeping amplitude carries the visual by itself.
+  const float breathAmp = (sleeping ? generated_persona::kIdleBreathingPx * 1.80f
                                     : clampValue(generated_persona::kIdleBreathingPx *
                                                      (0.60f + fatigue * 0.45f - arousal * 0.20f),
                                                  0.45f, 1.80f)) *
@@ -50,8 +57,7 @@ void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
   // stops while he is out.
   const float gazeLife = sleeping
                              ? 0.0f
-                             : sinf(static_cast<float>(nowMs) * 0.001f * kTwoPi * 0.07f) *
-                                   (1.0f - focus) * 0.07f * motionScale;
+                             : gazeDrift(nowMs) * (1.0f - focus) * 0.07f * motionScale;
   frame.face.pupilX = clampValue(frame.face.pupilX + gazeLife, -1.0f, 1.0f);
   frame.motion.yawDeg += gazeLife * 4.0f;
 
@@ -93,8 +99,31 @@ void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
   telemetry_.pupilScale = frame.face.pupilScale;
 }
 
+float IdleLife::gazeDrift(uint32_t nowMs) {
+  // Advance by elapsed time rather than absolute time, so a stalled frame does
+  // not teleport the drift, and re-jitter the period each cycle so the sweep
+  // has no fixed frequency a viewer can learn.
+  uint32_t stepMs = hasLastDriftMs_ ? (nowMs - lastDriftMs_) : 0;
+  if (stepMs > 200) {
+    stepMs = 200;
+  }
+  lastDriftMs_ = nowMs;
+  hasLastDriftMs_ = true;
+
+  if (driftPeriodMs_ == 0) {
+    driftPeriodMs_ = 9000 + (hash32((driftCycle_ ^ seed_) + 0x632be59bUL) % 11000);
+  }
+  driftPhase_ += static_cast<float>(stepMs) / static_cast<float>(driftPeriodMs_);
+  while (driftPhase_ >= 1.0f) {
+    driftPhase_ -= 1.0f;
+    ++driftCycle_;
+    driftPeriodMs_ = 9000 + (hash32((driftCycle_ ^ seed_) + 0x632be59bUL) % 11000);
+  }
+  return sinf(driftPhase_ * kTwoPi);
+}
+
 void IdleLife::scheduleNextMicroExpression(uint32_t nowMs) {
-  const uint32_t h = hash32(nowMs + 0x9e3779b9UL);
+  const uint32_t h = hash32((nowMs ^ seed_) + 0x9e3779b9UL);
   const uint32_t minMs = generated_persona::kIdleFidgetMinMs;
   const uint32_t maxMs = max(generated_persona::kIdleFidgetMaxMs, minMs);
   const uint32_t spanMs = maxMs > minMs ? maxMs - minMs : 0;
@@ -103,7 +132,7 @@ void IdleLife::scheduleNextMicroExpression(uint32_t nowMs) {
 }
 
 void IdleLife::scheduleNextYawn(uint32_t nowMs) {
-  const uint32_t h = hash32(nowMs + 0x517cc1b7UL);
+  const uint32_t h = hash32((nowMs ^ seed_) + 0x517cc1b7UL);
   nextYawnMs_ = nowMs + 9000 + (h % 9000);
 }
 

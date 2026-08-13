@@ -26,6 +26,11 @@ class ProceduralFace {
  public:
   void begin(IDisplay* display);
   void begin(IDisplay* display, const FaceConfig& config);
+  // Hardware entropy at boot so blinks, saccades, and fidgets differ per
+  // power-on; never called by native tests.
+  void seedEntropy(uint32_t seed) {
+    animator_.seedRandom(seed);
+  }
   void setReducedMotion(bool enabled);
   void setSpeechEnvelope(float envelope, SpeechViseme viseme, uint32_t nowMs);
   void clearSpeechEnvelope(uint32_t nowMs);

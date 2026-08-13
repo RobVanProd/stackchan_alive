@@ -121,6 +121,13 @@ void IntentEngine::applyCircadian(uint8_t hourOfDay) {
   emotion_.applyCircadian(hourOfDay);
 }
 
+void IntentEngine::seedEntropy(uint32_t seed) {
+  // Distinct derived streams per module so one shared seed cannot phase-lock
+  // the generators to each other.
+  idleLife_.seedEntropy(seed * 0x9e3779b9UL + 0x7f4a7c15UL);
+  headGaze_.seedEntropy(seed * 0x27d4eb2fUL + 0x165667b1UL);
+}
+
 void IntentEngine::applyAmbient(float lux, uint8_t hourOfDay) {
   emotion_.applyAmbient(lux, hourOfDay);
 }
@@ -141,7 +148,7 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
 
   const float dt = (nowMs - lastUpdateMs_) * 0.001f;
   lastUpdateMs_ = nowMs;
-  emotion_.update(dt);
+  emotion_.update(dt, mode_ == CharacterMode::Sleep);
   updateSleepState(nowMs);
   updateSpeechCue(nowMs);
 

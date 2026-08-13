@@ -75,7 +75,6 @@ void FaceAnimator::reset(const FaceTargets& face, uint32_t nowMs) {
   hasPreviousMode_ = false;
   blink_ = BlinkState {};
   saccade_ = SaccadeState {};
-  breath_.reset(nowMs);
   fidget_ = FidgetState {};
   gesture_ = GestureState {};
   speech_ = SpeechState {};
@@ -86,6 +85,11 @@ void FaceAnimator::reset(const FaceTargets& face, uint32_t nowMs) {
 
 void FaceAnimator::setReducedMotion(bool enabled) {
   reducedMotion_ = enabled;
+}
+
+void FaceAnimator::seedRandom(uint32_t seed) {
+  // The xorshift stream must never be zero.
+  rng_ = seed != 0 ? seed : 0x51A7C0DEu;
 }
 
 void FaceAnimator::setSpeechEnvelope(float envelope, SpeechViseme viseme, uint32_t nowMs) {
@@ -255,17 +259,34 @@ FaceTargets FaceAnimator::samplePose(const RobotFrame& frame, uint32_t nowMs) co
   pose.eyeSmile = clampValue(pose.eyeSmile + mod.eyeSmile * 0.20f, 0.0f, 1.0f);
   pose.pupilX = clampValue(pose.pupilX + mod.pupilX * 0.25f, -1.0f, 1.0f);
   pose.pupilY = clampValue(pose.pupilY + mod.pupilY * 0.35f, -1.0f, 1.0f);
-  pose.pupilScale = clampValue(pose.pupilScale * (0.85f + frame.emotion.arousal * 0.30f), 0.70f, 1.25f);
+  pose.pupilScale = clampValue(pose.pupilScale * mod.pupilScale * (0.85f + frame.emotion.arousal * 0.30f), 0.70f, 1.25f);
   pose.browTilt = clampValue(pose.browTilt + mod.browTilt * 0.20f, -1.0f, 1.0f);
   pose.mouthSmile = clampValue(pose.mouthSmile + mod.mouthSmile * 0.18f, -1.0f, 1.0f);
   pose.mouthOpen = clampValue(max(pose.mouthOpen, mod.mouthOpen), 0.0f, 1.0f);
   pose.mouthWidthDelta += pose.mouthSmile * 12.0f;
+  // The persona layer's positional and shape channels pass through at full
+  // strength: breath translation, yawns, gaze lead, and sound orientation are
+  // produced only there and have no counterpart in the mode poses above.
+  pose.faceX += mod.faceX;
+  pose.faceY += mod.faceY;
+  pose.mouthWidthDelta += mod.mouthWidthDelta;
+  pose.mouthCornerL += mod.mouthCornerL;
+  pose.mouthCornerR += mod.mouthCornerR;
+  pose.upperLidTilt = clampValue(pose.upperLidTilt + mod.upperLidTilt, -1.0f, 1.0f);
+  pose.lowerLidTilt = clampValue(pose.lowerLidTilt + mod.lowerLidTilt, -1.0f, 1.0f);
+  pose.leftCorners.tl = clampValue(pose.leftCorners.tl + mod.leftCorners.tl, 0.0f, 1.0f);
+  pose.leftCorners.tr = clampValue(pose.leftCorners.tr + mod.leftCorners.tr, 0.0f, 1.0f);
+  pose.leftCorners.bl = clampValue(pose.leftCorners.bl + mod.leftCorners.bl, 0.0f, 1.0f);
+  pose.leftCorners.br = clampValue(pose.leftCorners.br + mod.leftCorners.br, 0.0f, 1.0f);
+  pose.rightCorners.tl = clampValue(pose.rightCorners.tl + mod.rightCorners.tl, 0.0f, 1.0f);
+  pose.rightCorners.tr = clampValue(pose.rightCorners.tr + mod.rightCorners.tr, 0.0f, 1.0f);
+  pose.rightCorners.bl = clampValue(pose.rightCorners.bl + mod.rightCorners.bl, 0.0f, 1.0f);
+  pose.rightCorners.br = clampValue(pose.rightCorners.br + mod.rightCorners.br, 0.0f, 1.0f);
   return pose;
 }
 
 void FaceAnimator::applyAutonomic(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) {
   const float motionScale = reducedMotion_ ? generated_persona::kReducedMotionScale : 1.0f;
-  const bool sleeping = frame.mode == CharacterMode::Sleep;
   const float blinkOpen = updateBlink(frame, nowMs);
   const float blinkCompression = 1.0f - clampValue(blinkOpen, 0.0f, 1.0f);
 
@@ -276,23 +297,18 @@ void FaceAnimator::applyAutonomic(FaceTargets& face, const RobotFrame& frame, ui
   face.pupilX = clampValue(face.pupilX + saccade_.offsetX * motionScale, -1.0f, 1.0f);
   face.pupilY = clampValue(face.pupilY + saccade_.offsetY * motionScale, -1.0f, 1.0f);
 
-  const float breathHz = sleeping ? clampValue(generated_persona::kIdleBreathingHz * 0.60f, 0.10f, 0.20f)
-                                  : generated_persona::kIdleBreathingHz;
-  const float breathAmp = (sleeping ? generated_persona::kIdleBreathingPx * 2.0f
-                                    : generated_persona::kIdleBreathingPx) *
-                          motionScale;
-  // Same rhythm generator the persona idle layer uses, so face and body share
-  // one breath instead of two sines drifting against each other.
-  const float breathY = breath_.update(nowMs, breathHz, sleeping) * breathAmp;
+  // Breath comes from the persona idle layer through frame.face.faceY, so the
+  // face and the body pitch bob share IdleLife's one BreathRhythm instance
+  // instead of two generators drifting against each other.
   const float stageX = saccade_.offsetX * 4.0f * motionScale;
   const float stageY = saccade_.offsetY * 3.0f * motionScale;
   face.faceX += stageX;
-  face.faceY += breathY + stageY;
+  face.faceY += stageY;
 
   updateFidget(face, frame, nowMs, motionScale);
 
   telemetry_.blinkOpen = blinkOpen;
-  telemetry_.breathY = breathY;
+  telemetry_.breathY = frame.face.faceY;
   telemetry_.gazeX = saccade_.offsetX;
   telemetry_.gazeY = saccade_.offsetY;
   telemetry_.blinkCount = blink_.count;

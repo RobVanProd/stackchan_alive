@@ -15,6 +15,12 @@ class BreathRhythm {
  public:
   void reset(uint32_t nowMs);
 
+  // Hardware entropy at boot so each power-on breathes its own sequence; zero
+  // (the default) keeps the deterministic stream native tests rely on.
+  void seedEntropy(uint32_t seed) {
+    seed_ = seed;
+  }
+
   // Advances the rhythm and returns displacement in roughly [-1, 1]; a sigh
   // overshoots that range by its depth.
   float update(uint32_t nowMs, float breathHz, bool sleeping);
@@ -33,6 +39,7 @@ class BreathRhythm {
 
  private:
   float phase_ = 0.0f;
+  uint32_t seed_ = 0;
   uint32_t periodMs_ = 0;
   float depth_ = 1.0f;
   uint32_t cycle_ = 0;
