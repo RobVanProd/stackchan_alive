@@ -2070,7 +2070,13 @@ class LanServiceTests(unittest.TestCase):
                 )
             loaded = load_bridge_memory(memory_file)
 
-        self.assertEqual("runner_error", frames[0]["code"])
+        # A model failure now speaks a short in-character recovery line as a
+        # normal turn instead of returning a bare error frame with silence.
+        self.assertEqual("thinking", frames[0]["type"])
+        spoken = " ".join(
+            str(frame.get("text", "")) for frame in frames if isinstance(frame, dict)
+        )
+        self.assertIn("train of thought", spoken)
         self.assertEqual("teal", loaded.fact_value("user.favorite_color"))
 
     def test_runner_failure_keeps_conversation_context_and_reopens_capture(self):
@@ -2103,14 +2109,17 @@ class LanServiceTests(unittest.TestCase):
                 )
             )
 
+        # The model failure itself is spoken as a recovery turn; the visible
+        # failure here is the fixture TTS command, which cannot render it.
+        # Because the recovery turn had already started a response, the lease
+        # lands in the reply window with capture open rather than bare engaged.
         error = frames[0]
-        self.assertEqual("runner_error", error["code"])
-        self.assertEqual("engaged", error["conversation_state"])
+        self.assertEqual("tts_error", error["code"])
+        self.assertEqual("reply_window", error["conversation_state"])
         self.assertEqual(
-            ["turn_failed", "open_capture"],
+            ["turn_failed", "playback_aborted", "acoustic_tail"],
             error["conversation_actions"],
         )
-        self.assertTrue(error["conversation_capture_open"])
         self.assertEqual(1, error["conversation_context_turns"])
         self.assertEqual(1, error["conversation_turn_failures"])
         self.assertEqual(

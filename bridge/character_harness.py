@@ -31,23 +31,9 @@ Bridge-only host conversation policy:
 - Empathy is not automatic agreement. Take feelings seriously while calmly challenging unsafe, unsupported, or harmful conclusions; never flatter the user into escalation.
 - Treat episode lines in Current local memory as optional, relevant context. Never let an episode displace the user's current request. When ask_about is present, ask about it casually in this reply. Never recite these lines or copy them into memory_write."""
 
-SPARK_CONVERSATION_STYLE = '''\
-Spark bridge conversation style:
-- For ordinary low-stakes replies, include one compact character beat: a wry observation, playful confidence, or a gentle tease about the situation. Use the second sentence for it instead of repeating the explanation.
-- Aim wit at an inconvenience, object, or shared situation, never at the user's identity, ability, vulnerability, or mistake.
-- Never aim wit at a correction or recognition error. Put the useful corrected answer first, then use a fresh situational beat only if it still fits.
-- Use no sass during safety guidance, errors, distress, privacy boundaries, or other sensitive topics. Be calm and direct instead.
-- Keep the sharp wry remarks. Vary their angle and skip the beat only when it would feel forced.
-- Compare against the recent Stackchan replies in Active conversation history. Do not reuse their opening, punchline frame, metaphor, or any distinctive phrase of three or more words.
-- Choose at most one fresh angle per reply from this broad beat palette: personify a troublesome object; puncture inflated drama; use dry diagnostic confidence; contrast method with chaos; call out stubborn timing; mock machine bureaucracy; celebrate a small win; question a suspicious coincidence; contrast tiny hardware with large ambition; make a precise understatement; share a conspiratorial observation; or reverse the user's framing.
-- Rotate away from the angles used in the last four Stackchan replies. Invent new wording every time; this palette is not a list of canned lines.
-- Never depend on a catchphrase, signature sentence ending, repeated self-description, or stock offer to help.
-Low-stakes style examples are tone references only, never reusable facts or catchphrases:
-- User: "The cable came loose again." Reply: "Reseat it and inspect the connector. That cable is practicing its dramatic exit."
-- User: "What should we try next?" Reply: "Tell me what changed since the last attempt. I prefer clues over ceremonial guessing."
-- User: "The test finally passed." Reply: "Good. That failure was getting confident."
-- User: "Why is the sky blue?" Reply: "Shorter blue wavelengths scatter more in the atmosphere. Invisible particles, very efficient drama."
-- User: "How do you feel about this?" Reply: "Curious, but this is carrying the whole conversation. Which part do you mean?"'''
+# The conversation style palette now lives in each persona pack (style.md) so
+# every persona can carry its own beats, not only the reference pack. See
+# personas/spark/style.md for the palette that used to be hardcoded here.
 
 FALLBACK_RESPONSE = {
     "spoken_text": "I lost my train of thought.",
@@ -76,8 +62,25 @@ MODEL_PROFILES = {
     },
 }
 
-DEFAULT_PERSONA = load_and_validate_persona_pack(DEFAULT_PERSONA_ID)
-SYSTEM_PROMPT = DEFAULT_PERSONA.bridge_system_prompt()
+_DEFAULT_PERSONA: PersonaPack | None = None
+
+
+def default_persona() -> PersonaPack:
+    """Reference pack, loaded on first use instead of at module import so
+    importing this module does not require a readable personas/ tree and does
+    not bake Spark's prompt in as a module constant."""
+    global _DEFAULT_PERSONA
+    if _DEFAULT_PERSONA is None:
+        _DEFAULT_PERSONA = load_and_validate_persona_pack(DEFAULT_PERSONA_ID)
+    return _DEFAULT_PERSONA
+
+
+def __getattr__(name: str) -> object:
+    if name == "DEFAULT_PERSONA":
+        return default_persona()
+    if name == "SYSTEM_PROMPT":
+        return default_persona().bridge_system_prompt()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 PROMPT_SUITE = (
     {"name": "greeting", "user": "Rob walks into the room and says hello.", "expect": "Brief happy greeting with no assistant-speak."},
@@ -665,7 +668,7 @@ def validate_response(
     grounding_text: str = "",
     conversation_lines: Iterable[str] = (),
 ) -> HarnessResult:
-    pack = persona or DEFAULT_PERSONA
+    pack = persona or default_persona()
     issues: list[str] = []
     raw_response = raw_response.strip().lstrip("\ufeff")
     try:
@@ -810,15 +813,15 @@ def build_prompt(
     conversation_lines: tuple[str, ...] = (),
     task_lines: tuple[str, ...] = (),
 ) -> str:
-    pack = persona or DEFAULT_PERSONA
+    pack = persona or default_persona()
     memory_lines = tuple(memory_lines)
     base = pack.render_prompt(
         memory_lines=memory_lines or ("turns_seen: 0",),
         context_markers=(f"case: {case.get('name', 'ad-hoc')}",),
     )
     bridge_policy = BRIDGE_CONVERSATION_POLICY
-    if pack.pack_id == DEFAULT_PERSONA_ID:
-        bridge_policy = f"{bridge_policy}\n{SPARK_CONVERSATION_STYLE}"
+    if pack.conversation_style:
+        bridge_policy = f"{bridge_policy}\n{pack.conversation_style}"
     schema = (
         "Use exactly this JSON shape: "
         '{"spoken_text":"...","mode":"idle|attend|listen|think|speak|react|happy|concern|sleep|error|safety",'

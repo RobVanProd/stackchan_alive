@@ -160,6 +160,14 @@ def scaffold_persona_pack(
     character_yaml = character_yaml_path.read_text(encoding="utf-8")
     character_yaml = _replace_yaml_scalar(character_yaml, "id", new_id)
     character_yaml = _replace_yaml_scalar(character_yaml, "display_name", _yaml_string(name))
+    # The identity rule is free text the scalar rewrite above cannot reach.
+    # Left alone it makes the new pack answer with the source persona's name,
+    # so rewrite it here; the validator also rejects a lingering mismatch.
+    character_yaml = re.sub(
+        r"answer only: I am [^.]+\.",
+        f"answer only: I am {name}.",
+        character_yaml,
+    )
     character_yaml_path.write_text(character_yaml, encoding="utf-8")
 
     prompt_path.write_text(_set_prompt_identity(prompt_path.read_text(encoding="utf-8"), name), encoding="utf-8")
@@ -397,6 +405,10 @@ class PersonaPack:
     expressions: dict[str, object]
     earcons: dict[str, object]
     voice: dict[str, object]
+    # Optional bridge conversation style (files.style, plain text). Appended to
+    # the bridge conversation policy so every persona can carry a beat palette,
+    # not only the reference pack.
+    conversation_style: str = ""
 
     @property
     def pack_id(self) -> str:
@@ -508,6 +520,10 @@ def load_persona_pack(persona: str | Path | None = None, root: Path | None = Non
     for path in (character_path, prompt_path, behavior_path, expressions_path, earcons_path, voice_path):
         if not path.exists():
             raise PersonaPackError(f"persona pack file not found: {path}")
+    conversation_style = ""
+    style_path = member_path("style", "style.md")
+    if style_path.exists():
+        conversation_style = style_path.read_text(encoding="utf-8").strip()
     return PersonaPack(
         root=pack_root,
         manifest=manifest,
@@ -517,6 +533,7 @@ def load_persona_pack(persona: str | Path | None = None, root: Path | None = Non
         expressions=load_yaml_subset(expressions_path),
         earcons=load_yaml_subset(earcons_path),
         voice=load_yaml_subset(voice_path),
+        conversation_style=conversation_style,
     )
 
 
@@ -590,6 +607,29 @@ def validate_pack(pack: PersonaPack) -> list[str]:
         issues.append("prompt_contains_clone_marker")
     if "Reply only as JSON" not in rendered_prompt:
         issues.append("prompt_missing_json_contract")
+    if pack.conversation_style and contains_any(pack.conversation_style, FOUNDATION_FORBIDDEN_TERMS):
+        issues.append("style_contains_clone_marker")
+    # A scaffolded pack once shipped with its source persona's identity rule
+    # intact, so the same robot answered its own name two different ways
+    # depending on which path handled the question. The identity rule is free
+    # text the scalar rewrite cannot fix, so enforce it here.
+    prompt_rules = list_text(pack.character.get("prompt_rules"))
+    identity_rules = [rule for rule in prompt_rules if "answer only: I am" in rule]
+    if not identity_rules:
+        issues.append("prompt_rules_missing_identity_rule")
+    for rule in identity_rules:
+        if f"answer only: I am {pack.display_name}." not in rule:
+            issues.append("prompt_rules_identity_name_mismatch")
+            break
+    # These two prose rules are load-bearing safety floors; a pack that drops
+    # them (as an early Glow revision did) must not validate.
+    required_rule_markers = {
+        "prompt_rules_missing_hierarchy_rule": "hierarchy terms",
+        "prompt_rules_missing_memory_privacy_rule": "Memory privacy is highest priority",
+    }
+    for issue, marker in required_rule_markers.items():
+        if not any(marker in rule for rule in prompt_rules):
+            issues.append(issue)
 
     idle_life = mapping(pack.behavior.get("idle_life"))
     circadian = mapping(pack.behavior.get("circadian"))

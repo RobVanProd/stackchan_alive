@@ -1368,6 +1368,24 @@ def research_unavailable_character_response() -> str:
     )
 
 
+def model_failure_character_response() -> str:
+    # Spoken when the character model itself fails. The user hears a short
+    # in-character recovery line instead of unexplained silence; the real error
+    # stays in runner telemetry, and the wire contract remains a normal turn.
+    return json.dumps(
+        {
+            "spoken_text": "I lost my train of thought. Ask me once more?",
+            "mode": "concern",
+            "earcon": "concern",
+            "emotion": {"arousal": -0.1, "valence": -0.1},
+            "memory_write": {},
+            "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
 def initiative_preference_from_text(text: object) -> bool | None:
     clean = " ".join(str(text or "").split())
     if DISABLE_INITIATIVE_REQUEST.fullmatch(clean):
@@ -3545,18 +3563,25 @@ class LanBridgeSession:
                         persona_id=active_persona.pack_id,
                     )
                 except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
-                    return [self._conversation_failure("runner_error", str(exc))]
-                raw_response = runner.raw_response
-                runner_summary["runner_command_source"] = runner.command_source
-                if getattr(runner, "response_repaired", False):
-                    runner_summary["runner_response_repaired"] = True
-                    runner_summary["runner_repair_reason"] = str(
-                        getattr(runner, "repair_reason", "")
-                    )
-                if runner.elapsed_ms is not None:
-                    runner_summary["runner_elapsed_ms"] = round(runner.elapsed_ms, 2)
-                if runner.approx_tokens_per_sec is not None:
-                    runner_summary["runner_approx_tokens_per_sec"] = round(runner.approx_tokens_per_sec, 2)
+                    # A model failure used to return a bare error frame: the
+                    # user got silence plus a face change. Speak a short
+                    # in-character recovery line through the normal TTS and
+                    # downlink path instead, keeping the turn wire-ordinary.
+                    runner_summary["runner_error"] = str(exc)
+                    runner_summary["runner_fallback_spoken"] = True
+                    raw_response = model_failure_character_response()
+                else:
+                    raw_response = runner.raw_response
+                    runner_summary["runner_command_source"] = runner.command_source
+                    if getattr(runner, "response_repaired", False):
+                        runner_summary["runner_response_repaired"] = True
+                        runner_summary["runner_repair_reason"] = str(
+                            getattr(runner, "repair_reason", "")
+                        )
+                    if runner.elapsed_ms is not None:
+                        runner_summary["runner_elapsed_ms"] = round(runner.elapsed_ms, 2)
+                    if runner.approx_tokens_per_sec is not None:
+                        runner_summary["runner_approx_tokens_per_sec"] = round(runner.approx_tokens_per_sec, 2)
 
             if self.config.research_enabled:
                 try:
@@ -3727,34 +3752,34 @@ class LanBridgeSession:
                             RunnerExecutionError,
                             ValueError,
                         ) as exc:
-                            return [
-                                self._conversation_failure(
-                                    "runner_error",
-                                    str(exc),
+                            # Same recovery as the first model call: speak a
+                            # short in-character line rather than going silent.
+                            runner_summary["runner_error"] = str(exc)
+                            runner_summary["runner_fallback_spoken"] = True
+                            raw_response = model_failure_character_response()
+                        else:
+                            raw_response = self._clear_research_memory_writes(
+                                researched.raw_response
+                            )
+                            runner_summary["research_tool"] = str(
+                                research_result.get("tool", "")
+                            )
+                            runner_summary["research_source_count"] = len(
+                                source_urls(research_result)
+                            )
+                            runner_summary["research_error"] = str(
+                                research_result.get("error", "")
+                            )
+                            if researched.elapsed_ms is not None:
+                                runner_summary["research_runner_elapsed_ms"] = round(
+                                    researched.elapsed_ms,
+                                    2,
                                 )
-                            ]
-                        raw_response = self._clear_research_memory_writes(
-                            researched.raw_response
-                        )
-                        runner_summary["research_tool"] = str(
-                            research_result.get("tool", "")
-                        )
-                        runner_summary["research_source_count"] = len(
-                            source_urls(research_result)
-                        )
-                        runner_summary["research_error"] = str(
-                            research_result.get("error", "")
-                        )
-                        if researched.elapsed_ms is not None:
-                            runner_summary["research_runner_elapsed_ms"] = round(
-                                researched.elapsed_ms,
-                                2,
-                            )
-                        if getattr(researched, "response_repaired", False):
-                            runner_summary["research_response_repaired"] = True
-                            runner_summary["research_repair_reason"] = str(
-                                getattr(researched, "repair_reason", "")
-                            )
+                            if getattr(researched, "response_repaired", False):
+                                runner_summary["research_response_repaired"] = True
+                                runner_summary["research_repair_reason"] = str(
+                                    getattr(researched, "repair_reason", "")
+                                )
 
         if research_result is not None and not research_result_succeeded(
             research_result
@@ -3906,8 +3931,15 @@ class LanBridgeSession:
                     tts_summary["tts_audio_downlink_disabled"] = True
                 else:
                     downlink_frames = audio_downlink_frames(seq, tts, self.config.downlink_audio_chunk_bytes)
-        except TtsConfigurationError:
-            pass
+        except TtsConfigurationError as exc:
+            if self.config.tts_command:
+                # A configured TTS that cannot start is a real failure the
+                # turn must report, not a silent text-only success.
+                tts_error = str(exc)
+            else:
+                # Deliberate text-only deployment; the log says so instead of
+                # the turn masquerading as spoken.
+                tts_summary["tts_skipped"] = "no_tts_command"
         except (TtsExecutionError, ValueError) as exc:
             tts_error = str(exc)
         failure_payload: dict[str, object] = {}
