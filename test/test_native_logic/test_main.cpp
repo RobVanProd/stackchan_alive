@@ -270,25 +270,56 @@ void test_wake_word_increases_arousal_and_focus() {
   TEST_ASSERT_GREATER_THAN_FLOAT(0.75f, model.profile().focus);
 }
 
+// Circadian and ambient context are now stored targets applied as bounded
+// per-second drift in update(), so tests advance time to see the effect and a
+// repeating sender can no longer saturate the profile.
 void test_ambient_dark_night_increases_fatigue() {
   EmotionModel model;
   model.reset();
 
   const float initialArousal = model.profile().arousal;
   model.applyAmbient(4.0f, 23);
+  for (int i = 0; i < 300; ++i) {
+    model.update(0.1f);
+  }
 
   TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, model.profile().fatigue);
   TEST_ASSERT_LESS_THAN_FLOAT(initialArousal, model.profile().arousal);
+}
+
+void test_ambient_context_repeats_do_not_saturate_fatigue() {
+  EmotionModel once;
+  once.reset();
+  once.applyAmbient(4.0f, 23);
+  for (int i = 0; i < 300; ++i) {
+    once.update(0.1f);
+  }
+
+  EmotionModel spammed;
+  spammed.reset();
+  for (int i = 0; i < 300; ++i) {
+    spammed.applyAmbient(4.0f, 23);
+    spammed.update(0.1f);
+  }
+
+  TEST_ASSERT_FLOAT_WITHIN(0.02f, once.profile().fatigue, spammed.profile().fatigue);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.60f, spammed.profile().fatigue);
 }
 
 void test_ambient_bright_day_reduces_fatigue_and_lifts_arousal() {
   EmotionModel model;
   model.reset();
   model.applyAmbient(4.0f, 23);
+  for (int i = 0; i < 300; ++i) {
+    model.update(0.1f);
+  }
 
   const float tiredFatigue = model.profile().fatigue;
   const float tiredArousal = model.profile().arousal;
   model.applyAmbient(900.0f, 11);
+  for (int i = 0; i < 300; ++i) {
+    model.update(0.1f);
+  }
 
   TEST_ASSERT_LESS_THAN_FLOAT(tiredFatigue, model.profile().fatigue);
   TEST_ASSERT_GREATER_THAN_FLOAT(tiredArousal, model.profile().arousal);
@@ -300,13 +331,55 @@ void test_circadian_evening_raises_fatigue_and_morning_recovers() {
 
   const float initialArousal = model.profile().arousal;
   model.applyCircadian(22);
+  for (int i = 0; i < 300; ++i) {
+    model.update(0.1f);
+  }
 
   const float nightFatigue = model.profile().fatigue;
   TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, nightFatigue);
   TEST_ASSERT_LESS_THAN_FLOAT(initialArousal, model.profile().arousal);
 
   model.applyCircadian(7);
+  for (int i = 0; i < 300; ++i) {
+    model.update(0.1f);
+  }
   TEST_ASSERT_LESS_THAN_FLOAT(nightFatigue, model.profile().fatigue);
+}
+
+void test_emotion_persistent_state_round_trips_and_clamps() {
+  EmotionModel lived;
+  lived.reset();
+  RobotEvent touch;
+  touch.type = EventType::UserTouched;
+  touch.strength = 1.0f;
+  touch.hasPayload = true;
+  touch.y = 0.5f;
+  for (int i = 0; i < 30; ++i) {
+    lived.applyEvent(touch);
+    for (int j = 0; j < 50; ++j) {
+      lived.update(0.1f);
+    }
+  }
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.36f, lived.baseline().valence);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, lived.habituationOf(EventType::UserTouched));
+
+  EmotionModel restored;
+  restored.reset();
+  restored.restorePersistentState(lived.persistentState());
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, lived.baseline().valence, restored.baseline().valence);
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, lived.habituationOf(EventType::UserTouched),
+                           restored.habituationOf(EventType::UserTouched));
+
+  // A corrupt blob must clamp back inside the persona bands.
+  EmotionPersistentState corrupt;
+  corrupt.baseline.valence = 5.0f;
+  corrupt.baseline.arousal = -3.0f;
+  corrupt.familiarity[0] = 9.0f;
+  EmotionModel clamped;
+  clamped.reset();
+  clamped.restorePersistentState(corrupt);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.66f, clamped.baseline().valence);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.04f, clamped.baseline().arousal);
 }
 
 void test_physical_events_shape_emotion() {
@@ -681,13 +754,18 @@ void test_face_animator_uses_mode_authored_pose_keys() {
   TEST_ASSERT_NOT_EQUAL(concern.leftCorners.tl, concern.rightCorners.tl);
 }
 
+// Breath reaches the face through the persona layer's faceY, so the composed
+// path is driven through IdleLife: the animator no longer runs its own breath
+// generator.
 void test_face_animator_autonomic_layer_adds_life_over_time() {
   FaceAnimator animator;
-  RobotFrame frame = makeNeutralFrame();
-  frame.mode = CharacterMode::Idle;
-  frame.emotion.focus = 0.45f;
-  frame.emotion.arousal = 0.35f;
-  frame.face.eyeOpen = 0.85f;
+  IdleLife idle;
+  idle.reset(0);
+  RobotFrame base = makeNeutralFrame();
+  base.mode = CharacterMode::Idle;
+  base.emotion.focus = 0.45f;
+  base.emotion.arousal = 0.35f;
+  base.face.eyeOpen = 0.85f;
 
   float minEyeOpen = 2.0f;
   float maxEyeWidthScale = 0.0f;
@@ -695,6 +773,9 @@ void test_face_animator_autonomic_layer_adds_life_over_time() {
   float maxBreathY = -100.0f;
 
   for (uint32_t t = 0; t <= 10000; t += 33) {
+    RobotFrame frame = base;
+    frame.timestampMs = t;
+    idle.apply(frame, t, false);
     const FaceTargets face = animator.composeFrame(frame, t);
     const FaceAutonomicTelemetry& telemetry = animator.autonomicTelemetry();
     minEyeOpen = min(minEyeOpen, face.eyeOpen);
@@ -708,18 +789,88 @@ void test_face_animator_autonomic_layer_adds_life_over_time() {
   TEST_ASSERT_GREATER_OR_EQUAL_UINT32(2, telemetry.saccadeCount);
   TEST_ASSERT_LESS_THAN_FLOAT(0.65f, minEyeOpen);
   TEST_ASSERT_GREATER_THAN_FLOAT(1.02f, maxEyeWidthScale);
-  TEST_ASSERT_GREATER_THAN_FLOAT(2.0f, maxBreathY - minBreathY);
+  TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, maxBreathY - minBreathY);
 }
 
 void test_face_animator_uses_persona_behavior_breathing_amplitude() {
   FaceAnimator animator;
+  IdleLife idle;
+  idle.reset(0);
+  RobotFrame base = makeNeutralFrame();
+  base.mode = CharacterMode::Idle;
+  base.emotion.arousal = 0.20f;
+
+  float minY = 100.0f;
+  float maxY = -100.0f;
+  for (uint32_t t = 0; t <= 15000; t += 33) {
+    RobotFrame frame = base;
+    frame.timestampMs = t;
+    idle.apply(frame, t, false);
+    const FaceTargets face = animator.composeFrame(frame, t);
+    minY = min(minY, face.faceY);
+    maxY = max(maxY, face.faceY);
+  }
+
+  // Persona breathing must be visible on the rendered face: roughly twice the
+  // pack's idle amplitude peak-to-peak, less smoothing.
+  TEST_ASSERT_GREATER_THAN_FLOAT(generated_persona::kIdleBreathingPx * 0.6f, maxY - minY);
+}
+
+void test_face_animator_composes_persona_face_offsets() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Listen;
+  frame.face.faceX = 5.0f;
+  frame.face.faceY = 4.0f;
+  frame.face.mouthWidthDelta = 6.0f;
+  frame.face.upperLidTilt = 0.30f;
+  frame.face.leftCorners.tr = 0.40f;
+
+  animator.composeFrame(frame, 0);
+  FaceTargets face;
+  for (uint32_t t = 33; t <= 3000; t += 33) {
+    face = animator.composeFrame(frame, t);
+  }
+
+  // The persona layer's positional and shape channels must reach the rendered
+  // face instead of being rebuilt from the mode pose alone.
+  TEST_ASSERT_FLOAT_WITHIN(1.0f, 5.0f, face.faceX);
+  TEST_ASSERT_FLOAT_WITHIN(1.0f, 4.0f, face.faceY);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.0f, face.mouthWidthDelta);
+  TEST_ASSERT_FLOAT_WITHIN(0.15f, 0.30f, face.upperLidTilt);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.30f, face.leftCorners.tr);
+}
+
+void test_seed_entropy_changes_idle_sequences() {
+  IdleLife plain;
+  IdleLife seeded;
+  plain.reset(0);
+  seeded.reset(0);
+  seeded.seedEntropy(0xC0FFEE01u);
+
+  bool breathDiverged = false;
+  for (uint32_t t = 0; t <= 60000 && !breathDiverged; t += 33) {
+    RobotFrame a = makeNeutralFrame();
+    RobotFrame b = makeNeutralFrame();
+    a.timestampMs = b.timestampMs = t;
+    plain.apply(a, t, false);
+    seeded.apply(b, t, false);
+    breathDiverged = plain.telemetry().breathPeriodMs != seeded.telemetry().breathPeriodMs;
+  }
+  TEST_ASSERT_TRUE(breathDiverged);
+
+  FaceAnimator defaultRng;
+  FaceAnimator seededRng;
+  seededRng.seedRandom(0xDEADBEEFu);
   RobotFrame frame = makeNeutralFrame();
   frame.mode = CharacterMode::Idle;
-  frame.emotion.arousal = 0.20f;
-
-  const FaceTargets face = animator.composeFrame(frame, 1250);
-
-  TEST_ASSERT_FLOAT_WITHIN(0.15f, generated_persona::kIdleBreathingPx, face.faceY);
+  bool faceDiverged = false;
+  for (uint32_t t = 0; t <= 20000 && !faceDiverged; t += 33) {
+    const FaceTargets a = defaultRng.composeFrame(frame, t);
+    const FaceTargets b = seededRng.composeFrame(frame, t);
+    faceDiverged = fabsf(a.eyeOpen - b.eyeOpen) > 0.05f || fabsf(a.pupilX - b.pupilX) > 0.05f;
+  }
+  TEST_ASSERT_TRUE(faceDiverged);
 }
 
 void test_face_animator_reduced_motion_dampens_autonomic_offsets() {
@@ -1578,7 +1729,10 @@ void test_intent_engine_applies_ambient_context() {
   engine.setDemoEnabled(false, 0);
   engine.applyAmbient(5.0f, 22);
 
-  const RobotFrame frame = engine.update(250);
+  RobotFrame frame;
+  for (uint32_t t = 0; t <= 30000; t += 100) {
+    frame = engine.update(t);
+  }
   TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, frame.emotion.fatigue);
   TEST_ASSERT_LESS_THAN_FLOAT(0.20f, frame.emotion.arousal);
 }
@@ -1589,9 +1743,36 @@ void test_intent_engine_applies_circadian_context() {
   engine.setDemoEnabled(false, 0);
   engine.applyCircadian(23);
 
-  const RobotFrame frame = engine.update(250);
+  RobotFrame frame;
+  for (uint32_t t = 0; t <= 30000; t += 100) {
+    frame = engine.update(t);
+  }
   TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, frame.emotion.fatigue);
   TEST_ASSERT_LESS_THAN_FLOAT(0.20f, frame.emotion.arousal);
+}
+
+void test_sleep_recovers_pressure_and_wakes_naturally() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+
+  // Left alone, sleep pressure accrues until he drops off.
+  uint32_t t = 0;
+  bool slept = false;
+  for (; t <= 900000 && !slept; t += 50) {
+    slept = engine.update(t).mode == CharacterMode::Sleep;
+  }
+  TEST_ASSERT_TRUE(slept);
+
+  // Sleeping pays the pressure back down, so he wakes on his own instead of
+  // needing to be disturbed.
+  bool wokeNaturally = false;
+  const uint32_t sleptAtMs = t;
+  for (; t <= sleptAtMs + 300000 && !wokeNaturally; t += 50) {
+    wokeNaturally = engine.update(t).mode != CharacterMode::Sleep;
+  }
+  TEST_ASSERT_TRUE(wokeNaturally);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.40f, engine.update(t + 50).emotion.fatigue);
 }
 
 void test_intent_engine_orients_toward_sound_event() {
@@ -9397,8 +9578,10 @@ int main() {
   RUN_TEST(test_dt_clamp_limits_large_step);
   RUN_TEST(test_wake_word_increases_arousal_and_focus);
   RUN_TEST(test_ambient_dark_night_increases_fatigue);
+  RUN_TEST(test_ambient_context_repeats_do_not_saturate_fatigue);
   RUN_TEST(test_ambient_bright_day_reduces_fatigue_and_lifts_arousal);
   RUN_TEST(test_circadian_evening_raises_fatigue_and_morning_recovers);
+  RUN_TEST(test_emotion_persistent_state_round_trips_and_clamps);
   RUN_TEST(test_embodied_energy_classifies_with_hysteresis_and_charging_priority);
   RUN_TEST(test_embodied_energy_shapes_smoothly_and_rejects_invalid_input);
   RUN_TEST(test_intent_engine_embodied_energy_never_forces_sleep_mode);
@@ -9434,6 +9617,8 @@ int main() {
   RUN_TEST(test_face_animator_uses_mode_authored_pose_keys);
   RUN_TEST(test_face_animator_autonomic_layer_adds_life_over_time);
   RUN_TEST(test_face_animator_uses_persona_behavior_breathing_amplitude);
+  RUN_TEST(test_face_animator_composes_persona_face_offsets);
+  RUN_TEST(test_seed_entropy_changes_idle_sequences);
   RUN_TEST(test_face_animator_reduced_motion_dampens_autonomic_offsets);
   RUN_TEST(test_robot_config_exposes_face_reduced_motion_default);
   RUN_TEST(test_face_animator_starts_listen_transition_with_blink_and_pop);
@@ -9476,6 +9661,7 @@ int main() {
   RUN_TEST(test_intent_engine_reduced_motion_dampens_idle_life);
   RUN_TEST(test_intent_engine_applies_ambient_context);
   RUN_TEST(test_intent_engine_applies_circadian_context);
+  RUN_TEST(test_sleep_recovers_pressure_and_wakes_naturally);
   RUN_TEST(test_intent_engine_orients_toward_sound_event);
   RUN_TEST(test_intent_engine_uses_bridge_response_mood_for_face_and_motion);
   RUN_TEST(test_intent_engine_wake_acknowledgement_nod_settles);

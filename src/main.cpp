@@ -829,6 +829,43 @@ MotionAudioPreemptionGate gMotionAudioPreemptionGate;
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
 IntentEngine gIntent;
+
+#if defined(ARDUINO_ARCH_ESP32)
+// Temperament and habituation survive power cycles in one small NVS blob.
+// Saved on a slow cadence: baseline drift moves over hours, so a 10-minute
+// save loses almost nothing and keeps NVS wear negligible.
+constexpr uint32_t kCharacterStateSavePeriodMs = 600000;
+uint32_t gLastCharacterStateSaveMs = 0;
+
+void restorePersistedCharacterState() {
+  Preferences prefs;
+  if (!prefs.begin("charstate", true)) {
+    return;
+  }
+  EmotionPersistentState state;
+  const size_t bytes = prefs.getBytes("emo1", &state, sizeof(state));
+  prefs.end();
+  if (bytes == sizeof(state)) {
+    gIntent.restoreCharacterState(state);
+    Serial.println(F("[persona] character_state_restored=1"));
+  }
+}
+
+void persistCharacterStateIfDue(uint32_t nowMs) {
+  if (gLastCharacterStateSaveMs != 0 && nowMs - gLastCharacterStateSaveMs < kCharacterStateSavePeriodMs) {
+    return;
+  }
+  gLastCharacterStateSaveMs = nowMs;
+  Preferences prefs;
+  if (!prefs.begin("charstate", false)) {
+    return;
+  }
+  const EmotionPersistentState state = gIntent.characterState();
+  prefs.putBytes("emo1", &state, sizeof(state));
+  prefs.end();
+}
+#endif
+
 TaskHandle_t gMotionTaskHandle = nullptr;
 TaskHandle_t gFaceTaskHandle = nullptr;
 TaskHandle_t gIntentTaskHandle = nullptr;
@@ -9526,8 +9563,10 @@ void IntentTask(void* pv) {
       }
       if (control.hasAmbient) {
         gIntent.applyAmbient(control.ambient.lux, control.ambient.hourOfDay);
-      }
-      if (control.hasCircadian) {
+      } else if (control.hasCircadian) {
+        // applyAmbient already stores the hour; applying both in one control
+        // message would be redundant, not harmful, since context is now a
+        // stored target rather than an impulse.
         gIntent.applyCircadian(control.hourOfDay);
       }
       if (control.hasSpeechCue) {
@@ -9637,6 +9676,9 @@ void IntentTask(void* pv) {
         gActuation.isEnabled() && !gActuation.outputSuppressed() && intentServoPower.railEnabled,
         millis());
     RobotFrame frame = gIntent.update(millis());
+#if defined(ARDUINO_ARCH_ESP32)
+    persistCharacterStateIfDue(frame.timestampMs);
+#endif
     gCamera.setRobotSpeaking(frame.mode == CharacterMode::Speak, frame.timestampMs);
     const FaceSpeechTelemetry& faceSpeech = gFace.speechTelemetry();
     const BodyRgbFrame bodyRgb = gBodyFeedback.render(
@@ -9747,6 +9789,11 @@ void setup() {
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();
+#if defined(ARDUINO_ARCH_ESP32)
+  gIntent.seedEntropy(esp_random());
+  gFace.seedEntropy(esp_random());
+  restorePersistedCharacterState();
+#endif
 #if defined(ARDUINO_ARCH_ESP32)
   LanOtaConfig otaConfig;
   otaConfig.tokenSha256 = STACKCHAN_OTA_TOKEN_SHA256;

@@ -42,6 +42,19 @@ class IntentEngine {
   void startResponseGesture(ResponseGesture gesture, uint32_t seed, uint32_t nowMs);
   void applyCircadian(uint8_t hourOfDay);
   void applyAmbient(float lux, uint8_t hourOfDay);
+
+  // Hardware entropy at boot so each power-on plays a different idle life;
+  // never called by native tests, which rely on the deterministic defaults.
+  void seedEntropy(uint32_t seed);
+
+  // Temperament and habituation survive a power cycle through these. The
+  // caller owns storage; the engine only snapshots and restores.
+  EmotionPersistentState characterState() const {
+    return emotion_.persistentState();
+  }
+  void restoreCharacterState(const EmotionPersistentState& state) {
+    emotion_.restorePersistentState(state);
+  }
   void setEmbodiedEnergy(const EmbodiedEnergyInput& input, uint32_t nowMs) {
     energy_.updateInput(input, nowMs);
   }

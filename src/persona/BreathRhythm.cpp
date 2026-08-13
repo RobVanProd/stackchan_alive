@@ -26,7 +26,7 @@ void BreathRhythm::reset(uint32_t nowMs) {
   periodMs_ = 0;
   depth_ = 1.0f;
   cycle_ = 0;
-  cyclesUntilSigh_ = kSighMinCycles + (hash32(nowMs + 0x2545f491UL) % kSighCycleSpan);
+  cyclesUntilSigh_ = kSighMinCycles + (hash32((nowMs ^ seed_) + 0x2545f491UL) % kSighCycleSpan);
   lastMs_ = nowMs;
   hasLast_ = false;
   sighing_ = false;
@@ -61,7 +61,7 @@ void BreathRhythm::startCycle(float breathHz, bool sleeping) {
     return;
   }
 
-  const uint32_t h = hash32(cycle_ * 0x9e3779b9UL + 0x85ebca6bUL);
+  const uint32_t h = hash32((cycle_ ^ seed_) * 0x9e3779b9UL + 0x85ebca6bUL);
   const float jitter = (static_cast<float>((h >> 8) & 0xFFFFu) / 32767.5f) - 1.0f;
   const float depthJitter = (static_cast<float>(h & 0xFFFFu) / 32767.5f) - 1.0f;
 
@@ -72,7 +72,7 @@ void BreathRhythm::startCycle(float breathHz, bool sleeping) {
   if (sigh) {
     depth = kSighDepth;
     period *= 1.35f;
-    cyclesUntilSigh_ = kSighMinCycles + (hash32(cycle_ + 0x27d4eb2fUL) % kSighCycleSpan);
+    cyclesUntilSigh_ = kSighMinCycles + (hash32((cycle_ ^ seed_) + 0x27d4eb2fUL) % kSighCycleSpan);
   } else if (cyclesUntilSigh_ > 0) {
     --cyclesUntilSigh_;
   }

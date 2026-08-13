@@ -2070,7 +2070,13 @@ class LanServiceTests(unittest.TestCase):
                 )
             loaded = load_bridge_memory(memory_file)
 
-        self.assertEqual("runner_error", frames[0]["code"])
+        # A model failure now speaks a short in-character recovery line as a
+        # normal turn instead of returning a bare error frame with silence.
+        self.assertEqual("thinking", frames[0]["type"])
+        spoken = " ".join(
+            str(frame.get("text", "")) for frame in frames if isinstance(frame, dict)
+        )
+        self.assertIn("train of thought", spoken)
         self.assertEqual("teal", loaded.fact_value("user.favorite_color"))
 
     def test_runner_failure_keeps_conversation_context_and_reopens_capture(self):
@@ -2103,14 +2109,17 @@ class LanServiceTests(unittest.TestCase):
                 )
             )
 
+        # The model failure itself is spoken as a recovery turn; the visible
+        # failure here is the fixture TTS command, which cannot render it.
+        # Because the recovery turn had already started a response, the lease
+        # lands in the reply window with capture open rather than bare engaged.
         error = frames[0]
-        self.assertEqual("runner_error", error["code"])
-        self.assertEqual("engaged", error["conversation_state"])
+        self.assertEqual("tts_error", error["code"])
+        self.assertEqual("reply_window", error["conversation_state"])
         self.assertEqual(
-            ["turn_failed", "open_capture"],
+            ["turn_failed", "playback_aborted", "acoustic_tail"],
             error["conversation_actions"],
         )
-        self.assertTrue(error["conversation_capture_open"])
         self.assertEqual(1, error["conversation_context_turns"])
         self.assertEqual(1, error["conversation_turn_failures"])
         self.assertEqual(
@@ -4503,7 +4512,7 @@ class LanServiceTests(unittest.TestCase):
             response["text"],
         )
 
-    def test_initiative_uses_character_path_without_opening_conversation_capture(self):
+    def test_initiative_opens_reply_window_after_speaking(self):
         policy = InitiativePolicy(InitiativeConfig(enabled=True), now_ms=0)
         policy.observe_presence(True, face_count=1, now_ms=599_999)
         session = LanBridgeSession(
@@ -4546,8 +4555,15 @@ class LanServiceTests(unittest.TestCase):
             frames = session.run_initiative(decision)
 
         self.assertEqual("response_start", frames[0]["type"])
-        self.assertEqual(ConversationPhase.IDLE, session.conversation.phase)
-        self.assertFalse(session.conversation.capture_open)
+        # A robot that speaks first must be able to hear the answer: a spoken
+        # initiative line now opens a bounded conversation lease so the user
+        # can reply without re-saying the wake phrase.
+        self.assertEqual(ConversationPhase.ENGAGED, session.conversation.phase)
+        self.assertTrue(session.conversation.capture_open)
+        wake_frame = frames[-1]
+        self.assertEqual("heartbeat", wake_frame["type"])
+        self.assertIn("session_started", wake_frame["conversation_actions"])
+        self.assertIn("open_capture", wake_frame["conversation_actions"])
         self.assertTrue(policy.status(now_ms=600_001)["pendingReply"])
 
 

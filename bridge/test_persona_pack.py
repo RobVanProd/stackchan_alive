@@ -348,6 +348,55 @@ class PersonaPackTests(unittest.TestCase):
         self.assertIn("expressions_think_missing:pupil_y", issues)
         self.assertIn("voice_packaged_prompt_missing:boot", issues)
         self.assertIn("voice_packaged_prompt_missing:safety", issues)
+        self.assertIn("prompt_rules_missing_identity_rule", issues)
+        self.assertIn("prompt_rules_missing_hierarchy_rule", issues)
+        self.assertIn("prompt_rules_missing_memory_privacy_rule", issues)
+
+    def test_scaffold_rewrites_identity_rule_and_validator_catches_mismatch(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            temp_personas = temp_root / "personas"
+            temp_data = temp_root / "data"
+            temp_personas.mkdir()
+            temp_data.mkdir()
+            shutil.copytree(repo_root() / "personas" / "spark", temp_personas / "spark")
+            shutil.copy(repo_root() / "data" / "voice_source_provenance.yaml", temp_data / "voice_source_provenance.yaml")
+
+            pack = scaffold_persona_pack("test-bot", display_name="Stackchan Test Bot", author="Unit Test", root=temp_root)
+
+            # The free-text identity rule must follow the new persona, not the
+            # source persona it was copied from.
+            identity_rules = [rule for rule in pack.character["prompt_rules"] if "answer only: I am" in rule]
+            self.assertTrue(identity_rules)
+            for rule in identity_rules:
+                self.assertIn("I am Stackchan Test Bot.", rule)
+
+            # And a pack whose identity rule still names another persona must
+            # not validate.
+            character_path = temp_personas / "test-bot" / "character.yaml"
+            corrupted = character_path.read_text(encoding="utf-8").replace(
+                "answer only: I am Stackchan Test Bot.",
+                "answer only: I am Stackchan Spark.",
+            )
+            character_path.write_text(corrupted, encoding="utf-8")
+            issues = validate_pack(load_persona_pack(temp_personas / "test-bot"))
+            self.assertIn("prompt_rules_identity_name_mismatch", issues)
+
+    def test_bundled_personas_are_distinct_characters(self):
+        spark = load_persona_pack(repo_root() / "personas" / "spark")
+        for pack_id in ("pip", "bolt", "glow"):
+            pack = load_persona_pack(repo_root() / "personas" / pack_id)
+            self.assertEqual([], validate_pack(pack), pack_id)
+            # Each bundled persona must answer with its own name and speak its
+            # own lines, not Spark's.
+            identity_rules = [rule for rule in pack.character["prompt_rules"] if "answer only: I am" in rule]
+            self.assertTrue(identity_rules, pack_id)
+            for rule in identity_rules:
+                self.assertIn(f"I am {pack.display_name}.", rule)
+            self.assertNotEqual(spark.character["traits"], pack.character["traits"], pack_id)
+            spark_lines = {intent: spark.spoken_line(intent).get("text") for intent in ("boot", "listen", "think")}
+            pack_lines = {intent: pack.spoken_line(intent).get("text") for intent in ("boot", "listen", "think")}
+            self.assertNotEqual(spark_lines, pack_lines, pack_id)
 
     def test_missing_pack_raises_clear_error(self):
         with self.assertRaises(PersonaPackError):

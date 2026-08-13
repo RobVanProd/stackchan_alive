@@ -563,6 +563,13 @@ def shares_distinctive_phrase(
     return bool(candidate_phrases & recent_phrases)
 
 
+# Rotates the beat pool mapping once per bridge process, so the same question
+# asked tomorrow does not replay yesterday's exact quip. Within a session the
+# recent-reply phrase check still prevents repeats; this handles the cross-
+# session case the session ring cannot see. Overridable for deterministic runs.
+_BEAT_ROTATION_SALT = os.environ.get("STACKCHAN_BEAT_ROTATION_SALT") or os.urandom(8).hex()
+
+
 def add_low_stakes_character_beat(
     spoken_text: str,
     prompt: str,
@@ -597,7 +604,9 @@ def add_low_stakes_character_beat(
     else:
         beat_kind = "general"
     beats = _CHARACTER_BEATS[beat_kind]
-    digest = hashlib.sha256(f"{user_context}\n{normalized}".encode("utf-8")).digest()
+    digest = hashlib.sha256(
+        f"{_BEAT_ROTATION_SALT}\n{user_context}\n{normalized}".encode("utf-8")
+    ).digest()
     start_index = int.from_bytes(digest[:2], "big") % len(beats)
     recent_replies = recent_stackchan_replies(prompt)
     beat = next(

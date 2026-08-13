@@ -35,6 +35,9 @@ constexpr float kBaselineFocusBand = 0.15f;
 // climbs toward it, so the visible order is droopy eyes, then yawns, then sleep.
 constexpr float kSleepPressureOnsetSeconds = 180.0f;
 constexpr float kSleepPressureRampSeconds = 420.0f;
+// Each second asleep pays back this many seconds of accrued quiet time, so a
+// full night of pressure clears in roughly a minute and a half of sleep.
+constexpr float kRestRecoveryRate = 8.0f;
 }
 
 bool EmotionModel::isRousing(EventType type) {
@@ -80,6 +83,35 @@ void EmotionModel::reset() {
   }
   habituation_ = HabituationTelemetry {};
   quietSeconds_ = 0.0f;
+  hasCircadianContext_ = false;
+  hasAmbientLux_ = false;
+  contextHour_ = 12;
+  contextLux_ = 0.0f;
+}
+
+EmotionPersistentState EmotionModel::persistentState() const {
+  EmotionPersistentState state;
+  state.baseline = baseline_;
+  for (uint8_t i = 0; i < kHabituatedEventTypes; ++i) {
+    state.familiarity[i] = familiarity_[i];
+  }
+  return state;
+}
+
+void EmotionModel::restorePersistentState(const EmotionPersistentState& state) {
+  // A corrupt or stale blob may carry anything; clamp back inside the same
+  // bands baseline drift is allowed, so a restore can never exceed what lived
+  // experience could have produced.
+  baseline_.arousal = constrain(state.baseline.arousal, 0.20f - kBaselineArousalBand,
+                                0.20f + kBaselineArousalBand);
+  baseline_.valence = constrain(state.baseline.valence, 0.35f - kBaselineValenceBand,
+                                0.35f + kBaselineValenceBand);
+  baseline_.focus = constrain(state.baseline.focus, 0.55f - kBaselineFocusBand,
+                              0.55f + kBaselineFocusBand);
+  baseline_.fatigue = clamp01(state.baseline.fatigue);
+  for (uint8_t i = 0; i < kHabituatedEventTypes; ++i) {
+    familiarity_[i] = clamp01(state.familiarity[i]);
+  }
 }
 
 uint8_t EmotionModel::habituationIndex(EventType type) {
@@ -243,65 +275,63 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
 }
 
 void EmotionModel::applyCircadian(uint8_t hourOfDay) {
-  const uint8_t safeHour = hourOfDay > 23 ? 23 : hourOfDay;
-
-  if (safeHour >= generated_persona::kNightStartHour || safeHour < generated_persona::kMorningStartHour) {
-    emotion_.fatigue += 0.09f;
-    emotion_.arousal -= 0.04f;
-    emotion_.focus -= 0.02f;
-  } else if (safeHour >= generated_persona::kEveningStartHour) {
-    // Evening drift: sleepy enough to invite yawns without forcing Sleep mode.
-    emotion_.fatigue += 0.05f;
-    emotion_.arousal -= 0.02f;
-  } else if (safeHour >= generated_persona::kMorningStartHour &&
-             safeHour < generated_persona::kMorningEndHour) {
-    // Morning lift: Stackchan wakes gently instead of snapping to high arousal.
-    emotion_.fatigue -= 0.05f;
-    emotion_.arousal += 0.025f;
-    emotion_.valence += 0.015f;
-  } else {
-    emotion_.fatigue -= 0.025f;
-  }
-
-  emotion_.arousal = clamp01(emotion_.arousal);
-  emotion_.valence = clampSigned(emotion_.valence);
-  emotion_.focus = clamp01(emotion_.focus);
-  emotion_.fatigue = clamp01(emotion_.fatigue);
+  contextHour_ = hourOfDay > 23 ? 23 : hourOfDay;
+  hasCircadianContext_ = true;
 }
 
 void EmotionModel::applyAmbient(float lux, uint8_t hourOfDay) {
-  const float safeLux = constrain(lux, 0.0f, 2000.0f);
-  const uint8_t safeHour = hourOfDay > 23 ? 23 : hourOfDay;
-  const bool night = safeHour >= generated_persona::kNightStartHour ||
-                     safeHour < generated_persona::kMorningStartHour;
-  const bool daytime = safeHour >= static_cast<uint8_t>(generated_persona::kMorningStartHour + 1) &&
-                       safeHour < generated_persona::kEveningStartHour;
-
-  applyCircadian(safeHour);
-
-  const float darkness = constrain((120.0f - safeLux) / 120.0f, 0.0f, 1.0f);
-  const float brightness = constrain((safeLux - 250.0f) / 750.0f, 0.0f, 1.0f);
-
-  if (night || darkness > 0.65f) {
-    const float fatigueBias = darkness * (night ? kNightFatigueGain : kNightFatigueGain * 0.50f);
-    emotion_.fatigue += fatigueBias;
-    emotion_.arousal -= darkness * 0.05f;
-    emotion_.focus -= darkness * 0.03f;
-  }
-
-  if (daytime && brightness > 0.0f) {
-    emotion_.fatigue -= brightness * kDayAlertnessGain;
-    emotion_.arousal += brightness * 0.06f;
-    emotion_.valence += brightness * 0.03f;
-  }
-
-  emotion_.arousal = clamp01(emotion_.arousal);
-  emotion_.valence = clampSigned(emotion_.valence);
-  emotion_.focus = clamp01(emotion_.focus);
-  emotion_.fatigue = clamp01(emotion_.fatigue);
+  applyCircadian(hourOfDay);
+  contextLux_ = constrain(lux, 0.0f, 2000.0f);
+  hasAmbientLux_ = true;
 }
 
-void EmotionModel::update(float dt) {
+// Steady-state profile shifts for the current time of day and light level.
+// These are targets the profile drifts toward in update(), not impulses, so a
+// context source repeating at any rate produces the same bounded result.
+void EmotionModel::circadianBias(float& fatigueBias, float& arousalBias, float& valenceBias) const {
+  fatigueBias = 0.0f;
+  arousalBias = 0.0f;
+  valenceBias = 0.0f;
+  if (!hasCircadianContext_) {
+    return;
+  }
+
+  const bool night = contextHour_ >= generated_persona::kNightStartHour ||
+                     contextHour_ < generated_persona::kMorningStartHour;
+  const bool daytime = contextHour_ >= static_cast<uint8_t>(generated_persona::kMorningStartHour + 1) &&
+                       contextHour_ < generated_persona::kEveningStartHour;
+
+  if (night) {
+    fatigueBias += 0.25f;
+    arousalBias -= 0.06f;
+  } else if (contextHour_ >= generated_persona::kEveningStartHour) {
+    // Evening drift: sleepy enough to invite yawns without forcing Sleep mode.
+    fatigueBias += 0.12f;
+    arousalBias -= 0.03f;
+  } else if (contextHour_ >= generated_persona::kMorningStartHour &&
+             contextHour_ < generated_persona::kMorningEndHour) {
+    // Morning lift: Stackchan wakes gently instead of snapping to high arousal.
+    fatigueBias -= 0.08f;
+    arousalBias += 0.03f;
+    valenceBias += 0.02f;
+  }
+
+  if (hasAmbientLux_) {
+    const float darkness = constrain((120.0f - contextLux_) / 120.0f, 0.0f, 1.0f);
+    const float brightness = constrain((contextLux_ - 250.0f) / 750.0f, 0.0f, 1.0f);
+    if (night || darkness > 0.65f) {
+      fatigueBias += darkness * (night ? kNightFatigueGain : kNightFatigueGain * 0.50f);
+      arousalBias -= darkness * 0.05f;
+    }
+    if (daytime && brightness > 0.0f) {
+      fatigueBias -= brightness * kDayAlertnessGain;
+      arousalBias += brightness * 0.06f;
+      valenceBias += brightness * 0.03f;
+    }
+  }
+}
+
+void EmotionModel::update(float dt, bool resting) {
   const float safeDt = constrain(dt, 0.001f, 0.100f);
 
   // Novelty returns while a stimulus stays away, so the same touch is worth
@@ -313,15 +343,28 @@ void EmotionModel::update(float dt) {
     }
   }
 
-  // Mood settles toward temperament rather than toward a constant, so where he
-  // comes to rest depends on how the day has gone.
-  emotion_.arousal = approach(emotion_.arousal, baseline_.arousal, safeDt * 0.08f);
-  emotion_.valence = approach(emotion_.valence, baseline_.valence, safeDt * 0.04f);
+  float circadianFatigue = 0.0f;
+  float circadianArousal = 0.0f;
+  float circadianValence = 0.0f;
+  circadianBias(circadianFatigue, circadianArousal, circadianValence);
+
+  // Mood settles toward temperament (shifted by time-of-day context) rather
+  // than toward a constant, so where he comes to rest depends on how the day
+  // has gone and what time it is.
+  emotion_.arousal = approach(emotion_.arousal, clamp01(baseline_.arousal + circadianArousal), safeDt * 0.08f);
+  emotion_.valence = approach(emotion_.valence, clampSigned(baseline_.valence + circadianValence), safeDt * 0.04f);
   emotion_.focus = approach(emotion_.focus, baseline_.focus, safeDt * 0.06f);
   // Fatigue used to decay to a hard zero, so no amount of being left alone ever
   // made the character sleepy. It now climbs toward accumulated sleep pressure.
-  quietSeconds_ += safeDt;
-  const float fatigueTarget = max(baseline_.fatigue, sleepPressure());
+  // Sleeping pays that pressure back down; without this, quiet time kept
+  // accruing while asleep and pinned fatigue at 1.0, so natural waking was
+  // unreachable and only being disturbed could end sleep.
+  if (resting) {
+    quietSeconds_ = max(0.0f, quietSeconds_ - safeDt * kRestRecoveryRate);
+  } else {
+    quietSeconds_ += safeDt;
+  }
+  const float fatigueTarget = clamp01(max(baseline_.fatigue, sleepPressure()) + circadianFatigue);
   emotion_.fatigue = approach(emotion_.fatigue, fatigueTarget, safeDt * 0.02f);
 
   // Temperament follows lived mood far more slowly, and only within a band

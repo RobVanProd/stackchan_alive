@@ -18,6 +18,12 @@ class HeadGaze {
  public:
   void reset(uint32_t nowMs);
 
+  // Hardware entropy at boot so each power-on looks around differently; zero
+  // (the default) keeps the deterministic stream native tests rely on.
+  void seedEntropy(uint32_t seed) {
+    seed_ = seed;
+  }
+
   // Advances the gaze. yawSpanDeg/pitchSpanDeg are the same amplitude envelopes
   // the sine version used, so the reachable range does not grow.
   void update(uint32_t nowMs, float yawSpanDeg, float pitchSpanDeg, float focus, float arousal);
@@ -54,6 +60,7 @@ class HeadGaze {
   uint32_t retargetAtMs_ = 0;
   uint32_t holdMs_ = 0;
   uint32_t shifts_ = 0;
+  uint32_t seed_ = 0;
   uint32_t lastMs_ = 0;
   bool hasLast_ = false;
   bool shifting_ = false;

@@ -85,6 +85,12 @@ from local_facts import resolve_local_fact
 from robot_embodiment import RobotEmbodimentState
 from conversation_latency import build_conversation_latency_record
 from conversation_harness import ConversationTurnPlan, weather_result_matches
+from affect_state import (
+    affect_prompt_lines,
+    load_affect_state,
+    observe_turn,
+    save_affect_state,
+)
 from conversation_session import ConversationConfig, ConversationPhase, ConversationSession
 from initiative_policy import (
     MIN_UNPROMPTED_INTERVAL_MS,
@@ -1368,6 +1374,24 @@ def research_unavailable_character_response() -> str:
     )
 
 
+def model_failure_character_response() -> str:
+    # Spoken when the character model itself fails. The user hears a short
+    # in-character recovery line instead of unexplained silence; the real error
+    # stays in runner telemetry, and the wire contract remains a normal turn.
+    return json.dumps(
+        {
+            "spoken_text": "I lost my train of thought. Ask me once more?",
+            "mode": "concern",
+            "earcon": "concern",
+            "emotion": {"arousal": -0.1, "valence": -0.1},
+            "memory_write": {},
+            "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
 def initiative_preference_from_text(text: object) -> bool | None:
     clean = " ".join(str(text or "").split())
     if DISABLE_INITIATIVE_REQUEST.fullmatch(clean):
@@ -1579,6 +1603,12 @@ class LanBridgeSession:
         self.audio_last_reject_code = ""
         self._rejected_audio_turns: dict[int, str] = {}
         self._stt_diagnostic_pending = bool(config.stt_diagnostic_expected_text)
+        # Bounded cross-session mood/rapport, stored beside the memory file.
+        # Device character state, not user memory; see bridge/affect_state.py.
+        self._affect_state_file: Path | None = (
+            config.memory_file.with_name("affect_state.json") if config.memory_file else None
+        )
+        self.affect_state = load_affect_state(self._affect_state_file)
         saved_initiative = self.memory.fact_value("user.initiative_enabled")
         if self.initiative_policy is not None and saved_initiative == "false":
             self.initiative_policy.set_enabled(False)
@@ -1664,6 +1694,20 @@ class LanBridgeSession:
             status = self.room_context.status()
             return str(status.get("lastError") or "observation_failed")
         return ""
+
+    def _affect_lines(self) -> tuple[str, ...]:
+        return affect_prompt_lines(self.affect_state)
+
+    def _observe_affect(self, turn, tts_error: str) -> None:
+        # Mood and rapport drift only on completed exchanges; failures decay
+        # rapport with time but add nothing.
+        self.affect_state = observe_turn(
+            self.affect_state,
+            arousal=float(getattr(turn, "arousal", 0.0) or 0.0),
+            valence=float(getattr(turn, "valence", 0.0) or 0.0),
+            turn_ok=not tts_error,
+        )
+        save_affect_state(self._affect_state_file, self.affect_state)
 
     def _relationship_card(self, query: str, *, suppress_session_context: bool = False) -> RelationshipCard:
         session_turns = self.conversation.turns if self.conversation is not None else 0
@@ -2746,6 +2790,10 @@ class LanBridgeSession:
             seq = self.next_seq
             self.next_seq += 1
             embodiment_lines = self._embodiment_context_lines()
+            # A proactive line without memory can only be generic. Give it the
+            # same bounded relationship card an answered turn gets (the card
+            # already strips personal lines in a shared room).
+            relationship_card = self._relationship_card(decision.prompt)
             runner = run_runner_profile(
                 self.config.runner_profile,
                 case_name="question",
@@ -2756,8 +2804,8 @@ class LanBridgeSession:
                 user_text=decision.prompt,
                 research_tools_enabled=False,
                 embodiment_lines=embodiment_lines,
-                memory_lines=(),
-                conversation_lines=(),
+                memory_lines=(*relationship_card.lines, *self._affect_lines()),
+                conversation_lines=self._conversation_context_lines(),
                 cancellation=cancellation,
                 persona_id=active_persona.pack_id,
             )
@@ -2786,6 +2834,20 @@ class LanBridgeSession:
                 self.initiative_policy.note_attempt_failed(now_ms=now_ms())
             else:
                 self.initiative_policy.note_spoken(now_ms=now_ms())
+                reply_window_opened = False
+                if (
+                    self.conversation is not None
+                    and self.conversation.phase == ConversationPhase.IDLE
+                ):
+                    # A robot that speaks first must be able to hear the
+                    # answer: open a bounded conversation lease so the user can
+                    # reply without re-saying the wake phrase. The firmware
+                    # mic stays echo-guarded while its speaker is live, and the
+                    # lease closes itself on silence like any other session.
+                    frames.append(
+                        self._conversation_heartbeat(self.conversation.wake(now_ms()))
+                    )
+                    reply_window_opened = True
                 self._append_turn_log(
                     {
                         "schema": "stackchan.initiative-turn.v1",
@@ -2796,6 +2858,7 @@ class LanBridgeSession:
                         "persona_id": active_persona.pack_id,
                         "validation_issues": list(validation.issues),
                         "tts_first_audio_ms": tts_summary.get("tts_first_audio_ms", 0),
+                        "reply_window_opened": reply_window_opened,
                     }
                 )
             return frames
@@ -2929,7 +2992,11 @@ class LanBridgeSession:
                 "seq": turn.seq,
                 "intent": turn.intent,
                 "arousal": round(max(0.0, min(1.0, turn.arousal)), 2),
-                "valence": round(max(0.0, min(1.0, turn.valence)), 2),
+                # Valence is signed end to end: firmware constrains it to
+                # [-1, 1], and TTS styling already uses the signed value. A
+                # [0, 1] clamp here silently zeroed every concerned face while
+                # the voice stayed concerned.
+                "valence": round(max(-1.0, min(1.0, turn.valence)), 2),
                 "gesture": getattr(turn, "gesture", "none"),
                 "text": turn.text,
                 "tts_streaming": True,
@@ -3534,25 +3601,32 @@ class LanBridgeSession:
                             and not conversation_plan.clarification
                         ),
                         embodiment_lines=embodiment_lines,
-                        memory_lines=relationship_card.lines,
+                        memory_lines=(*relationship_card.lines, *self._affect_lines()),
                         conversation_lines=self._conversation_context_lines(),
                         task_lines=conversation_plan.trusted_task_lines(),
                         cancellation=cancellation,
                         persona_id=active_persona.pack_id,
                     )
                 except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
-                    return [self._conversation_failure("runner_error", str(exc))]
-                raw_response = runner.raw_response
-                runner_summary["runner_command_source"] = runner.command_source
-                if getattr(runner, "response_repaired", False):
-                    runner_summary["runner_response_repaired"] = True
-                    runner_summary["runner_repair_reason"] = str(
-                        getattr(runner, "repair_reason", "")
-                    )
-                if runner.elapsed_ms is not None:
-                    runner_summary["runner_elapsed_ms"] = round(runner.elapsed_ms, 2)
-                if runner.approx_tokens_per_sec is not None:
-                    runner_summary["runner_approx_tokens_per_sec"] = round(runner.approx_tokens_per_sec, 2)
+                    # A model failure used to return a bare error frame: the
+                    # user got silence plus a face change. Speak a short
+                    # in-character recovery line through the normal TTS and
+                    # downlink path instead, keeping the turn wire-ordinary.
+                    runner_summary["runner_error"] = str(exc)
+                    runner_summary["runner_fallback_spoken"] = True
+                    raw_response = model_failure_character_response()
+                else:
+                    raw_response = runner.raw_response
+                    runner_summary["runner_command_source"] = runner.command_source
+                    if getattr(runner, "response_repaired", False):
+                        runner_summary["runner_response_repaired"] = True
+                        runner_summary["runner_repair_reason"] = str(
+                            getattr(runner, "repair_reason", "")
+                        )
+                    if runner.elapsed_ms is not None:
+                        runner_summary["runner_elapsed_ms"] = round(runner.elapsed_ms, 2)
+                    if runner.approx_tokens_per_sec is not None:
+                        runner_summary["runner_approx_tokens_per_sec"] = round(runner.approx_tokens_per_sec, 2)
 
             if self.config.research_enabled:
                 try:
@@ -3712,7 +3786,7 @@ class LanBridgeSession:
                                 user_text=evidence_user_text,
                                 research_tools_enabled=False,
                                 embodiment_lines=embodiment_lines,
-                                memory_lines=relationship_card.lines,
+                                memory_lines=(*relationship_card.lines, *self._affect_lines()),
                                 conversation_lines=self._conversation_context_lines(),
                                 task_lines=conversation_plan.trusted_task_lines(),
                                 cancellation=cancellation,
@@ -3723,34 +3797,34 @@ class LanBridgeSession:
                             RunnerExecutionError,
                             ValueError,
                         ) as exc:
-                            return [
-                                self._conversation_failure(
-                                    "runner_error",
-                                    str(exc),
+                            # Same recovery as the first model call: speak a
+                            # short in-character line rather than going silent.
+                            runner_summary["runner_error"] = str(exc)
+                            runner_summary["runner_fallback_spoken"] = True
+                            raw_response = model_failure_character_response()
+                        else:
+                            raw_response = self._clear_research_memory_writes(
+                                researched.raw_response
+                            )
+                            runner_summary["research_tool"] = str(
+                                research_result.get("tool", "")
+                            )
+                            runner_summary["research_source_count"] = len(
+                                source_urls(research_result)
+                            )
+                            runner_summary["research_error"] = str(
+                                research_result.get("error", "")
+                            )
+                            if researched.elapsed_ms is not None:
+                                runner_summary["research_runner_elapsed_ms"] = round(
+                                    researched.elapsed_ms,
+                                    2,
                                 )
-                            ]
-                        raw_response = self._clear_research_memory_writes(
-                            researched.raw_response
-                        )
-                        runner_summary["research_tool"] = str(
-                            research_result.get("tool", "")
-                        )
-                        runner_summary["research_source_count"] = len(
-                            source_urls(research_result)
-                        )
-                        runner_summary["research_error"] = str(
-                            research_result.get("error", "")
-                        )
-                        if researched.elapsed_ms is not None:
-                            runner_summary["research_runner_elapsed_ms"] = round(
-                                researched.elapsed_ms,
-                                2,
-                            )
-                        if getattr(researched, "response_repaired", False):
-                            runner_summary["research_response_repaired"] = True
-                            runner_summary["research_repair_reason"] = str(
-                                getattr(researched, "repair_reason", "")
-                            )
+                            if getattr(researched, "response_repaired", False):
+                                runner_summary["research_response_repaired"] = True
+                                runner_summary["research_repair_reason"] = str(
+                                    getattr(researched, "repair_reason", "")
+                                )
 
         if research_result is not None and not research_result_succeeded(
             research_result
@@ -3830,6 +3904,7 @@ class LanBridgeSession:
                     conversation_plan,
                     research_succeeded=research_result_succeeded(research_result),
                 )
+            self._observe_affect(turn, tts_error)
             self._append_completed_turn_log(
                 seq=seq,
                 has_audio=has_audio,
@@ -3902,8 +3977,15 @@ class LanBridgeSession:
                     tts_summary["tts_audio_downlink_disabled"] = True
                 else:
                     downlink_frames = audio_downlink_frames(seq, tts, self.config.downlink_audio_chunk_bytes)
-        except TtsConfigurationError:
-            pass
+        except TtsConfigurationError as exc:
+            if self.config.tts_command:
+                # A configured TTS that cannot start is a real failure the
+                # turn must report, not a silent text-only success.
+                tts_error = str(exc)
+            else:
+                # Deliberate text-only deployment; the log says so instead of
+                # the turn masquerading as spoken.
+                tts_summary["tts_skipped"] = "no_tts_command"
         except (TtsExecutionError, ValueError) as exc:
             tts_error = str(exc)
         failure_payload: dict[str, object] = {}
@@ -3953,6 +4035,7 @@ class LanBridgeSession:
             failure_frame = error_frame("tts_error", tts_error)
             failure_frame.update(failure_payload)
             prefix_errors.append(failure_frame)
+        self._observe_affect(turn, tts_error)
         self._append_completed_turn_log(
             seq=seq,
             has_audio=has_audio,

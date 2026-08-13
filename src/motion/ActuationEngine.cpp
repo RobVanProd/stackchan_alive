@@ -195,14 +195,11 @@ void ActuationEngine::update(const RobotFrame& target, uint32_t nowUs) {
   lastUs_ = nowUs;
   dt = constrain(dt, 0.001f, 0.040f);
 
-  float pitchTarget = target.motion.pitchDeg;
-  float yawTarget = target.motion.yawDeg;
-
-  const float t = nowMs * 0.001f;
-  const float idleAmp = ((1.0f - target.emotion.focus) * 3.5f + target.emotion.arousal * 1.0f) *
-                        STACKCHAN_SERVO_IDLE_SCALE;
-  pitchTarget += sinf(t * 1.7f) * idleAmp * 0.20f;
-  yawTarget += sinf(t * 1.1f) * idleAmp;
+  // Idle head life comes entirely from HeadGaze in the intent layer. The sine
+  // sway that used to be re-added here undid that: it swayed continuously at
+  // two fixed frequencies without ever looking at anything.
+  const float pitchTarget = target.motion.pitchDeg;
+  const float yawTarget = target.motion.yawDeg;
 
   const float pitchCmd = clampPitch(pitch_.step(pitchTarget, dt), config_.servos);
   if (lastActuatorWriteMs_ != 0 && nowMs - lastActuatorWriteMs_ < STACKCHAN_SERVO_OUTPUT_PERIOD_MS) {
