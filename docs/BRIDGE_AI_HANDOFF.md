@@ -446,14 +446,19 @@ The `heartbeat` frame carries bounded embodiment facts. Consider exposing to the
 
 Do not let the model act on these as commands; they are context.
 
-## Demo mode is on by default and will confuse you
+## Demo mode will confuse you if it is on
 
-`IntentEngine::demoEnabled_` defaults to **true** and injects a random mode change plus a fake
-event every 2.5–6 seconds. While it is on, the robot's mode flips constantly for no reason, the
-body light follows, and he can never fall asleep.
-
-**Send `demo off` before drawing any conclusion about behaviour.** A large amount of apparently
+Demo mode injects a random mode change plus a fake event every 2.5–6 seconds. While it is on, the
+robot's mode flips constantly for no reason, the body light follows, and he can never fall asleep.
+`IntentEngine::demoEnabled_` historically defaulted to **true**, and a large amount of apparently
 random character behaviour turned out to be this.
+
+Update 2026-08-13: since `45032a43` (PR #230) the boot state is compile-time
+`STACKCHAN_DEMO_ENABLED_AT_BOOT`, which defaults to **0** — demo is now **off** at boot. The
+serial `demo on` command still enables it for a bench demonstration, and `demo off` disables it
+again. If behaviour looks random, still check whether demo was switched on over serial before
+drawing conclusions. This is a source default; whether the installed image carries it depends on
+that image's exact SHA.
 
 ---
 

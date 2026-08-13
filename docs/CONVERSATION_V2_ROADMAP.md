@@ -103,8 +103,12 @@ firmware to its normal local face and wake behavior.
 - Initial and reply-window firmware capture now use the deterministic local endpoint detector. It
   requires at least 150 ms of speech, waits through a 2.0-second trailing pause, and never closes
   before 600 ms. The endpoint and dedicated-capture ceilings are both 12 seconds (240 release
-  chunks), and the wake-gate privacy guard is 15 seconds. The host capture commitment remains 10 seconds, so a valid long device
-  utterance can be rejected; this is an open blocker. Native tests and the public full build pass,
+  chunks), and the wake-gate privacy guard is 15 seconds. The host capture commitment was
+  10 seconds, so a valid long device utterance could be rejected; that source blocker is closed at
+  `8e76b865` (PR #226, 2026-08-13 note): `capture_commit_ms` is now its own 13.5-second setting,
+  decoupled from the reply window and validated to sit above the firmware's 12-second endpoint
+  ceiling and at or below the host's 14.5-second absolute capture lease. Long-utterance physical
+  qualification itself remains open. Native tests and the public full build pass,
   but real-room and exact-image evidence are still required before promotion.
 - The LAN bridge now keeps its socket reader responsive while one serialized turn worker owns
   Gemma and TTS. `cancel` or a companion-originated `utterance_start` cancels the active token,

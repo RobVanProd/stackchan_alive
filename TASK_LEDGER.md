@@ -220,8 +220,14 @@ Ledger timestamp: 2026-08-03 America/New_York
   no polling or model load is added.
 - **Stop conditions:** Fix would require probing hardware on each dashboard poll, restarting the
   bridge, or conflating one timeout with robot failure.
-- **Result:** Observed and queued; no diagnosis or fix implemented.
-- **Commit:** None.
+- **Result:** Observed and queued at baseline with no diagnosis or fix. Update 2026-08-13: fixed
+  in source at `7fd8e0a3` (PR #222, merged to main as `706590eb`). Sustained heartbeat silence
+  beyond 30 seconds now overrides the three latching sources — peer-host-scoped disconnect
+  clearing, listener-down-only `refresh_robot` clearing, and `status()` re-asserting readiness
+  from the cached `_debug` snapshot — reporting the robot disconnected with mode Unknown. A single
+  missed, late, or unreadable sample is never classified as failure, and a socket that has not yet
+  carried a heartbeat asserts nothing. Focused dashboard tests cover it. Physically unqualified.
+- **Commit:** `7fd8e0a3f4a57515db9f67df9d838dae8bd42b6c` (PR #222).
 - **Decision:** Compare against M0-004 after all audit reports rank impact.
 
 ## M1-001 — Physically Qualify Conversation V2 Closure
@@ -297,8 +303,13 @@ Ledger timestamp: 2026-08-03 America/New_York
   broad source gates pass before physical qualification.
 - **Stop conditions:** Any path widens wake capture, masks failed playback, weakens privacy, or
   requires live device action before source gates.
-- **Result:** Queued; not started.
-- **Commit:** None.
+- **Result:** Queued at baseline. Update 2026-08-13: the capture-lease sub-item is fixed in source
+  at `8e76b865` (PR #226): `capture_commit_ms` is decoupled from `reply_window_ms`, defaults to
+  13,500 ms, and is validated above the firmware's 12,000 ms endpoint ceiling and at or below the
+  host's 14,500 ms absolute capture lease, so a capture in progress can outlive the reply window
+  it began in. The stranded-`SPEAKING`, missing-`playback_complete`, and model/TTS-recovery
+  terminal defects remain open, and the timing change is physically unqualified.
+- **Commit:** Capture-lease sub-item only: `8e76b865` (PR #226); remainder none.
 - **Decision:** Required before claiming natural-conversation closure.
 
 ## AFFECT-001 — Remove Synthetic Affect From Production Defaults
@@ -321,8 +332,13 @@ Ledger timestamp: 2026-08-03 America/New_York
   source gates pass.
 - **Stop conditions:** Demo tooling is removed rather than isolated, face timing changes, or a
   physical claim is made without exact-image evidence.
-- **Result:** Queued; not started.
-- **Commit:** None.
+- **Result:** Queued at baseline. Update 2026-08-13: both halves are fixed in source. `45032a43`
+  (PR #230) makes the boot default compile-time `STACKCHAN_DEMO_ENABLED_AT_BOOT`, defaulting to 0
+  (off), with serial `demo on` remaining an explicit bench opt-in; `482c3ab5` (branch
+  `agent/aliveness-tier1-tier2`) sends response-start valence signed and clamped to [-1, 1]
+  instead of [0, 1], matching the firmware's existing [-1, 1] constraint. Both are source changes
+  only and physically unqualified; no exact-image evidence exists.
+- **Commit:** Demo default `45032a43` (PR #230); valence clamp `482c3ab5`.
 - **Decision:** Treat current affect as uptime-state contaminated by production demo default until fixed.
 
 ## PERCEPT-001 — Make Presence and Social Context Freshness Truthful

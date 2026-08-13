@@ -58,6 +58,12 @@ Three source-reproduced P0 trust defects block natural-conversation closure:
 3. the host's 10-second capture commitment can time out before firmware's 12-second endpoint and
    reject a valid utterance ending at 12 seconds.
 
+Update 2026-08-13: item 3 is fixed in source at `8e76b865` (PR #226): the host capture commitment
+is decoupled from the reply window as its own `capture_commit_ms`, defaulting to 13,500 ms and
+validated to sit above the firmware's 12,000 ms endpoint ceiling and at or below the host's
+14,500 ms absolute capture lease. Items 1 and 2 remain open, and the change is physically
+unqualified.
+
 The firmware wake gate also uses rollover-unsafe raw millisecond comparisons. Multi-party privacy
 suppression is useful but there is no qualified speaker attribution, addressed-to-robot gate, or
 two-voice arbitration.
@@ -109,6 +115,12 @@ Phrase streaming clamps response-start valence to `[0,1]`; a `-0.72` concern val
 as `0.0` while TTS retained `-0.72`. Cross-field validation also accepted happy text/earcon with
 safety mode and contradictory arousal/valence.
 
+Update 2026-08-13: both grounding defects are fixed in source. `45032a43` (PR #230) makes the boot
+default compile-time `STACKCHAN_DEMO_ENABLED_AT_BOOT`, defaulting off, with serial `demo on`
+remaining an explicit bench opt-in; `482c3ab5` sends response-start valence signed and clamped to
+[-1, 1] instead of [0, 1]. Both are source changes only and physically unqualified. The cross-field
+validation and lexical relationship-safety gaps remain open.
+
 Relationship safety is prompt-backed but lexically enforced: four clear guilt/exclusivity/
 discouraging-human-contact paraphrases passed unchanged. Affect resets at reboot; no durable
 temperament contract exists, and current-main integrated physical affect is unqualified.
@@ -130,7 +142,8 @@ Separately, prompt room text expires but the relationship-card consumer reads an
 summary. A stale one-person state can continue allowing preferred name, episodes, callbacks, and
 approved facts after the social setting becomes unknown.
 
-Other gaps include cached debug resurrecting dashboard connected/operational state, room summaries
+Other gaps include cached debug resurrecting dashboard connected/operational state (fixed in
+source at `7fd8e0a3`, PR #222; physically unqualified), room summaries
 without source/confidence/contradiction, source-overwriting/double-counted transitions, indefinitely
 valid target diagnostics after worker loss, inconsistent private-address/redirect policy between
 camera clients, and privacy documentation that incorrectly says release camera endpoints are
@@ -196,6 +209,12 @@ strong. The dashboard passive presentation has two P0 truth defects: it can call
 stopped when only `motion_enabled=false` while rail/torque remain true, and it can report Bridge
 Ready/operational from stale cached debug after failed refresh. Unknown thermal telemetry is also
 rendered as clear.
+
+Update 2026-08-13: the stale connectivity/readiness half is fixed in source at `7fd8e0a3`
+(PR #222): sustained heartbeat silence beyond 30 seconds now overrides the latched socket flag and
+cached `_debug` snapshot and blanks the reported mode; a single missed or late sample is never
+classified as failure. The motion-safety and thermal label defects remain open, and the fix is
+physically unqualified.
 
 Desktop companion renders forget/remove/Wi-Fi management controls with default no-op callbacks,
 omits registry state, silently discards many operation failures, and retains phone-specific setup
@@ -275,6 +294,10 @@ The highest-risk findings are coupled even though their fixes should remain smal
   reachability during recovery;
 - initiative can begin under one state and continue after a later safety/sleep transition because
   production heartbeat and cancellation contracts are incomplete.
+
+Update 2026-08-13: the demo-affect default (`45032a43`, PR #230), the signed-valence loss
+(`482c3ab5`), and the stale dashboard connectivity latching (`7fd8e0a3`, PR #222) are fixed in
+source; all remain physically unqualified, and the other links stand as written.
 
 These chains support building typed provenance/freshness/authority shadow projections, but they do
 not authorize a broad Continuity Core behavior switchover.

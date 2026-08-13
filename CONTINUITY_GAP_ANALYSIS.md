@@ -12,12 +12,12 @@ projections rather than one typed, source-monitored model.
 | Concern | Current owner/mechanism | Useful property | Continuity limit |
 | --- | --- | --- | --- |
 | Body/face/actuator safety | Deterministic firmware coordinators | Bounded authority, 50 ms display gate, graceful local behavior | Host intent and observed completion are not one typed outcome chain |
-| Affect/energy | Firmware `IntentEngine`, `EmotionModel`, `EmbodiedEnergy` | Stateful decay, habituation, hysteresis, multimodal influence | Demo events default on; state resets; host sees a lossy subset |
-| Conversation phase | Host `ConversationSession` plus firmware wake/reply/audio paths | Bounded context, cancellation, authoritative successful playback | Error/timeout terminal states and time ceilings can diverge |
+| Affect/energy | Firmware `IntentEngine`, `EmotionModel`, `EmbodiedEnergy` | Stateful decay, habituation, hysteresis, multimodal influence | Demo events default on (fixed in source at `45032a43`, PR #230); state resets; host sees a lossy subset |
+| Conversation phase | Host `ConversationSession` plus firmware wake/reply/audio paths | Bounded context, cancellation, authoritative successful playback | Error/timeout terminal states and time ceilings can diverge (capture/endpoint ceilings aligned in source at `8e76b865`, PR #226; terminal-state divergence remains) |
 | Durable facts/episodes/open loops | Memory v4 host store | Bounded atomic persistence, expiry, explicit routes | Model actions not solely authorized; incomplete provenance/contradiction/scope |
 | Presence/gaze/room | Firmware camera adapter, vision/room host summaries | Raw-media restraint, typed/bounded summaries, gaze decay | Freshness/provenance disagree and false/stale presence reaches consumers |
 | Initiative | Host curiosity threshold | Strong minimum interval and several restraint gates | Not an agenda; no why-now/value/silence evidence; in-flight revalidation gap |
-| Product state | Dashboard cached debug/runtime health | Useful local visibility and guarded motion actions | Historical state can be presented as current connection/readiness |
+| Product state | Dashboard cached debug/runtime health | Useful local visibility and guarded motion actions | Historical state can be presented as current connection/readiness (fixed in source at `7fd8e0a3`, PR #222) |
 
 The central gap is not lack of more model intelligence. It is the absence of one typed causal chain
 from event, through source/freshness/state/decision, to observed outcome and safe consolidation.
@@ -49,11 +49,20 @@ Required bridge: source-specific `observed_at`/`expires_at`, boot identity, curr
 unknown semantics, contradiction preservation, and one freshness-aware social/connection
 projection. Last-known data remains available but cannot satisfy a current claim.
 
+Update 2026-08-13: the dashboard resurrection path specifically is fixed in source at `7fd8e0a3`
+(PR #222) — sustained heartbeat silence now overrides the latched connection sources; physically
+unqualified. The remaining freshness sources stand as written.
+
 ## Gap 3 — Conversation Has Split Terminal Truth
 
 Successful playback completion is well bounded, but playback failure can leave the host speaking
 forever. Model/TTS recovery changes host state without opening the corresponding firmware reply
 window, and host capture commitment ends before firmware's utterance ceiling.
+
+Update 2026-08-13: the capture-commitment mismatch is fixed in source at `8e76b865` (PR #226):
+`capture_commit_ms` is decoupled from the reply window at 13,500 ms, validated between 12,000 and
+14,500 ms. The playback-failure and reply-window terminal defects remain open, and the change is
+physically unqualified.
 
 Required bridge: one explicit host/device terminal-event contract with bounded speaking timeout,
 playback-failure propagation, truthful reply-window acknowledgement, aligned 12/13/15-second
@@ -77,6 +86,11 @@ Firmware affect is real mutable state within an uptime and causally drives multi
 Synthetic demo events enabled by default contaminate that history. Negative valence is lost on one
 production streaming path, host context omits baseline/habituation/quiet/sleep variables, and
 reboot resets all affect.
+
+Update 2026-08-13: the demo default is off in source at `45032a43` (PR #230, compile-time
+`STACKCHAN_DEMO_ENABLED_AT_BOOT` defaulting 0) and the streaming valence clamp is signed [-1, 1]
+at `482c3ab5`. Both are physically unqualified; the restart reset and host-context omissions
+remain.
 
 Required bridge: make production demo off and preserve signed affect first. Specify authoritative
 self-state, source, decay, restart semantics, and cross-modal compatibility before persisting any
@@ -168,7 +182,9 @@ repository, reproducibility, and documentation work then completes before Milest
    first, then separately compile-disable unauthenticated firmware mutation while preserving
    emergency stop/read-only status.
 2. Repair other P0 truth/privacy violations with small contracts: memory delta authorization,
-   truthful presence/social freshness, production demo default, and signed affect.
+   truthful presence/social freshness, production demo default, and signed affect. (Update
+   2026-08-13: the demo default and signed affect are fixed in source at `45032a43`/PR #230 and
+   `482c3ab5`; physically unqualified.)
 3. Complete Milestone 0 reproducible-build and document-truth work without changing robot behavior.
 4. Close and physically qualify Conversation v2 terminal behavior as Milestone 1.
 5. Implement the typed event journal/reducers/projections in Milestone 2 shadow mode only.

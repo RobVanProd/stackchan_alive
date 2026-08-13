@@ -507,7 +507,9 @@ occurred. USB presence does not establish application, actuator, network, bridge
    accepted working-tree candidate denies both aliases before PCM access, but it is undeployed and
    physically unqualified. No PCM was requested or inspected.
 4. Dashboard connection/readiness state can remain affirmative after the heartbeat is stale and
-   the bridge has no established robot socket.
+   the bridge has no established robot socket. Update 2026-08-13: fixed in source at `7fd8e0a3`
+   (PR #222) — sustained heartbeat silence beyond 30 seconds now overrides the latched socket flag
+   and cached `_debug` snapshot; physically unqualified.
 5. The exact AGENTS baseline command through the default shared PlatformIO core fails before
    source compilation because the pioarduino framework directory is absent. The same environment
    builds successfully when the documented `C:\spio\pioarduino` core is pinned.
@@ -517,10 +519,16 @@ occurred. USB presence does not establish application, actuator, network, bridge
    newest unrelated episode.
 8. Playback failure can strand host Conversation v2 in `SPEAKING`; model/TTS recovery can disagree
    with the firmware wake gate; and the 10-second host lease is shorter than the allowed 12-second
-   firmware utterance.
+   firmware utterance. Update 2026-08-13: the lease mismatch is fixed in source at `8e76b865`
+   (PR #226) — `capture_commit_ms` is now 13,500 ms, decoupled from the reply window and validated
+   between 12,000 and 14,500 ms; the stranded-`SPEAKING` and model/TTS-recovery halves remain
+   open, and the change is physically unqualified.
 9. Release firmware initializes synthetic demo affect events enabled; phrase streaming clamps
    signed negative valence to zero; semantic manipulation paraphrases bypass the current lexical
-   relationship validator.
+   relationship validator. Update 2026-08-13: the demo default is off in source at `45032a43`
+   (PR #230, compile-time `STACKCHAN_DEMO_ENABLED_AT_BOOT` defaulting 0; serial `demo on` remains
+   an explicit opt-in), and phrase streaming sends signed valence [-1, 1] at `482c3ab5`; both are
+   physically unqualified. The lexical relationship-validator bypass remains open.
 10. Repeated face-lost updates can retain a historical face size while refreshing its timestamp,
    causing a false-current presence bit; stale room state can still permit personal projection.
 11. Initiative power/thermal suppression fields are not present in the production heartbeat, and
