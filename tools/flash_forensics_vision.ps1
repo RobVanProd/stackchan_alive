@@ -52,7 +52,8 @@ $commit = (& git rev-parse --short=8 HEAD).Trim()
 $dirty = [bool](& git status --porcelain)
 Write-Host "[vision-flash] Building stackchan_release_forensics_vision from $commit (dirty=$dirty)"
 
-Invoke-StackchanPlatformio @("run", "-e", "stackchan_release_forensics_vision")
+$buildArgs = @("run", "-e", "stackchan_release_forensics_vision")
+Invoke-StackchanPlatformio @buildArgs
 if ($LASTEXITCODE -ne 0) { throw "Build failed." }
 
 $buildDir = ".pio\build\stackchan_release_forensics_vision"
@@ -91,7 +92,8 @@ Write-Host "[vision-flash] firmware SHA-256: $fwHash"
 Write-Host "[vision-flash] archived to: $archive"
 Write-Host "[vision-flash] Flashing over $Port ..."
 
-Invoke-StackchanPlatformio @("run", "-e", "stackchan_release_forensics_vision", "--target", "upload", "--upload-port", $Port)
+$uploadArgs = @("run", "-e", "stackchan_release_forensics_vision", "--target", "upload", "--upload-port", $Port)
+Invoke-StackchanPlatformio @uploadArgs
 if ($LASTEXITCODE -ne 0) { throw "Upload failed. The archived candidate is intact; check the USB cable/port and re-run." }
 
 Write-Host ""
