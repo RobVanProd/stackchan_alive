@@ -1,7 +1,8 @@
 param(
   [string]$Port = "COM4",
   [Parameter(Mandatory = $true)][string]$Ssid,
-  [string]$BridgeHost = "192.168.127.220",
+  # The PC running the bridge/dashboard on the same LAN as the robot.
+  [string]$BridgeHost = "192.168.1.213",
   [int]$BridgePort = 8765,
   [string]$BridgePath = "/bridge",
   [switch]$ConfirmServoRisk
