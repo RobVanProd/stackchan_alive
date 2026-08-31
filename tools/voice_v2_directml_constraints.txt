@@ -1,4 +1,4 @@
-torch==2.4.1
+torch==2.13.0
 torchvision==0.19.1
 torchaudio==2.4.1
 torch-directml==0.2.5.dev240914
