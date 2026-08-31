@@ -89,7 +89,7 @@ jobs:
         with:
           ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12.10"
           cache: pip
@@ -468,7 +468,7 @@ jobs:
         with:
           ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         if: matrix.setup_desktop_runtime
         with:
           python-version: "3.12.10"
@@ -696,7 +696,7 @@ jobs:
         with:
           ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12.10"
 
@@ -722,7 +722,7 @@ jobs:
         with:
           ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12.10"
 
