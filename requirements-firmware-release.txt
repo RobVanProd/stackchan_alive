@@ -3,7 +3,7 @@
 # also pass byte identity. `platformio==6.1.19` alone permits transitive drift.
 # Platform-owned per-core penv dependencies are covered by byte identity too.
 ajsonrpc==1.2.0
-anyio==4.14.1
+anyio==4.14.2
 bottle==0.13.4
 certifi==2026.6.17
 charset-normalizer==3.4.7
